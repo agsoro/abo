@@ -3,6 +3,7 @@ using System.Text;
 using System.Text.Json;
 using Abo.Agents;
 using Abo.Core;
+using Abo.Services;
 using Microsoft.Extensions.Options;
 
 namespace Abo.Integrations.Mattermost;
@@ -145,10 +146,14 @@ public class MattermostListenerService : BackgroundService
             var orchestrator = scope.ServiceProvider.GetRequiredService<Orchestrator>();
             var supervisor = scope.ServiceProvider.GetRequiredService<AgentSupervisor>();
             var mattermostClient = scope.ServiceProvider.GetRequiredService<MattermostClient>();
+            var userService = scope.ServiceProvider.GetRequiredService<UserService>();
 
             // Fetch actual username
             var userName = await mattermostClient.GetUsernameAsync(post.UserId);
             _logger.LogInformation($"Resolved sender username: {userName}");
+
+            // Create or update user
+            userService.GetOrCreateUser(post.UserId, userName);
 
             // Intelligent selection with context
             var history = orchestrator.GetSessionHistory(post.ChannelId);

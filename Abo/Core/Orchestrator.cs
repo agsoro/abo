@@ -34,6 +34,7 @@ public class Orchestrator
         var apiEndpoint = _configuration["Config:ApiEndpoint"] ?? throw new InvalidOperationException("API Endpoint not configured.");
         var modelName = _configuration["Config:ModelName"] ?? throw new InvalidOperationException("Model Name not configured.");
         var apiKey = _configuration["Config:ApiKey"] ?? string.Empty;
+        var defaultLanguage = _configuration["Config:DefaultLanguage"] ?? "en-us";
 
         // Retrieve existing history
         var history = _sessionService.GetHistory(sessionId);
@@ -45,7 +46,7 @@ public class Orchestrator
         // Prepare the request with full history + current system prompt
         var requestMessages = new List<ChatMessage>
         {
-            new ChatMessage { Role = "system", Content = $"{agent.SystemPrompt}\n\n[CONTEXT] Current Session/Channel ID: {sessionId}\n[CONTEXT] User Name: {userName ?? "Unknown"}" }
+            new ChatMessage { Role = "system", Content = $"{agent.SystemPrompt}\n\n[CONTEXT] Current Session/Channel ID: {sessionId}\n[CONTEXT] User Name: {userName ?? "Unknown"}\n[CONTEXT] The default language for all responses and output is '{defaultLanguage}', unless the user explicitly requests otherwise." }
         };
         
         lock (history)

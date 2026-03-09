@@ -12,6 +12,11 @@ public class AskQuizQuestionTool : IAboTool
         type = "object",
         properties = new
         {
+            topic = new
+            {
+                type = "string",
+                description = "The topic pool this question belongs to (e.g., nerdy, compliance, general). Defaults to general if not specified."
+            },
             question = new
             {
                 type = "string",
@@ -19,9 +24,9 @@ public class AskQuizQuestionTool : IAboTool
             },
             options = new
             {
-                type = "array",
-                description = "A list of 2 to 10 possible text options the user can select from",
-                items = new { type = "string" }
+                type = "object",
+                description = "A mapping of option identifiers (e.g. A, B, C) to the option text.",
+                additionalProperties = new { type = "string" }
             }
         },
         required = new[] { "question", "options" },
@@ -31,27 +36,34 @@ public class AskQuizQuestionTool : IAboTool
     public Task<string> ExecuteAsync(string argumentsJson)
     {
         var args = JsonSerializer.Deserialize<AskQuizQuestionArgs>(argumentsJson);
-        if (args == null || string.IsNullOrWhiteSpace(args.Question) || args.Options == null || args.Options.Length == 0)
+        if (args == null || string.IsNullOrWhiteSpace(args.Question) || args.Options == null || args.Options.Count == 0)
         {
             return Task.FromResult("Error: Invalid arguments provided to tool.");
         }
 
-        var formattedOutput = $"**{args.Question}**\n\n";
-        for (int i = 0; i < args.Options.Length; i++)
+        var topic = string.IsNullOrWhiteSpace(args.Topic) ? "general" : args.Topic;
+        var formattedOutput = $"**[Topic: {topic}] [ID: {args.Id}]**\n**{args.Question}**\n\n";
+        foreach (var opt in args.Options)
         {
-            formattedOutput += $"**{i + 1}.** {args.Options[i]}\n";
+            formattedOutput += $"**{opt.Key}.** {opt.Value}\n";
         }
-        formattedOutput += "\n*(Please reply with the number or text of your choice)*";
+        formattedOutput += "\n*(Bitte antworte mit dem Buchstaben deiner Wahl)*";
 
         return Task.FromResult(formattedOutput);
     }
 
     private class AskQuizQuestionArgs
     {
+        [System.Text.Json.Serialization.JsonPropertyName("id")]
+        public string? Id { get; set; }
+
+        [System.Text.Json.Serialization.JsonPropertyName("topic")]
+        public string? Topic { get; set; }
+
         [System.Text.Json.Serialization.JsonPropertyName("question")]
         public string Question { get; set; } = string.Empty;
 
         [System.Text.Json.Serialization.JsonPropertyName("options")]
-        public string[] Options { get; set; } = Array.Empty<string>();
+        public Dictionary<string, string> Options { get; set; } = new();
     }
 }

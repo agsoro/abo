@@ -10,8 +10,6 @@ public class QuizService : BackgroundService
     private readonly IServiceProvider _serviceProvider;
     private readonly ILogger<QuizService> _logger;
 
-    private string SubscriptionsPath => "Data/quiz_subscriptions.json";
-
     public QuizService(IServiceProvider serviceProvider, ILogger<QuizService> logger)
     {
         _serviceProvider = serviceProvider;
@@ -43,15 +41,16 @@ public class QuizService : BackgroundService
 
     private async Task TriggerQuestionsAsync(CancellationToken stoppingToken)
     {
-        if (!File.Exists(SubscriptionsPath)) return;
-
-        var json = await File.ReadAllTextAsync(SubscriptionsPath);
-        var subs = JsonSerializer.Deserialize<List<string>>(json);
-        if (subs == null || subs.Count == 0) return;
+        using var scope = _serviceProvider.CreateScope();
+        var userService = scope.ServiceProvider.GetRequiredService<UserService>();
+        
+        var users = userService.GetAllUsers();
+        var subs = users.Where(u => u.IsSubscribedToQuiz).Select(u => u.Id).ToList();
+        
+        if (subs.Count == 0) return;
 
         _logger.LogInformation($"Triggering quiz for {subs.Count} subscribers.");
 
-        using var scope = _serviceProvider.CreateScope();
         var orchestrator = scope.ServiceProvider.GetRequiredService<Orchestrator>();
         var agent = scope.ServiceProvider.GetRequiredService<QuizAgent>();
         var mattermostClient = scope.ServiceProvider.GetRequiredService<MattermostClient>();

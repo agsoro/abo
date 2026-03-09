@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using Abo.Services;
 
 namespace Abo.Tools;
 
@@ -9,8 +10,8 @@ public abstract class QuizToolBase : IAboTool
     public abstract string Description { get; }
     public abstract object ParametersSchema { get; }
 
-    protected static string SubscriptionsPath => "Data/quiz_subscriptions.json";
-    protected static string LeaderboardPath => "Data/quiz_leaderboard.md";
+    protected static string SubscriptionsPath => "Data/Quiz/quiz_subscriptions.json";
+    protected static string LeaderboardPath => "Data/Quiz/leaderboard.json";
 
     public abstract Task<string> ExecuteAsync(string argumentsJson);
 
@@ -36,6 +37,13 @@ public abstract class QuizToolBase : IAboTool
 
 public class SubscribeQuizTool : QuizToolBase
 {
+    private readonly UserService _userService;
+
+    public SubscribeQuizTool(UserService userService)
+    {
+        _userService = userService;
+    }
+
     public override string Name => "subscribe_quiz";
     public override string Description => "Subscribes the current channel to the hourly quiz.";
 
@@ -55,12 +63,11 @@ public class SubscribeQuizTool : QuizToolBase
         var args = JsonSerializer.Deserialize<Dictionary<string, string>>(argumentsJson, options);
         if (args == null || !args.TryGetValue("channel_id", out var channelId)) return "Error: Missing channel_id.";
 
-        EnsureDataDirectory();
-        var subs = await LoadSubscriptionsAsync();
-        if (!subs.Contains(channelId))
+        var user = _userService.GetOrCreateUser(channelId);
+        if (!user.IsSubscribedToQuiz)
         {
-            subs.Add(channelId);
-            await SaveSubscriptionsAsync(subs);
+            user.IsSubscribedToQuiz = true;
+            _userService.UpdateUser(user);
             return $"Successfully subscribed channel {channelId} to the quiz.";
         }
         return "You are already subscribed!";
@@ -69,6 +76,13 @@ public class SubscribeQuizTool : QuizToolBase
 
 public class UnsubscribeQuizTool : QuizToolBase
 {
+    private readonly UserService _userService;
+
+    public UnsubscribeQuizTool(UserService userService)
+    {
+        _userService = userService;
+    }
+
     public override string Name => "unsubscribe_quiz";
     public override string Description => "Unsubscribes the current channel from the hourly quiz.";
 
@@ -88,11 +102,11 @@ public class UnsubscribeQuizTool : QuizToolBase
         var args = JsonSerializer.Deserialize<Dictionary<string, string>>(argumentsJson, options);
         if (args == null || !args.TryGetValue("channel_id", out var channelId)) return "Error: Missing channel_id.";
 
-        EnsureDataDirectory();
-        var subs = await LoadSubscriptionsAsync();
-        if (subs.Remove(channelId))
+        var user = _userService.GetOrCreateUser(channelId);
+        if (user.IsSubscribedToQuiz)
         {
-            await SaveSubscriptionsAsync(subs);
+            user.IsSubscribedToQuiz = false;
+            _userService.UpdateUser(user);
             return "Successfully unsubscribed.";
         }
         return "You were not subscribed.";
@@ -102,21 +116,66 @@ public class UnsubscribeQuizTool : QuizToolBase
 public class GetQuizLeaderboardTool : QuizToolBase
 {
     public override string Name => "get_quiz_leaderboard";
-    public override string Description => "Returns the current quiz rankings.";
+    public override string Description => "Returns the current quiz rankings, Optionally filtered by topic.";
 
-    public override object ParametersSchema => new { type = "object", properties = new { } };
+    public override object ParametersSchema => new 
+    { 
+        type = "object", 
+        properties = new 
+        { 
+            topic = new { type = "string", description = "Optional topic to filter rankings by." }
+        } 
+    };
 
     public override async Task<string> ExecuteAsync(string argumentsJson)
     {
         if (!File.Exists(LeaderboardPath)) return "Leaderboard is empty.";
-        return await File.ReadAllTextAsync(LeaderboardPath);
+        
+        var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+        var json = await File.ReadAllTextAsync(LeaderboardPath);
+        var data = JsonSerializer.Deserialize<Dictionary<string, Dictionary<string, int>>>(json, options);
+        if (data == null || data.Count == 0) return "Leaderboard is empty.";
+
+        var args = JsonSerializer.Deserialize<Dictionary<string, string>>(argumentsJson, options);
+        string? topic = null;
+        if (args != null && args.TryGetValue("topic", out var topicValue))
+        {
+            topic = topicValue;
+        }
+
+        topic = topic?.ToLowerInvariant();
+        var output = "";
+
+        if (!string.IsNullOrWhiteSpace(topic))
+        {
+            if (!data.ContainsKey(topic)) return $"No rankings for topic '{topic}'.";
+            output += $"# {topic.ToUpper()} Quiz Leaderboard\n\n| User | Score |\n| --- | --- |\n";
+            foreach (var kvp in data[topic].OrderByDescending(x => x.Value))
+            {
+                output += $"| @{kvp.Key} | {kvp.Value} |\n";
+            }
+        }
+        else
+        {
+            foreach (var t in data.Keys)
+            {
+                output += $"# {t.ToUpper()} Quiz Leaderboard\n\n| User | Score |\n| --- | --- |\n";
+                foreach (var kvp in data[t].OrderByDescending(x => x.Value))
+                {
+                    output += $"| @{kvp.Key} | {kvp.Value} |\n";
+                }
+                output += "\n";
+            }
+        }
+
+        return output;
     }
 }
 
 public class UpdateQuizScoreTool : QuizToolBase
 {
     public override string Name => "update_quiz_score";
-    public override string Description => "Adds points to a user's total in the quiz leaderboard.";
+    public override string Description => "Adds points to a user's total in the quiz leaderboard for a specific topic.";
 
     public override object ParametersSchema => new
     {
@@ -124,6 +183,7 @@ public class UpdateQuizScoreTool : QuizToolBase
         properties = new
         {
             user_name = new { type = "string", description = "The name of the user." },
+            topic = new { type = "string", description = "The topic pool the question was from." },
             points = new { type = "integer", description = "Amount of points to add (default 1)." }
         },
         required = new[] { "user_name" }
@@ -136,8 +196,16 @@ public class UpdateQuizScoreTool : QuizToolBase
         if (args == null || !args.TryGetValue("user_name", out var userNameObj)) return "Error: Missing user_name.";
         
         string userName = userNameObj.ToString()!.Trim(); // Trim for robustness
+        string topic = "general";
+        if (args.TryGetValue("topic", out var topicObj) && topicObj != null) 
+        {
+            topic = topicObj.ToString()!.ToLowerInvariant();
+        }
+
+        if (string.IsNullOrWhiteSpace(topic)) topic = "general";
+
         int points = 1;
-        if (args.TryGetValue("points", out var pointsObj))
+        if (args.TryGetValue("points", out var pointsObj) && pointsObj != null)
         {
             if (pointsObj is JsonElement el) 
             {
@@ -148,40 +216,36 @@ public class UpdateQuizScoreTool : QuizToolBase
         }
 
         EnsureDataDirectory();
-        if (!File.Exists(LeaderboardPath)) 
-        {
-            await File.WriteAllTextAsync(LeaderboardPath, "# Quiz Leaderboard\n\n| User | Score |\n| --- | --- |\n");
-        }
-
-        var lines = (await File.ReadAllLinesAsync(LeaderboardPath)).ToList();
         
-        bool found = false;
-        for (int i = 0; i < lines.Count; i++)
+        Dictionary<string, Dictionary<string, int>> data = new();
+        if (File.Exists(LeaderboardPath)) 
         {
-            // Support both @username and plain username
-            var match = Regex.Match(lines[i], @"\|\s*(.+?)\s*\|\s*(\d+)\s*\|");
-            if (match.Success)
+            var json = await File.ReadAllTextAsync(LeaderboardPath);
+            try 
             {
-                var existingUser = match.Groups[1].Value.Trim().Replace("@", "");
-                var incomingUser = userName.Replace("@", "");
-
-                if (existingUser.Equals(incomingUser, StringComparison.OrdinalIgnoreCase))
-                {
-                    int currentScore = int.Parse(match.Groups[2].Value);
-                    lines[i] = $"| @{incomingUser.ToLower()} | {currentScore + points} |";
-                    found = true;
-                    break;
-                }
+                data = JsonSerializer.Deserialize<Dictionary<string, Dictionary<string, int>>>(json, options) ?? new();
+            }
+            catch
+            {
+                // In case it's the old Markdown format
+                data = new();
             }
         }
 
-        if (!found)
+        var cleanName = userName.Replace("@", "").ToLower();
+        
+        if (!data.ContainsKey(topic)) data[topic] = new Dictionary<string, int>();
+
+        if (data[topic].ContainsKey(cleanName))
         {
-            var cleanName = userName.Replace("@", "").ToLower();
-            lines.Add($"| @{cleanName} | {points} |");
+            data[topic][cleanName] += points;
+        }
+        else
+        {
+            data[topic][cleanName] = points;
         }
 
-        await File.WriteAllLinesAsync(LeaderboardPath, lines);
-        return $"Updated leaderboard for @{userName.Replace("@", "").ToLower()}.";
+        await File.WriteAllTextAsync(LeaderboardPath, JsonSerializer.Serialize(data, new JsonSerializerOptions { WriteIndented = true }));
+        return $"Updated leaderboard: @{cleanName} has {data[topic][cleanName]} points in the '{topic}' pool.";
     }
 }
