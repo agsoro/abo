@@ -56,7 +56,7 @@ Your configuration should cleanly separate different services. Here is an exampl
       "ApiKey": "SECRET_STORED_IN_VAULT_OR_ENV"
     },
     "Mattermost": {
-      "WebhookUrl": "SECRET_STORED_IN_VAULT_OR_ENV",
+      "BaseUrl": "https://work.xpecto.com/chat",
       "BotToken": "SECRET_STORED_IN_VAULT_OR_ENV"
     }
   }

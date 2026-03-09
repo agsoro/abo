@@ -11,7 +11,7 @@ The framework is designed for organizations that prioritize **data sovereignty**
 * **Privacy-Centric Design:** ABO is built to run entirely within your secure network. It requires only a REST API endpoint; no proprietary SDKs or "phone-home" telemetry are included.
 * **Pure .NET 10 Implementation:** Built using standard `HttpClient` and `System.Text.Json` for maximum performance, transparency, and ease of maintenance for C# developers.
 * **Agnostic Backend:** Seamlessly switch between local inference servers, private cloud instances, or managed gateways by simply updating a Base URL.
-* **Multi-Agent Triage:** Specialized logic for ticket categorization, roadmap grouping, and automated PRD drafting.
+* **Intelligent Agent Selection:** Automatically routes user requests to the best available specialized agent (e.g., Quiz, Greetings, Time-keeping).
 
 ---
 
@@ -41,7 +41,7 @@ Configure your environment in `appsettings.json`. ABO treats the AI backend as a
 ```
 
 ## 📂 Project Structure
-* /agents: Definitions for specialized roles (e.g., Triage, Roadmap Analyst).
-* /tools: C# plugins that the AI can trigger (e.g., GetBacklogHistory.cs).
-* /core: The core loop logic and REST client implementation.
-* /contracts: JSON schemas used for function calling and tool definitions.
+* /agents: Definitions for specialized roles (e.g., `QuizAgent`, `HelloWorldAgent`).
+* /tools: C# plugins that the AI can trigger (e.g., `QuizTools`, `GetSystemTimeTool`).
+* /core: The core loop logic, REST client, and `AgentSupervisor` implementation.
+* /contracts: JSON schemas and DTOs used for API interaction.

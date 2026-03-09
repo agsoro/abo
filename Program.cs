@@ -1,0 +1,69 @@
+using Abo.Agents;
+using Abo.Core;
+using Abo.Integrations.Mattermost;
+using Abo.Integrations.XpectoLive;
+using Abo.Tools;
+using Abo.Services;
+using Microsoft.AspNetCore.Mvc;
+
+var builder = WebApplication.CreateBuilder(args);
+
+// Register Core Components
+builder.Services.AddHttpClient();
+builder.Services.AddSingleton<SessionService>();
+builder.Services.AddTransient<Orchestrator>();
+builder.Services.AddTransient<AgentSupervisor>();
+
+// Register Integrations
+builder.Services.Configure<XpectoLiveOptions>(builder.Configuration.GetSection("Integrations:XpectoLive"));
+builder.Services.AddHttpClient<XpectoLiveClient>();
+
+builder.Services.Configure<MattermostOptions>(builder.Configuration.GetSection("Integrations:Mattermost"));
+builder.Services.AddHttpClient<MattermostClient>();
+builder.Services.AddHostedService<MattermostListenerService>();
+
+// Register Tools & Agents
+builder.Services.AddTransient<IAboTool, GetSystemTimeTool>();
+builder.Services.AddTransient<IAboTool, AskMultipleChoiceTool>();
+builder.Services.AddTransient<IAboTool, SubscribeQuizTool>();
+builder.Services.AddTransient<IAboTool, UnsubscribeQuizTool>();
+builder.Services.AddTransient<IAboTool, GetQuizLeaderboardTool>();
+builder.Services.AddTransient<IAboTool, UpdateQuizScoreTool>();
+builder.Services.AddTransient<IAgent, HelloWorldAgent>();
+builder.Services.AddTransient<IAgent, QuizAgent>();
+
+builder.Services.AddHostedService<QuizService>();
+
+var app = builder.Build();
+
+app.UseDefaultFiles(); // Add this line so `/` automatically serves `/index.html`
+app.UseStaticFiles(); // Serve wwwroot/index.html
+
+// API: Health / Status
+app.MapGet("/api/status", (IConfiguration config) => 
+{
+    var endpoint = config["Config:ApiEndpoint"];
+    var model = config["Config:ModelName"];
+    var hasKey = !string.IsNullOrEmpty(config["Config:ApiKey"]);
+    return Results.Ok(new { Status = "Running", Model = model, HasApiKey = hasKey });
+});
+
+// API: Interact
+app.MapPost("/api/interact", async ([FromBody] InteractRequest req, Orchestrator orchestrator, AgentSupervisor supervisor) =>
+{
+    if (string.IsNullOrWhiteSpace(req.Message)) return Results.BadRequest("Message is empty.");
+    
+    var agent = await supervisor.GetBestAgentAsync(req.Message);
+    var response = await orchestrator.RunAgentLoopAsync(agent, req.Message, "web-session", req.UserName);
+    
+    return Results.Ok(new { Output = response });
+});
+
+app.Run();
+
+public class InteractRequest
+{
+    public string Message { get; set; } = string.Empty;
+    public string? UserName { get; set; }
+}
+

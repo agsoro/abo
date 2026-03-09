@@ -1,15 +1,23 @@
-# Multi-Agent Triage
+# Intelligent Agent Selection
 
-ABO supports a specialized multi-agent architecture to handle complex workflows such as ticket categorization, roadmap grouping, and automated PRD drafting.
+ABO supports a specialized multi-agent architecture. Instead of a single monolithic bot, ABO uses specialized agents coordinated by a **Supervisor**.
 
-## Agent Definitions
+## Agent Supervisor
 
-Agents in ABO are defined as specialized roles with specific instructions, tools, and constraints. They reside in the `/agents` directory.
+The `AgentSupervisor` is the entry point for all user interactions. It uses the LLM to analyze the user's intent and select the best agent based on their `Name` and `Description`.
 
-### Example Roles
-- **Triage Agent**: Specializes in categorizing incoming tickets, determining priority, and routing them to the appropriate team.
-- **Roadmap Analyst**: Groups related tickets and requests to assist in roadmap planning and feature prioritization.
-- **PRD Drafter**: Automatically synthesizes product requirements documents from multiple related work items.
+## Registered Agents
 
-## Agent Collaboration
-Agents can hand off tasks or synthesize results sequentially, coordinated by the main Orchestrator loop.
+Agents in ABO are defined as specialized roles with specific instructions, tools, and constraints.
+
+### HelloWorldAgent
+- **Description**: A basic assistant for general greetings and testing.
+- **Tools**: Can tell the system time in German and ask about personal preferences (multiple choice).
+
+### QuizAgent
+- **Description**: A specialized agent for tech and nerdy trivia.
+- **Tools**: Handles quiz subscriptions, leaderboards, and asking multiple-choice trivia questions.
+- **Rules**: Follows strict scoring (points only for correct answers) and mandatory web references for all feedback.
+
+## Implementation
+Agents implement the `IAgent` interface and are registered as transient services in `Program.cs`.
