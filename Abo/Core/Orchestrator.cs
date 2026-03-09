@@ -24,6 +24,11 @@ public class Orchestrator
         if (!Directory.Exists(dir)) Directory.CreateDirectory(dir!);
     }
 
+    public List<ChatMessage> GetSessionHistory(string sessionId)
+    {
+        return _sessionService.GetHistory(sessionId);
+    }
+
     public async Task<string> RunAgentLoopAsync(IAgent agent, string userMessage, string sessionId, string? userName = null)
     {
         var apiEndpoint = _configuration["Config:ApiEndpoint"] ?? throw new InvalidOperationException("API Endpoint not configured.");
@@ -133,7 +138,7 @@ public class Orchestrator
                             toolResult = $"Error: {ex.Message}";
                         }
                         
-                        if (toolCall.Function.Name == "ask_multiple_choice")
+                        if (toolCall.Function.Name == "ask_multiple_choice" || toolCall.Function.Name == "ask_quiz_question")
                         {
                             lastQuestionOutput = toolResult;
                         }

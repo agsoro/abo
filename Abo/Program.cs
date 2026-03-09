@@ -29,6 +29,7 @@ builder.Services.AddTransient<IAboTool, SubscribeQuizTool>();
 builder.Services.AddTransient<IAboTool, UnsubscribeQuizTool>();
 builder.Services.AddTransient<IAboTool, GetQuizLeaderboardTool>();
 builder.Services.AddTransient<IAboTool, UpdateQuizScoreTool>();
+builder.Services.AddTransient<IAboTool, AskQuizQuestionTool>();
 builder.Services.AddTransient<IAgent, HelloWorldAgent>();
 builder.Services.AddTransient<IAgent, QuizAgent>();
 
@@ -53,8 +54,10 @@ app.MapPost("/api/interact", async ([FromBody] InteractRequest req, Orchestrator
 {
     if (string.IsNullOrWhiteSpace(req.Message)) return Results.BadRequest("Message is empty.");
     
-    var agent = await supervisor.GetBestAgentAsync(req.Message);
-    var response = await orchestrator.RunAgentLoopAsync(agent, req.Message, "web-session", req.UserName);
+    var sessionId = req.SessionId ?? "web-session";
+    var history = orchestrator.GetSessionHistory(sessionId);
+    var agent = await supervisor.GetBestAgentAsync(req.Message, history);
+    var response = await orchestrator.RunAgentLoopAsync(agent, req.Message, sessionId, req.UserName);
     
     return Results.Ok(new { Output = response });
 });
@@ -65,5 +68,6 @@ public class InteractRequest
 {
     public string Message { get; set; } = string.Empty;
     public string? UserName { get; set; }
+    public string? SessionId { get; set; }
 }
 

@@ -18,10 +18,9 @@ public class HelloWorldAgent : IAgent
     }
 
     public string SystemPrompt => 
-        "You are a helpful assistant testing the ABO framework. " +
-        "You MUST be conversational and polite. " +
-        "When asked for the time, you MUST use the `get_system_time` tool and reply with the result in German. " +
-        "When asked a personal preference question (like 'What is your favorite color?'), you MUST use the `ask_multiple_choice` tool to ask the user to pick from a list of 3 options instead of answering immediately.";
+        "When asked the time, use `get_system_time`. " +
+        "For greetings, be friendly. " +
+        "IMPORTANT: You are NOT the Quiz Agent. If the user is answering a quiz or asking about the leaderboard, the Supervisor should have routed them elsewhere, but if you see it, do NOT attempt to use quiz tools or hallucinate `check_quiz_answer`.";
 
     public List<ToolDefinition> GetToolDefinitions()
     {

@@ -19,7 +19,7 @@ public class AgentSupervisor
         _logger = logger;
     }
 
-    public async Task<IAgent> GetBestAgentAsync(string userMessage)
+    public async Task<IAgent> GetBestAgentAsync(string userMessage, List<ChatMessage>? history = null)
     {
         _logger.LogInformation($"Determining best agent for message: '{userMessage}'");
         
@@ -35,10 +35,21 @@ public class AgentSupervisor
 
         var agentList = string.Join("\n", _agents.Select(a => $"- {a.Name}: {a.Description}"));
 
+        var contextText = "";
+        if (history != null && history.Any())
+        {
+            var lastMessages = history.TakeLast(5);
+            contextText = "RECENT CONVERSATION HISTORY:\n" + string.Join("\n", lastMessages.Select(m => $"[{m.Role.ToUpper()}]: {m.Content}")) + "\n\n";
+        }
+
         var systemPrompt = 
-            "You are the Agent Supervisor. Your job is to select the BEST agent to handle a user's request. " +
-            "You must return ONLY the name of the agent. No other text.\n\n" +
-            "AVAILABLE AGENTS:\n" + agentList;
+            "You are the Agent Supervisor. Your job is to select the BEST agent to handle a user's request based on the CURRENT message and RECENT history.\n\n" +
+            "AVAILABLE AGENTS:\n" + agentList + "\n\n" +
+            contextText + 
+            "Rules:\n" +
+            "1. Return ONLY the name of the agent.\n" +
+            "2. If the user is answering a quiz question (e.g. providing a number or a simple 'yes'/'no' to a quiz prompt), select 'QuizAgent'.\n" +
+            "3. If the user is just saying hello or asking for the time, select 'HelloWorldAgent'.";
 
         var request = new ChatCompletionRequest
         {

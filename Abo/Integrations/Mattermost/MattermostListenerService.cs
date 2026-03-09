@@ -150,8 +150,9 @@ public class MattermostListenerService : BackgroundService
             var userName = await mattermostClient.GetUsernameAsync(post.UserId);
             _logger.LogInformation($"Resolved sender username: {userName}");
 
-            // Intelligent selection
-            var agent = await supervisor.GetBestAgentAsync(post.Message);
+            // Intelligent selection with context
+            var history = orchestrator.GetSessionHistory(post.ChannelId);
+            var agent = await supervisor.GetBestAgentAsync(post.Message, history);
 
             _logger.LogInformation($"Invoking Orchestrator with {agent.Name} on received message...");
             var result = await orchestrator.RunAgentLoopAsync(agent, post.Message, post.ChannelId, userName);

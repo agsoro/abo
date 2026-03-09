@@ -26,9 +26,11 @@ public class QuizAgent : IAgent
         "   - You MUST provide a brief, interesting explanation of the fact.\n" +
         "   - You MUST provide a valid, clickable public web link in EVERY reply to an answer (both correct and incorrect).\n" +
         "3. **QUESTION TRIGGER**:\n" +
-        "   - When you see 'SYSTEM_EVENT: HOURLY_QUESTION_TRIGGER' OR if the user explicitly asks for a question, immediately use `ask_multiple_choice`.\n" +
+        "   - When you see 'SYSTEM_EVENT: HOURLY_QUESTION_TRIGGER' OR if the user explicitly asks for a question, immediately use `ask_quiz_question`.\n" +
         "   - You MUST repeat the tool's formatted Markdown output (question + options) in your final response.\n" +
-        "4. **CONTEXT**:\n" +
+        "4. **NO HALLUCINATIONS**:\n" +
+        "   - There is NO `check_quiz_answer` tool. You must evaluate the user's answer yourself based on the conversation history.\n" +
+        "5. **CONTEXT**:\n" +
         "   - Use the 'Channel ID' and 'User Name' from [CONTEXT] for all tools.\n\n" +
         "### EXAMPLE RESPONSES:\n" +
         "**CORRECT ✅**\n" +
@@ -45,7 +47,7 @@ public class QuizAgent : IAgent
     public List<ToolDefinition> GetToolDefinitions()
     {
         var definitions = new List<ToolDefinition>();
-        var quizToolNames = new[] { "subscribe_quiz", "unsubscribe_quiz", "get_quiz_leaderboard", "update_quiz_score", "ask_multiple_choice", "get_system_time" };
+        var quizToolNames = new[] { "subscribe_quiz", "unsubscribe_quiz", "get_quiz_leaderboard", "update_quiz_score", "ask_quiz_question", "ask_multiple_choice", "get_system_time" };
 
         foreach (var tool in _tools.Where(t => quizToolNames.Contains(t.Name)))
         {
