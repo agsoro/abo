@@ -18,6 +18,7 @@ builder.Services.AddTransient<AgentSupervisor>();
 // Register Integrations
 builder.Services.Configure<XpectoLiveOptions>(builder.Configuration.GetSection("Integrations:XpectoLive"));
 builder.Services.AddHttpClient<XpectoLiveClient>();
+builder.Services.AddHttpClient<IXpectoLiveWikiClient, XpectoLiveWikiClient>();
 
 builder.Services.Configure<MattermostOptions>(builder.Configuration.GetSection("Integrations:Mattermost"));
 builder.Services.AddHttpClient<MattermostClient>();
@@ -65,12 +66,13 @@ app.MapPost("/api/interact", async ([FromBody] InteractRequest req, Orchestrator
 
     var sessionId = req.SessionId ?? "web-session";
     var userName = req.UserName ?? "Web User";
+    var userId = req.UserId ?? sessionId;
 
-    userService.GetOrCreateUser(sessionId, userName);
+    userService.GetOrCreateUser(userId, userName);
 
     var history = orchestrator.GetSessionHistory(sessionId);
     var agent = await supervisor.GetBestAgentAsync(req.Message, history);
-    var response = await orchestrator.RunAgentLoopAsync(agent, req.Message, sessionId, req.UserName);
+    var response = await orchestrator.RunAgentLoopAsync(agent, req.Message, sessionId, req.UserName, userId);
 
     return Results.Ok(new { Output = response });
 });
@@ -81,6 +83,7 @@ public class InteractRequest
 {
     public string Message { get; set; } = string.Empty;
     public string? UserName { get; set; }
+    public string? UserId { get; set; }
     public string? SessionId { get; set; }
 }
 

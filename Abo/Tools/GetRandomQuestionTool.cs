@@ -28,39 +28,42 @@ public class GetRandomQuestionTool : IAboTool
         var args = JsonSerializer.Deserialize<Dictionary<string, string>>(argumentsJson, options);
         string? topic = null;
         if (args != null && args.TryGetValue("topic", out var t))
-        {
-            topic = t;
-        }
+            topic = t?.ToLowerInvariant();
 
-        topic = topic?.ToLowerInvariant();
-
-        var questionsPath = "Data/Quiz/questions.json";
-        if (!File.Exists(questionsPath))
-        {
+        var topicsDir = "Data/Quiz/topics";
+        if (!Directory.Exists(topicsDir))
             return "No questions available in the datastore.";
-        }
 
-        var json = await File.ReadAllTextAsync(questionsPath);
-        var questions = JsonSerializer.Deserialize<List<QuizQuestion>>(json, options) ?? new List<QuizQuestion>();
-
-        if (questions.Count == 0)
-        {
-            return "No questions available in the datastore.";
-        }
-
+        // Determine which topic files to search
+        IEnumerable<string> files;
         if (!string.IsNullOrWhiteSpace(topic))
         {
-            questions = questions.Where(q => q.Topic.Equals(topic, StringComparison.OrdinalIgnoreCase)).ToList();
-            if (questions.Count == 0)
-            {
+            var specificFile = Path.Combine(topicsDir, topic + ".json");
+            if (!File.Exists(specificFile))
                 return $"No questions found for topic '{topic}'.";
-            }
+            files = new[] { specificFile };
+        }
+        else
+        {
+            files = Directory.GetFiles(topicsDir, "*.json");
         }
 
-        var random = new Random();
-        var selectedQuestion = questions[random.Next(questions.Count)];
+        // Gather all questions across selected files
+        var all = new List<QuizQuestion>();
+        foreach (var file in files)
+        {
+            var json = await File.ReadAllTextAsync(file);
+            var dict = JsonSerializer.Deserialize<Dictionary<string, QuizQuestion>>(json, options) ?? new();
+            all.AddRange(dict.Values);
+        }
 
-        var debugModeWarning = "\n[FOR AGENT: DO NOT REVEAL THE ANSWER IN YOUR CHAT MESSAGE EXCEPT WHEN THE USER ANSWERS.]";
-        return JsonSerializer.Serialize(selectedQuestion, new JsonSerializerOptions { WriteIndented = true }) + debugModeWarning;
+        if (all.Count == 0)
+            return string.IsNullOrWhiteSpace(topic)
+                ? "No questions available in the datastore."
+                : $"No questions found for topic '{topic}'.";
+
+        var selected = all[new Random().Next(all.Count)];
+        var debugWarning = "\n[FOR AGENT: DO NOT REVEAL THE ANSWER IN YOUR CHAT MESSAGE EXCEPT WHEN THE USER ANSWERS.]";
+        return JsonSerializer.Serialize(selected, new JsonSerializerOptions { WriteIndented = true }) + debugWarning;
     }
 }

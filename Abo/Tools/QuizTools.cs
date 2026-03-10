@@ -57,20 +57,20 @@ public class SubscribeQuizTool : QuizToolBase
         required = new[] { "channel_id" }
     };
 
-    public override async Task<string> ExecuteAsync(string argumentsJson)
+    public override Task<string> ExecuteAsync(string argumentsJson)
     {
         var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
         var args = JsonSerializer.Deserialize<Dictionary<string, string>>(argumentsJson, options);
-        if (args == null || !args.TryGetValue("channel_id", out var channelId)) return "Error: Missing channel_id.";
+        if (args == null || !args.TryGetValue("channel_id", out var channelId)) return Task.FromResult("Error: Missing channel_id.");
 
         var user = _userService.GetOrCreateUser(channelId);
         if (!user.IsSubscribedToQuiz)
         {
             user.IsSubscribedToQuiz = true;
             _userService.UpdateUser(user);
-            return $"Successfully subscribed channel {channelId} to the quiz.";
+            return Task.FromResult($"Successfully subscribed channel {channelId} to the quiz.");
         }
-        return "You are already subscribed!";
+        return Task.FromResult("You are already subscribed!");
     }
 }
 
@@ -96,20 +96,20 @@ public class UnsubscribeQuizTool : QuizToolBase
         required = new[] { "channel_id" }
     };
 
-    public override async Task<string> ExecuteAsync(string argumentsJson)
+    public override Task<string> ExecuteAsync(string argumentsJson)
     {
         var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
         var args = JsonSerializer.Deserialize<Dictionary<string, string>>(argumentsJson, options);
-        if (args == null || !args.TryGetValue("channel_id", out var channelId)) return "Error: Missing channel_id.";
+        if (args == null || !args.TryGetValue("channel_id", out var channelId)) return Task.FromResult("Error: Missing channel_id.");
 
         var user = _userService.GetOrCreateUser(channelId);
         if (user.IsSubscribedToQuiz)
         {
             user.IsSubscribedToQuiz = false;
             _userService.UpdateUser(user);
-            return "Successfully unsubscribed.";
+            return Task.FromResult("Successfully unsubscribed.");
         }
-        return "You were not subscribed.";
+        return Task.FromResult("You were not subscribed.");
     }
 }
 

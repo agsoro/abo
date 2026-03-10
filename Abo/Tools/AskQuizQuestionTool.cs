@@ -12,6 +12,11 @@ public class AskQuizQuestionTool : IAboTool
         type = "object",
         properties = new
         {
+            id = new
+            {
+                type = "string",
+                description = "The unique question ID (e.g. COMP0001). Pass through from get_random_question."
+            },
             topic = new
             {
                 type = "string",

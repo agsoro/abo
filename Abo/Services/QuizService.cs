@@ -45,7 +45,7 @@ public class QuizService : BackgroundService
         var userService = scope.ServiceProvider.GetRequiredService<UserService>();
         
         var users = userService.GetAllUsers();
-        var subs = users.Where(u => u.IsSubscribedToQuiz).Select(u => u.Id).ToList();
+        var subs = users.Where(u => u.IsSubscribedToQuiz).Select(u => u.MattermostId).ToList();
         
         if (subs.Count == 0) return;
 

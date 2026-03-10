@@ -160,7 +160,24 @@ public class MattermostListenerService : BackgroundService
             var agent = await supervisor.GetBestAgentAsync(post.Message, history);
 
             _logger.LogInformation($"Invoking Orchestrator with {agent.Name} on received message...");
-            var result = await orchestrator.RunAgentLoopAsync(agent, post.Message, post.ChannelId, userName);
+
+            // Send "typing..." indicator every 5 seconds while the agent is processing
+            using var typingCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            var typingTask = Task.Run(async () =>
+            {
+                while (!typingCts.Token.IsCancellationRequested)
+                {
+                    await mattermostClient.SendTypingAsync(post.ChannelId, post.RootId);
+                    try { await Task.Delay(TimeSpan.FromSeconds(5), typingCts.Token); }
+                    catch (OperationCanceledException) { break; }
+                }
+            }, typingCts.Token);
+
+            var result = await orchestrator.RunAgentLoopAsync(agent, post.Message, post.ChannelId, userName, post.UserId);
+
+            // Stop typing indicator now that the answer is ready
+            await typingCts.CancelAsync();
+            await typingTask.ConfigureAwait(false);
             
             _logger.LogInformation("Orchestrator produced reply, sending to Mattermost...");
             

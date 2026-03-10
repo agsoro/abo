@@ -21,11 +21,10 @@ public class XpectoLiveClient
             _httpClient.BaseAddress = new Uri(config.BaseUrl);
         }
         
-        // This assumes XpectoLive uses a Bearer token or custom header. 
-        // Adjust this header based on their actual API documentation.
+        // The swagger defines the API Key should be passed in the x-api-key header
         if (!string.IsNullOrEmpty(config.ApiKey))
         {
-            _httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", config.ApiKey);
+            _httpClient.DefaultRequestHeaders.Add("x-api-key", config.ApiKey);
         }
     }
 

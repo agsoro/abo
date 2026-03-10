@@ -29,7 +29,7 @@ public class Orchestrator
         return _sessionService.GetHistory(sessionId);
     }
 
-    public async Task<string> RunAgentLoopAsync(IAgent agent, string userMessage, string sessionId, string? userName = null)
+    public async Task<string> RunAgentLoopAsync(IAgent agent, string userMessage, string sessionId, string? userName = null, string? userId = null)
     {
         var apiEndpoint = _configuration["Config:ApiEndpoint"] ?? throw new InvalidOperationException("API Endpoint not configured.");
         var modelName = _configuration["Config:ModelName"] ?? throw new InvalidOperationException("Model Name not configured.");
@@ -46,7 +46,7 @@ public class Orchestrator
         // Prepare the request with full history + current system prompt
         var requestMessages = new List<ChatMessage>
         {
-            new ChatMessage { Role = "system", Content = $"{agent.SystemPrompt}\n\n[CONTEXT] Current Session/Channel ID: {sessionId}\n[CONTEXT] User Name: {userName ?? "Unknown"}\n[CONTEXT] The default language for all responses and output is '{defaultLanguage}', unless the user explicitly requests otherwise." }
+            new ChatMessage { Role = "system", Content = $"{agent.SystemPrompt}\n\n[CONTEXT] Current Session/Channel ID: {sessionId}\n[CONTEXT] User Name: {userName ?? "Unknown"}\n[CONTEXT] User ID (Mattermost): {userId ?? "unknown"}\n[CONTEXT] The default language for all responses and output is '{defaultLanguage}', unless the user explicitly requests otherwise." }
         };
         
         lock (history)

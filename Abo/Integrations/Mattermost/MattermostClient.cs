@@ -76,6 +76,27 @@ public class MattermostClient
     }
 
     /// <summary>
+    /// Sends a "user is typing" indicator to a Mattermost channel.
+    /// Should be called repeatedly (e.g. every 5 seconds) while processing.
+    /// </summary>
+    public async Task SendTypingAsync(string channelId, string? parentId = null)
+    {
+        if (string.IsNullOrEmpty(_options.BotToken) || string.IsNullOrEmpty(_options.BaseUrl))
+            return;
+
+        try
+        {
+            var payload = new { channel_id = channelId, parent_id = parentId ?? string.Empty };
+            var content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
+            await _httpClient.PostAsync("users/me/typing", content);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to send typing indicator.");
+        }
+    }
+
+    /// <summary>
     /// Fetches the username for a given user ID.
     /// </summary>
     public async Task<string> GetUsernameAsync(string userId)

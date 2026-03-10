@@ -10,13 +10,27 @@ namespace Abo.Services
         private readonly ILogger<UserService> _logger;
         private readonly object _lock = new();
 
+        private static readonly JsonSerializerOptions _jsonOptions = new() { WriteIndented = true };
+
         public UserService(ILogger<UserService> logger)
         {
             _logger = logger;
             if (!File.Exists(_filePath))
             {
-                File.WriteAllText(_filePath, "[]");
+                File.WriteAllText(_filePath, "{}");
             }
+        }
+
+        private Dictionary<string, User> ReadAll()
+        {
+            var json = File.ReadAllText(_filePath);
+            return JsonSerializer.Deserialize<Dictionary<string, User>>(json) ?? new Dictionary<string, User>();
+        }
+
+        private void WriteAll(Dictionary<string, User> users)
+        {
+            var json = JsonSerializer.Serialize(users, _jsonOptions);
+            File.WriteAllText(_filePath, json);
         }
 
         public List<User> GetAllUsers()
@@ -25,8 +39,7 @@ namespace Abo.Services
             {
                 try
                 {
-                    var json = File.ReadAllText(_filePath);
-                    return JsonSerializer.Deserialize<List<User>>(json) ?? new List<User>();
+                    return ReadAll().Values.ToList();
                 }
                 catch (Exception ex)
                 {
@@ -42,8 +55,8 @@ namespace Abo.Services
             {
                 try
                 {
-                    var json = JsonSerializer.Serialize(users, new JsonSerializerOptions { WriteIndented = true });
-                    File.WriteAllText(_filePath, json);
+                    var dict = users.ToDictionary(u => u.Username, u => u);
+                    WriteAll(dict);
                 }
                 catch (Exception ex)
                 {
@@ -54,33 +67,120 @@ namespace Abo.Services
 
         public User GetOrCreateUser(string userId, string username = "")
         {
-            var users = GetAllUsers();
-            var user = users.FirstOrDefault(u => u.Id == userId);
-            
-            if (user == null)
+            lock (_lock)
             {
-                user = new User { Id = userId, Username = string.IsNullOrWhiteSpace(username) ? userId : username };
-                users.Add(user);
-                SaveUsers(users);
-            }
-            else if (!string.IsNullOrWhiteSpace(username) && user.Username != username)
-            {
-                user.Username = username;
-                SaveUsers(users);
-            }
+                try
+                {
+                    var users = ReadAll();
+                    var user = users.Values.FirstOrDefault(u => u.MattermostId == userId);
 
-            return user;
+                    if (user == null)
+                    {
+                        var name = string.IsNullOrWhiteSpace(username) ? userId : username;
+                        user = new User { MattermostId = userId, Username = name };
+                        users[name] = user;
+                        WriteAll(users);
+                    }
+                    else if (!string.IsNullOrWhiteSpace(username) && user.Username != username)
+                    {
+                        users.Remove(user.Username);
+                        user.Username = username;
+                        users[username] = user;
+                        WriteAll(users);
+                    }
+
+                    return user;
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error in GetOrCreateUser.");
+                    return new User { MattermostId = userId, Username = string.IsNullOrWhiteSpace(username) ? userId : username };
+                }
+            }
         }
 
         public void UpdateUser(User updatedUser)
         {
-            var users = GetAllUsers();
-            var index = users.FindIndex(u => u.Id == updatedUser.Id);
-            
-            if (index != -1)
+            lock (_lock)
             {
-                users[index] = updatedUser;
-                SaveUsers(users);
+                try
+                {
+                    var users = ReadAll();
+                    users[updatedUser.Username] = updatedUser;
+                    WriteAll(users);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error updating user.");
+                }
+            }
+        }
+
+        /// <summary>
+        /// Checks whether the user identified by their Mattermost ID has a specific role.
+        /// </summary>
+        public bool HasRole(string mattermostId, string role)
+        {
+            lock (_lock)
+            {
+                try
+                {
+                    var users = ReadAll();
+                    var user = users.Values.FirstOrDefault(u => u.MattermostId == mattermostId);
+                    return user?.Roles.Contains(role, StringComparer.OrdinalIgnoreCase) ?? false;
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error checking role for user {MattermostId}.", mattermostId);
+                    return false;
+                }
+            }
+        }
+
+        /// <summary>
+        /// Adds a role to the user identified by MattermostId. Creates the user if not found.
+        /// </summary>
+        public void AddRole(string mattermostId, string role)
+        {
+            lock (_lock)
+            {
+                try
+                {
+                    var users = ReadAll();
+                    var user = users.Values.FirstOrDefault(u => u.MattermostId == mattermostId);
+                    if (user == null) return;
+                    if (!user.Roles.Contains(role, StringComparer.OrdinalIgnoreCase))
+                    {
+                        user.Roles.Add(role);
+                        WriteAll(users);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error adding role '{Role}' for user {MattermostId}.", role, mattermostId);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Removes a role from the user identified by MattermostId.
+        /// </summary>
+        public void RemoveRole(string mattermostId, string role)
+        {
+            lock (_lock)
+            {
+                try
+                {
+                    var users = ReadAll();
+                    var user = users.Values.FirstOrDefault(u => u.MattermostId == mattermostId);
+                    if (user == null) return;
+                    var removed = user.Roles.RemoveAll(r => string.Equals(r, role, StringComparison.OrdinalIgnoreCase));
+                    if (removed > 0) WriteAll(users);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error removing role '{Role}' for user {MattermostId}.", role, mattermostId);
+                }
             }
         }
     }
