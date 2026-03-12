@@ -134,6 +134,11 @@ public class LocalWindowsConnector : IConnector
         return await RunProcessAsync("dotnet", arguments);
     }
 
+    public async Task<string> RunPythonAsync(string arguments)
+    {
+        return await RunProcessAsync("python", arguments);
+    }
+
     private async Task<string> RunProcessAsync(string command, string arguments)
     {
         try
