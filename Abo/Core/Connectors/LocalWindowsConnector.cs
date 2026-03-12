@@ -40,6 +40,12 @@ public class LocalWindowsConnector : IConnector
         if (!File.Exists(path)) return $"Error: File '{relativePath}' not found.";
         try
         {
+            var fileInfo = new FileInfo(path);
+            if (fileInfo.Length > 50 * 1024)
+            {
+                return $"Error: File '{relativePath}' exceeds the 50KB limit. Please ask the IT department for help.";
+            }
+
             return await File.ReadAllTextAsync(path);
         }
         catch (Exception ex)
@@ -232,17 +238,32 @@ public class LocalWindowsConnector : IConnector
 
                 if (fileMatches || matchedLines.Any())
                 {
-                    results.AppendLine($"File: {relativeFilePath}");
+                    var fileResult = new System.Text.StringBuilder();
+                    fileResult.AppendLine($"File: {relativeFilePath}");
                     if (fileMatches)
                     {
-                        results.AppendLine("  -> Filename matches pattern");
+                        fileResult.AppendLine("  -> Filename matches pattern");
                     }
 
+                    bool limitReached = false;
                     foreach (var match in matchedLines)
                     {
-                        results.AppendLine($"  Line {match.LineNumber}: {match.Content}");
+                        var lineText = $"  Line {match.LineNumber}: {match.Content}";
+                        if (fileResult.Length + lineText.Length > 10 * 1024)
+                        {
+                            limitReached = true;
+                            break;
+                        }
+                        fileResult.AppendLine(lineText);
                     }
-                    results.AppendLine();
+
+                    if (limitReached)
+                    {
+                        fileResult.AppendLine("  -> Error: Search result for this file exceeded the 10KB limit. Please ask the IT department for help.");
+                    }
+
+                    fileResult.AppendLine();
+                    results.Append(fileResult.ToString());
                 }
             }
             catch
