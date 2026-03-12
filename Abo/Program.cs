@@ -114,7 +114,7 @@ app.MapGet("/api/projects/{id}/status", async (string id) =>
 });
 
 // API: Interact – main chat endpoint
-app.MapPost("/api/interact", async ([FromBody] InteractRequest req, Orchestrator orchestrator, AgentSupervisor supervisor, UserService userService) =>
+app.MapPost("/api/interact", async ([FromBody] InteractRequest req, Orchestrator orchestrator, AgentSupervisor supervisor, UserService userService, MattermostClient mattermostClient) =>
 {
     if (string.IsNullOrWhiteSpace(req.Message)) return Results.BadRequest("Message is empty.");
 
@@ -126,7 +126,33 @@ app.MapPost("/api/interact", async ([FromBody] InteractRequest req, Orchestrator
 
     var history = orchestrator.GetSessionHistory(sessionId);
     var agent = await supervisor.GetBestAgentAsync(req.Message, history);
-    var response = await orchestrator.RunAgentLoopAsync(agent, req.Message, sessionId, req.UserName, userId);
+
+    string response;
+
+    // If a ChannelId is provided, send a "typing..." indicator to Mattermost
+    // while the agent is processing, just like the WebSocket listener does.
+    if (!string.IsNullOrEmpty(req.ChannelId))
+    {
+        using var typingCts = new CancellationTokenSource();
+        var typingTask = Task.Run(async () =>
+        {
+            while (!typingCts.Token.IsCancellationRequested)
+            {
+                await mattermostClient.SendTypingAsync(req.ChannelId, req.ParentId);
+                try { await Task.Delay(TimeSpan.FromSeconds(5), typingCts.Token); }
+                catch (OperationCanceledException) { break; }
+            }
+        }, typingCts.Token);
+
+        response = await orchestrator.RunAgentLoopAsync(agent, req.Message, sessionId, req.UserName, userId);
+
+        await typingCts.CancelAsync();
+        await typingTask.ConfigureAwait(false);
+    }
+    else
+    {
+        response = await orchestrator.RunAgentLoopAsync(agent, req.Message, sessionId, req.UserName, userId);
+    }
 
     return Results.Ok(new { Output = response });
 });
@@ -139,4 +165,16 @@ public class InteractRequest
     public string? UserName { get; set; }
     public string? UserId { get; set; }
     public string? SessionId { get; set; }
+
+    /// <summary>
+    /// Optional: Mattermost channel ID. When provided, a "typing..." indicator
+    /// will be sent to this channel while the agent is processing the request.
+    /// </summary>
+    public string? ChannelId { get; set; }
+
+    /// <summary>
+    /// Optional: Mattermost thread/parent post ID. Used together with ChannelId
+    /// to show the typing indicator in the correct thread.
+    /// </summary>
+    public string? ParentId { get; set; }
 }
