@@ -113,6 +113,17 @@ app.MapGet("/api/projects/{id}/status", async (string id) =>
     return Results.Ok(status);
 });
 
+// API: Projects – list all active projects
+app.MapGet("/api/projects", async () =>
+{
+    var projectsPath = Path.Combine(AppContext.BaseDirectory, "Data", "Projects", "active_projects.json");
+    if (!File.Exists(projectsPath)) return Results.Ok(new List<object>());
+
+    var json = await File.ReadAllTextAsync(projectsPath);
+    var projects = JsonSerializer.Deserialize<JsonElement>(json);
+    return Results.Ok(projects);
+});
+
 // API: LLM Traffic – fetch LLM call/response log entries
 app.MapGet("/api/llm-traffic", async (HttpContext httpContext) =>
 {
@@ -120,6 +131,37 @@ app.MapGet("/api/llm-traffic", async (HttpContext httpContext) =>
     var limit = int.TryParse(limitParam, out var parsedLimit) && parsedLimit > 0 ? parsedLimit : 100;
 
     var logPath = Path.Combine(AppContext.BaseDirectory, "Data", "llm_traffic.jsonl");
+    if (!File.Exists(logPath)) return Results.Ok(new List<object>());
+
+    var lines = await File.ReadAllLinesAsync(logPath);
+
+    var entries = new List<JsonElement>();
+    foreach (var line in lines)
+    {
+        if (string.IsNullOrWhiteSpace(line)) continue;
+        try
+        {
+            var entry = JsonSerializer.Deserialize<JsonElement>(line);
+            entries.Add(entry);
+        }
+        catch
+        {
+            // Skip malformed lines
+        }
+    }
+
+    // Return newest entries first, limited by the limit parameter
+    var result = entries.AsEnumerable().Reverse().Take(limit).ToList();
+    return Results.Ok(result);
+});
+
+// API: LLM Consumption – fetch aggregated token/cost statistics per agent run
+app.MapGet("/api/llm-consumption", async (HttpContext httpContext) =>
+{
+    var limitParam = httpContext.Request.Query["limit"].FirstOrDefault();
+    var limit = int.TryParse(limitParam, out var parsedLimit) && parsedLimit > 0 ? parsedLimit : 100;
+
+    var logPath = Path.Combine(AppContext.BaseDirectory, "Data", "llm_consumption.jsonl");
     if (!File.Exists(logPath)) return Results.Ok(new List<object>());
 
     var lines = await File.ReadAllLinesAsync(logPath);
@@ -161,7 +203,6 @@ app.MapPost("/api/interact", async ([FromBody] InteractRequest req, Orchestrator
     string response;
 
     // If a ChannelId is provided, send a "typing..." indicator to Mattermost
-    // while the agent is processing, just like the WebSocket listener does.
     if (!string.IsNullOrEmpty(req.ChannelId))
     {
         using var typingCts = new CancellationTokenSource();

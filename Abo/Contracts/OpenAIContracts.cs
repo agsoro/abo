@@ -83,6 +83,24 @@ public class FunctionCall
     public string Arguments { get; set; } = string.Empty;
 }
 
+/// <summary>
+/// Represents token usage information returned by the LLM API.
+/// </summary>
+public class UsageInfo
+{
+    [JsonPropertyName("prompt_tokens")]
+    public int PromptTokens { get; set; }
+
+    [JsonPropertyName("completion_tokens")]
+    public int CompletionTokens { get; set; }
+
+    [JsonPropertyName("total_tokens")]
+    public int TotalTokens { get; set; }
+
+    [JsonPropertyName("cost")]
+    public double? Cost { get; set; }
+}
+
 public class ChatCompletionResponse
 {
     [JsonPropertyName("id")]
@@ -90,6 +108,10 @@ public class ChatCompletionResponse
 
     [JsonPropertyName("choices")]
     public List<Choice> Choices { get; set; } = new();
+
+    [JsonPropertyName("usage")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public UsageInfo? Usage { get; set; }
 }
 
 public class Choice

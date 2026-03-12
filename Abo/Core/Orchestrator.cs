@@ -12,6 +12,7 @@ public class Orchestrator
 
     private readonly SessionService _sessionService;
     private readonly string _logPath = "Data/llm_traffic.jsonl";
+    private readonly string _consumptionLogPath = "Data/llm_consumption.jsonl";
 
     public Orchestrator(HttpClient httpClient, IConfiguration configuration, ILogger<Orchestrator> logger, SessionService sessionService)
     {
@@ -55,7 +56,7 @@ public class Orchestrator
 
         var request = new ChatCompletionRequest
         {
-            Model = _configuration["Config:ModelName"] ?? "anthropic/claude-haiku-4.5", // Will be reassigned inside loop
+            Model = _configuration["Config:ModelName"] ?? "anthropic/claude-haiku-4.5",
             Messages = requestMessages,
             Tools = agent.GetToolDefinitions()
         };
@@ -70,14 +71,21 @@ public class Orchestrator
         string? lastQuestionOutput = null;
         string? accumulatedContent = null;
 
+        // Usage tracking accumulators for this agent loop run
+        int totalCalls = 0;
+        int totalInputTokens = 0;
+        int totalOutputTokens = 0;
+        double totalCost = 0.0;
+        string currentModelName = request.Model;
+
         try
         {
             while (currentLoop < maxLoops)
             {
                 currentLoop++;
 
-                // Recalculate model in case agent state changed (e.g. checked out a validation project)
-                var currentModelName = _configuration["Config:ModelName"] ?? "anthropic/claude-haiku-4.5";
+                // Recalculate model in case agent state changed
+                currentModelName = _configuration["Config:ModelName"] ?? "anthropic/claude-haiku-4.5";
                 if (agent.RequiresReviewModel && !string.IsNullOrEmpty(_configuration["Config:ReviewModelName"]))
                 {
                     currentModelName = _configuration["Config:ReviewModelName"]!;
@@ -121,6 +129,15 @@ public class Orchestrator
                 if (choice == null)
                 {
                     return "Error: No response from model.";
+                }
+
+                // Accumulate usage data if available
+                totalCalls++;
+                if (aiResponse?.Usage != null)
+                {
+                    totalInputTokens += aiResponse.Usage.PromptTokens;
+                    totalOutputTokens += aiResponse.Usage.CompletionTokens;
+                    totalCost += aiResponse.Usage.Cost ?? 0.0;
                 }
 
                 // Append assistant's response to history and current request context
@@ -173,11 +190,11 @@ public class Orchestrator
                     continue;
                 }
 
-                // Final answer reached
+                // Final answer reached – log consumption for this run
+                await LogConsumptionAsync(sessionId, currentModelName, totalCalls, totalInputTokens, totalOutputTokens, totalCost);
+
                 var finalContent = choice.Message.Content ?? accumulatedContent;
 
-                // If we have a question output from a tool call in this session, 
-                // and the final content doesn't seem to contain it (no numbered list), append it.
                 if (!string.IsNullOrEmpty(lastQuestionOutput) &&
                     (string.IsNullOrEmpty(finalContent) || (!finalContent.Contains("1.") && !finalContent.Contains("**1.**"))))
                 {
@@ -191,7 +208,18 @@ public class Orchestrator
         catch (Exception ex)
         {
             _logger.LogError(ex, $"[Session: {sessionId}] Fatal error in Agent Loop");
+            // Still try to log whatever consumption we've accumulated
+            if (totalCalls > 0)
+            {
+                await LogConsumptionAsync(sessionId, currentModelName, totalCalls, totalInputTokens, totalOutputTokens, totalCost);
+            }
             return $"Error: {ex.Message}";
+        }
+
+        // Max loops reached – log consumption
+        if (totalCalls > 0)
+        {
+            await LogConsumptionAsync(sessionId, currentModelName, totalCalls, totalInputTokens, totalOutputTokens, totalCost);
         }
 
         return "Error: Max agent loops reached.";
@@ -214,6 +242,30 @@ public class Orchestrator
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to write LLM traffic log.");
+        }
+    }
+
+    private async Task LogConsumptionAsync(string sessionId, string model, int callCount, int inputTokens, int outputTokens, double totalCost)
+    {
+        try
+        {
+            var logEntry = new
+            {
+                Timestamp = DateTime.UtcNow,
+                SessionId = sessionId,
+                Model = model,
+                CallCount = callCount,
+                InputTokens = inputTokens,
+                OutputTokens = outputTokens,
+                TotalTokens = inputTokens + outputTokens,
+                TotalCost = totalCost
+            };
+            var line = JsonSerializer.Serialize(logEntry) + Environment.NewLine;
+            await File.AppendAllTextAsync(_consumptionLogPath, line);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to write LLM consumption log.");
         }
     }
 }

@@ -57,7 +57,7 @@
         .header-nav {
             display: flex;
             align-items: center;
-            gap: 1rem;
+            gap: 0.75rem;
         }
 
         .header-nav a {
@@ -73,6 +73,12 @@
         .header-nav a:hover {
             color: var(--text-color);
             border-color: var(--primary-color);
+        }
+
+        .header-nav a.active {
+            color: var(--text-color);
+            border-color: var(--primary-color);
+            background-color: rgba(59, 130, 246, 0.1);
         }
 
         #status-indicator {
@@ -297,10 +303,12 @@
 <body>
     <header>
         <h1>📊 LLM Traffic <span style="font-size: 1rem; color: var(--text-muted); font-weight: normal;">Viewer</span></h1>
-        <div class="header-nav">
+        <nav class="header-nav">
             <a href="/">💬 Chat</a>
-            <a href="/processes/">⚙️ Processes</a>
-        </div>
+            <a href="/processes/">⚙️ Prozesse</a>
+            <a href="/llm-traffic/" class="active">📊 LLM Traffic</a>
+            <a href="/llm-stats/">📈 LLM Stats</a>
+        </nav>
         <div id="status-indicator">
             <div id="status-dot"></div>
             <span id="status-text">Verbinde...</span>
@@ -351,7 +359,7 @@
         const limitInput = document.getElementById('limit-input');
 
         let allEntries = [];
-        let expandedIds = new Set(); // Track which entries are expanded by index+timestamp key
+        let expandedIds = new Set();
 
         function getEntryKey(entry) {
             return `${entry.Timestamp}_${entry.SessionId}_${entry.Type}`;
@@ -384,10 +392,8 @@
 
         function getPreview(content) {
             if (!content) return '';
-            // Try to extract a meaningful preview from JSON content
             try {
                 const parsed = JSON.parse(content);
-                // For REQUEST: show model + first user message
                 if (parsed.model) {
                     const msgs = parsed.messages || [];
                     const userMsg = msgs.find(m => m.role === 'user');
@@ -395,7 +401,6 @@
                     const previewText = typeof preview === 'string' ? preview : JSON.stringify(preview);
                     return `[${parsed.model}] ${previewText.substring(0, 120)}`;
                 }
-                // For RESPONSE: show the assistant's content
                 const choice = parsed.choices?.[0];
                 if (choice) {
                     const c = choice.message?.content || '';
@@ -505,12 +510,10 @@
             }
         }
 
-        // Event Listeners for filters (re-render without new fetch)
         filterType.addEventListener('change', renderEntries);
         filterSession.addEventListener('input', renderEntries);
         limitInput.addEventListener('change', fetchData);
 
-        // Initial load + Auto-Update every 5 seconds
         fetchData();
         setInterval(fetchData, 5000);
     </script>

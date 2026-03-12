@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="de">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -68,15 +68,21 @@
             border-color: var(--primary-color);
         }
 
+        .header-nav a.active {
+            color: var(--text-color);
+            border-color: var(--primary-color);
+            background-color: rgba(59, 130, 246, 0.1);
+        }
+
         #status-badge {
             padding: 0.25rem 0.75rem;
             border-radius: 9999px;
             font-size: 0.875rem;
             font-weight: 500;
-            background-color: #dc2626; /* red by default */
+            background-color: #dc2626;
         }
         #status-badge.healthy {
-            background-color: #16a34a; /* green */
+            background-color: #16a34a;
         }
 
         main {
@@ -207,21 +213,23 @@
     <header>
         <h1>🤖 ABO <span style="font-size: 1rem; color: var(--text-muted); font-weight: normal;">Agsoro Bot Orchestrator</span></h1>
         <nav class="header-nav">
-            <a href="/processes/">⚙️ Processes</a>
+            <a href="/" class="active">💬 Chat</a>
+            <a href="/processes/">⚙️ Prozesse</a>
             <a href="/llm-traffic/">📊 LLM Traffic</a>
+            <a href="/llm-stats/">📈 LLM Stats</a>
         </nav>
-        <div id="status-badge">Checking API Status...</div>
+        <div id="status-badge">Prüfe API Status...</div>
     </header>
 
     <main>
         <div id="chat-container">
-            <div class="message system">System initialized. Type a message to interact with the HelloWorldAgent. Try asking for the current time or a preference like "What's your favorite color?".</div>
+            <div class="message system">System initialisiert. Gib eine Nachricht ein, um mit dem Agenten zu interagieren.</div>
         </div>
 
         <div class="input-area">
-            <input type="text" id="username-input" placeholder="Your Name" style="flex: 0 0 150px;" autocomplete="on">
-            <input type="text" id="user-input" placeholder="Type your message here..." autocomplete="off">
-            <button id="send-btn">Send</button>
+            <input type="text" id="username-input" placeholder="Dein Name" style="flex: 0 0 150px;" autocomplete="on">
+            <input type="text" id="user-input" placeholder="Nachricht eingeben..." autocomplete="off">
+            <button id="send-btn">Senden</button>
         </div>
     </main>
 
@@ -237,13 +245,13 @@
                 const res = await fetch('/api/status');
                 const data = await res.json();
                 if (data.status === 'Running') {
-                    if(data.hasApiKey) {
+                    if (data.hasApiKey) {
                         statusBadge.textContent = `Online (${data.model})`;
                         statusBadge.className = 'healthy';
                     } else {
-                        statusBadge.textContent = `Warning: Missing API Key`;
+                        statusBadge.textContent = `Warnung: API-Key fehlt`;
                         statusBadge.className = '';
-                        addMessage('system', 'WARNING: OpenRouter API key is not configured in appsettings.json. Requests will fail.');
+                        addMessage('system', 'WARNUNG: OpenRouter API-Key ist nicht konfiguriert. Anfragen werden fehlschlagen.');
                     }
                 }
             } catch (err) {
@@ -258,10 +266,7 @@
             if (role === 'system') {
                 msgDiv.textContent = text;
             } else {
-                // Render Markdown for Bot and User messages
                 msgDiv.innerHTML = marked.parse(text);
-
-                // If it's a bot message, check if it contains a multiple choice poll
                 if (role === 'bot') {
                     renderPollButtons(msgDiv, text);
                 }
@@ -271,11 +276,7 @@
             chatContainer.scrollTop = chatContainer.scrollHeight;
         }
 
-        /**
-         * Detects structured poll options (e.g. "1. Option") and adds clickable buttons.
-         */
         function renderPollButtons(msgDiv, text) {
-            // Pattern: "**1.** Option" or "1. Option"
             const pollLines = text.split('\n').filter(line => /^\**\d+\.\**\s+.+/.test(line));
             
             if (pollLines.length > 1) {
@@ -283,7 +284,6 @@
                 pollContainer.className = 'poll-container';
                 
                 pollLines.forEach((line, index) => {
-                    // Extract label (everything after the number and dot)
                     const label = line.replace(/^\**\d+\.\**\s+/, '').trim();
                     const btn = document.createElement('button');
                     btn.className = 'poll-btn';
@@ -291,7 +291,6 @@
                     btn.onclick = () => {
                         userInput.value = `${index + 1}`;
                         sendMessage();
-                        // Disable all buttons in this poll after clicking
                         Array.from(pollContainer.children).forEach(b => b.disabled = true);
                     };
                     pollContainer.appendChild(btn);
@@ -305,7 +304,6 @@
             const text = userInput.value.trim();
             if (!text) return;
 
-            // UI Updates
             userInput.value = '';
             addMessage('user', text);
             sendBtn.disabled = true;
@@ -323,10 +321,10 @@
                 if (res.ok) {
                     addMessage('bot', data.output);
                 } else {
-                    addMessage('system', `Error: ${data.detail || await res.text()}`);
+                    addMessage('system', `Fehler: ${data.detail || await res.text()}`);
                 }
             } catch (err) {
-                addMessage('system', `Network Error: ${err.message}`);
+                addMessage('system', `Netzwerkfehler: ${err.message}`);
             } finally {
                 sendBtn.disabled = false;
                 userInput.disabled = false;
@@ -339,7 +337,6 @@
             if (e.key === 'Enter') sendMessage();
         });
 
-        // Init
         checkStatus();
     </script>
 </body>

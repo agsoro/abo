@@ -1,0 +1,508 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ABO – LLM Statistiken</title>
+    <style>
+        :root {
+            --bg-color: #0f172a;
+            --surface-color: #1e293b;
+            --text-color: #f8fafc;
+            --text-muted: #94a3b8;
+            --primary-color: #3b82f6;
+            --primary-hover: #2563eb;
+            --border-color: #334155;
+            --green: #16a34a;
+            --green-bg: #14532d;
+            --green-text: #4ade80;
+            --yellow: #ca8a04;
+            --yellow-bg: #422006;
+            --yellow-text: #fbbf24;
+            --tag-radius: 0.25rem;
+        }
+
+        * { box-sizing: border-box; }
+
+        body {
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            margin: 0;
+            padding: 0;
+            min-height: 100vh;
+        }
+
+        header {
+            background-color: var(--surface-color);
+            padding: 1rem 2rem;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 0.75rem;
+        }
+
+        header h1 {
+            margin: 0;
+            font-size: 1.5rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .header-nav {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .header-nav a {
+            color: var(--text-muted);
+            text-decoration: none;
+            font-size: 0.875rem;
+            padding: 0.35rem 0.75rem;
+            border-radius: var(--tag-radius);
+            border: 1px solid var(--border-color);
+            transition: all 0.2s;
+        }
+
+        .header-nav a:hover {
+            color: var(--text-color);
+            border-color: var(--primary-color);
+        }
+
+        .header-nav a.active {
+            color: var(--text-color);
+            border-color: var(--primary-color);
+            background-color: rgba(59, 130, 246, 0.1);
+        }
+
+        #status-indicator {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 0.875rem;
+            color: var(--text-muted);
+        }
+
+        #status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background-color: #94a3b8;
+            transition: background-color 0.3s;
+        }
+
+        #status-dot.live {
+            background-color: #16a34a;
+            box-shadow: 0 0 6px #16a34a;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        main {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 1.5rem 1rem;
+        }
+
+        /* Summary Cards */
+        .summary-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .summary-card {
+            background-color: var(--surface-color);
+            border: 1px solid var(--border-color);
+            border-radius: 0.5rem;
+            padding: 1.25rem 1.5rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.25rem;
+        }
+
+        .summary-card .label {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .summary-card .value {
+            font-size: 1.75rem;
+            font-weight: 700;
+            color: var(--text-color);
+        }
+
+        .summary-card .sub {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+        }
+
+        /* Toolbar */
+        .toolbar {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.75rem;
+            margin-bottom: 1.25rem;
+            align-items: center;
+        }
+
+        .toolbar label {
+            color: var(--text-muted);
+            font-size: 0.875rem;
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+        }
+
+        .toolbar select,
+        .toolbar input[type="text"],
+        .toolbar input[type="number"] {
+            background-color: var(--surface-color);
+            border: 1px solid var(--border-color);
+            color: var(--text-color);
+            padding: 0.4rem 0.75rem;
+            border-radius: var(--tag-radius);
+            font-size: 0.875rem;
+        }
+
+        .toolbar select:focus,
+        .toolbar input:focus {
+            outline: none;
+            border-color: var(--primary-color);
+        }
+
+        .toolbar .spacer { flex: 1; }
+
+        #entry-count {
+            font-size: 0.875rem;
+            color: var(--text-muted);
+            white-space: nowrap;
+        }
+
+        /* Table */
+        .table-wrapper {
+            background-color: var(--surface-color);
+            border: 1px solid var(--border-color);
+            border-radius: 0.5rem;
+            overflow: auto;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.875rem;
+        }
+
+        thead th {
+            padding: 0.75rem 1rem;
+            text-align: left;
+            color: var(--text-muted);
+            font-weight: 600;
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            border-bottom: 1px solid var(--border-color);
+            white-space: nowrap;
+        }
+
+        tbody tr {
+            border-bottom: 1px solid rgba(51, 65, 85, 0.5);
+            transition: background-color 0.1s;
+        }
+
+        tbody tr:last-child { border-bottom: none; }
+
+        tbody tr:hover {
+            background-color: rgba(255,255,255,0.03);
+        }
+
+        tbody td {
+            padding: 0.65rem 1rem;
+            vertical-align: middle;
+        }
+
+        .session-cell {
+            font-family: monospace;
+            font-size: 0.78rem;
+            color: var(--text-muted);
+            max-width: 160px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .model-cell {
+            font-size: 0.78rem;
+            color: #a5b4fc;
+            white-space: nowrap;
+        }
+
+        .cost-cell {
+            font-weight: 600;
+            white-space: nowrap;
+        }
+
+        .cost-cell.zero { color: var(--text-muted); }
+        .cost-cell.low  { color: var(--green-text); }
+        .cost-cell.mid  { color: var(--yellow-text); }
+        .cost-cell.high { color: #f87171; }
+
+        .token-cell {
+            font-family: monospace;
+            white-space: nowrap;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 4rem 2rem;
+            color: var(--text-muted);
+        }
+
+        .empty-state .icon { font-size: 3rem; margin-bottom: 1rem; }
+
+        #last-updated {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            text-align: right;
+            margin-top: 0.5rem;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>📈 LLM Statistiken <span style="font-size: 1rem; color: var(--text-muted); font-weight: normal;">Verbrauchsübersicht</span></h1>
+        <nav class="header-nav">
+            <a href="/">💬 Chat</a>
+            <a href="/processes/">⚙️ Prozesse</a>
+            <a href="/llm-traffic/">📊 LLM Traffic</a>
+            <a href="/llm-stats/" class="active">📈 LLM Stats</a>
+        </nav>
+        <div id="status-indicator">
+            <div id="status-dot"></div>
+            <span id="status-text">Verbinde...</span>
+        </div>
+    </header>
+
+    <main>
+        <!-- Summary Cards -->
+        <div class="summary-grid">
+            <div class="summary-card">
+                <div class="label">Gesamte Runs</div>
+                <div class="value" id="total-runs">–</div>
+                <div class="sub">Agent-Loop-Ausführungen</div>
+            </div>
+            <div class="summary-card">
+                <div class="label">API-Calls gesamt</div>
+                <div class="value" id="total-calls">–</div>
+                <div class="sub">LLM-Requests</div>
+            </div>
+            <div class="summary-card">
+                <div class="label">Input-Tokens gesamt</div>
+                <div class="value" id="total-input">–</div>
+                <div class="sub">Prompt-Tokens</div>
+            </div>
+            <div class="summary-card">
+                <div class="label">Output-Tokens gesamt</div>
+                <div class="value" id="total-output">–</div>
+                <div class="sub">Completion-Tokens</div>
+            </div>
+            <div class="summary-card">
+                <div class="label">Gesamtkosten</div>
+                <div class="value" id="total-cost">–</div>
+                <div class="sub">USD (kumuliert)</div>
+            </div>
+        </div>
+
+        <!-- Toolbar / Filter -->
+        <div class="toolbar">
+            <label>
+                Session:
+                <input type="text" id="filter-session" placeholder="Session ID filtern..." style="width: 220px;">
+            </label>
+            <label>
+                Limit:
+                <input type="number" id="limit-input" value="100" min="1" max="1000" style="width: 80px;">
+            </label>
+            <div class="spacer"></div>
+            <span id="entry-count">0 Einträge</span>
+        </div>
+
+        <!-- Data Table -->
+        <div class="table-wrapper">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Zeitstempel</th>
+                        <th>Session</th>
+                        <th>Modell</th>
+                        <th>Calls</th>
+                        <th>Input-Tokens</th>
+                        <th>Output-Tokens</th>
+                        <th>Gesamt-Tokens</th>
+                        <th>Kosten (USD)</th>
+                    </tr>
+                </thead>
+                <tbody id="table-body">
+                    <tr>
+                        <td colspan="8">
+                            <div class="empty-state">
+                                <div class="icon">⏳</div>
+                                <p>Lade Daten...</p>
+                            </div>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <div id="last-updated"></div>
+    </main>
+
+    <script>
+        const tableBody = document.getElementById('table-body');
+        const entryCountEl = document.getElementById('entry-count');
+        const lastUpdatedEl = document.getElementById('last-updated');
+        const statusDot = document.getElementById('status-dot');
+        const statusText = document.getElementById('status-text');
+        const filterSession = document.getElementById('filter-session');
+        const limitInput = document.getElementById('limit-input');
+
+        // Summary elements
+        const totalRunsEl = document.getElementById('total-runs');
+        const totalCallsEl = document.getElementById('total-calls');
+        const totalInputEl = document.getElementById('total-input');
+        const totalOutputEl = document.getElementById('total-output');
+        const totalCostEl = document.getElementById('total-cost');
+
+        let allEntries = [];
+
+        function formatTimestamp(ts) {
+            if (!ts) return '—';
+            try {
+                const d = new Date(ts);
+                return d.toLocaleString('de-DE', {
+                    year: 'numeric', month: '2-digit', day: '2-digit',
+                    hour: '2-digit', minute: '2-digit', second: '2-digit',
+                    timeZone: 'UTC', timeZoneName: 'short'
+                });
+            } catch { return ts; }
+        }
+
+        function formatNumber(n) {
+            if (n === null || n === undefined) return '—';
+            return n.toLocaleString('de-DE');
+        }
+
+        function formatCost(cost) {
+            if (cost === null || cost === undefined || cost === 0) return '$0.0000';
+            return `$${cost.toFixed(4)}`;
+        }
+
+        function getCostClass(cost) {
+            if (!cost || cost === 0) return 'zero';
+            if (cost < 0.01) return 'low';
+            if (cost < 0.10) return 'mid';
+            return 'high';
+        }
+
+        function applyFilters() {
+            const sessionFilter = filterSession.value.trim().toLowerCase();
+            return allEntries.filter(e => {
+                if (sessionFilter && !(e.SessionId || '').toLowerCase().includes(sessionFilter)) return false;
+                return true;
+            });
+        }
+
+        function updateSummary(entries) {
+            const totalRuns = entries.length;
+            const totalCalls = entries.reduce((s, e) => s + (e.CallCount || 0), 0);
+            const totalInput = entries.reduce((s, e) => s + (e.InputTokens || 0), 0);
+            const totalOutput = entries.reduce((s, e) => s + (e.OutputTokens || 0), 0);
+            const totalCost = entries.reduce((s, e) => s + (e.TotalCost || 0), 0);
+
+            totalRunsEl.textContent = formatNumber(totalRuns);
+            totalCallsEl.textContent = formatNumber(totalCalls);
+            totalInputEl.textContent = formatNumber(totalInput);
+            totalOutputEl.textContent = formatNumber(totalOutput);
+            totalCostEl.textContent = formatCost(totalCost);
+        }
+
+        function renderTable() {
+            const filtered = applyFilters();
+            entryCountEl.textContent = `${filtered.length} Eintrag${filtered.length !== 1 ? 'e' : ''}`;
+
+            // Update summary based on filtered results
+            updateSummary(filtered);
+
+            if (filtered.length === 0) {
+                tableBody.innerHTML = `
+                    <tr><td colspan="8">
+                        <div class="empty-state">
+                            <div class="icon">🔍</div>
+                            <p>Keine Einträge gefunden.</p>
+                        </div>
+                    </td></tr>`;
+                return;
+            }
+
+            const rows = filtered.map(entry => {
+                const cost = entry.TotalCost || 0;
+                const costClass = getCostClass(cost);
+                return `
+                    <tr>
+                        <td style="font-size:0.78rem;white-space:nowrap;color:var(--text-muted)">${formatTimestamp(entry.Timestamp)}</td>
+                        <td class="session-cell" title="${entry.SessionId || ''}">${entry.SessionId || '—'}</td>
+                        <td class="model-cell">${entry.Model || '—'}</td>
+                        <td class="token-cell">${formatNumber(entry.CallCount)}</td>
+                        <td class="token-cell">${formatNumber(entry.InputTokens)}</td>
+                        <td class="token-cell">${formatNumber(entry.OutputTokens)}</td>
+                        <td class="token-cell" style="font-weight:600">${formatNumber(entry.TotalTokens)}</td>
+                        <td class="cost-cell ${costClass}">${formatCost(cost)}</td>
+                    </tr>`;
+            }).join('');
+
+            tableBody.innerHTML = rows;
+        }
+
+        async function fetchData() {
+            const limit = parseInt(limitInput.value) || 100;
+            try {
+                const res = await fetch(`/api/llm-consumption?limit=${limit}`);
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                const data = await res.json();
+                allEntries = data;
+
+                statusDot.className = 'live';
+                statusText.textContent = 'Live';
+
+                renderTable();
+
+                const now = new Date();
+                lastUpdatedEl.textContent = `Zuletzt aktualisiert: ${now.toLocaleTimeString('de-DE')}`;
+            } catch (err) {
+                statusDot.className = '';
+                statusText.textContent = 'Fehler';
+                console.error('Fehler beim Laden der Consumption-Daten:', err);
+            }
+        }
+
+        filterSession.addEventListener('input', renderTable);
+        limitInput.addEventListener('change', fetchData);
+
+        // Initial load + Auto-Update every 5 seconds
+        fetchData();
+        setInterval(fetchData, 5000);
+    </script>
+</body>
+</html>
