@@ -12,8 +12,8 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddHttpClient();
 builder.Services.AddSingleton<SessionService>();
 builder.Services.AddSingleton<UserService>();
-builder.Services.AddTransient<Orchestrator>();
-builder.Services.AddTransient<AgentSupervisor>();
+builder.Services.AddHttpClient<Orchestrator>(client => client.Timeout = TimeSpan.FromSeconds(600));
+builder.Services.AddHttpClient<AgentSupervisor>(client => client.Timeout = TimeSpan.FromSeconds(600));
 
 // Register Integrations
 builder.Services.Configure<XpectoLiveOptions>(builder.Configuration.GetSection("Integrations:XpectoLive"));
@@ -36,11 +36,24 @@ builder.Services.AddTransient<IAboTool, GetRandomQuestionTool>();
 builder.Services.AddTransient<IAboTool, AddQuizQuestionTool>();
 builder.Services.AddTransient<IAboTool, GetQuizTopicsTool>();
 
+builder.Services.AddTransient<IAboTool, CreateProcessTool>();
+builder.Services.AddTransient<IAboTool, UpdateProcessTool>();
+builder.Services.AddTransient<IAboTool, CheckBpmnTool>();
+builder.Services.AddTransient<IAboTool, StartProjectTool>();
+builder.Services.AddTransient<IAboTool, ListProjectsTool>();
+builder.Services.AddTransient<IAboTool, UpsertRoleTool>();
+builder.Services.AddTransient<IAboTool, GetRolesTool>();
+builder.Services.AddTransient<IAboTool, GetEnvironmentsTool>();
+
 // Register Agents
 builder.Services.AddTransient<HelloWorldAgent>();
 builder.Services.AddTransient<IAgent, HelloWorldAgent>(sp => sp.GetRequiredService<HelloWorldAgent>());
 builder.Services.AddTransient<QuizAgent>();
 builder.Services.AddTransient<IAgent, QuizAgent>(sp => sp.GetRequiredService<QuizAgent>());
+builder.Services.AddTransient<PmoAgent>();
+builder.Services.AddTransient<IAgent, PmoAgent>(sp => sp.GetRequiredService<PmoAgent>());
+builder.Services.AddTransient<EmployeeAgent>();
+builder.Services.AddTransient<IAgent, EmployeeAgent>(sp => sp.GetRequiredService<EmployeeAgent>());
 
 // Register Background Services
 builder.Services.AddHostedService<QuizService>();
@@ -57,6 +70,30 @@ app.MapGet("/api/status", (IConfiguration config) =>
     var model = config["Config:ModelName"];
     var hasKey = !string.IsNullOrEmpty(config["Config:ApiKey"]);
     return Results.Ok(new { Status = "Running", Model = model, HasApiKey = hasKey });
+});
+
+// API: Processes
+app.MapGet("/api/processes", () =>
+{
+    var processesDir = Path.Combine(AppContext.BaseDirectory, "Data", "Processes");
+    if (!Directory.Exists(processesDir)) return Results.Ok(new List<string>());
+
+    var files = Directory.GetFiles(processesDir, "*.bpmn")
+                         .Select(f => Path.GetFileNameWithoutExtension(f))
+                         .ToList();
+    return Results.Ok(files);
+});
+
+app.MapGet("/api/processes/{id}", async (string id) =>
+{
+    // Basic sanitization
+    if (id.Contains("..") || id.Contains("/") || id.Contains("\\")) return Results.BadRequest("Invalid process id.");
+
+    var path = Path.Combine(AppContext.BaseDirectory, "Data", "Processes", $"{id}.bpmn");
+    if (!File.Exists(path)) return Results.NotFound();
+
+    var xml = await File.ReadAllTextAsync(path);
+    return Results.Text(xml, "application/xml");
 });
 
 // API: Interact

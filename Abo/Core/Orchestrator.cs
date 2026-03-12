@@ -19,7 +19,7 @@ public class Orchestrator
         _configuration = configuration;
         _logger = logger;
         _sessionService = sessionService;
-        
+
         var dir = Path.GetDirectoryName(_logPath);
         if (!Directory.Exists(dir)) Directory.CreateDirectory(dir!);
     }
@@ -33,12 +33,16 @@ public class Orchestrator
     {
         var apiEndpoint = _configuration["Config:ApiEndpoint"] ?? throw new InvalidOperationException("API Endpoint not configured.");
         var modelName = _configuration["Config:ModelName"] ?? throw new InvalidOperationException("Model Name not configured.");
+        if (agent.RequiresCapableModel && !string.IsNullOrEmpty(_configuration["Config:CapableModelName"]))
+        {
+            modelName = _configuration["Config:CapableModelName"]!;
+        }
         var apiKey = _configuration["Config:ApiKey"] ?? string.Empty;
         var defaultLanguage = _configuration["Config:DefaultLanguage"] ?? "en-us";
 
         // Retrieve existing history
         var history = _sessionService.GetHistory(sessionId);
-        
+
         // Add new user message to persistent history immediately
         var userMsg = new ChatMessage { Role = "user", Content = userMessage };
         _sessionService.AddMessage(sessionId, userMsg);
@@ -48,7 +52,7 @@ public class Orchestrator
         {
             new ChatMessage { Role = "system", Content = $"{agent.SystemPrompt}\n\n[CONTEXT] Current Session/Channel ID: {sessionId}\n[CONTEXT] User Name: {userName ?? "Unknown"}\n[CONTEXT] User ID (Mattermost): {userId ?? "unknown"}\n[CONTEXT] The default language for all responses and output is '{defaultLanguage}', unless the user explicitly requests otherwise." }
         };
-        
+
         lock (history)
         {
             requestMessages.AddRange(history);
@@ -63,7 +67,7 @@ public class Orchestrator
 
         if (request.Tools?.Count == 0)
         {
-            request.Tools = null; 
+            request.Tools = null;
         }
 
         int maxLoops = 5;
@@ -76,12 +80,12 @@ public class Orchestrator
             while (currentLoop < maxLoops)
             {
                 currentLoop++;
-                
+
                 _logger.LogInformation($"[Session: {sessionId}] [Loop {currentLoop}] Sending request to {apiEndpoint}");
 
                 var jsonRequest = JsonSerializer.Serialize(request, new JsonSerializerOptions { WriteIndented = true });
                 await LogTrafficAsync(sessionId, "REQUEST", jsonRequest);
-                
+
                 var httpRequest = new HttpRequestMessage(HttpMethod.Post, apiEndpoint)
                 {
                     Content = new StringContent(jsonRequest, System.Text.Encoding.UTF8, "application/json")
@@ -119,8 +123,8 @@ public class Orchestrator
                 // Capture content if provided
                 if (!string.IsNullOrEmpty(choice.Message.Content))
                 {
-                    accumulatedContent = (accumulatedContent == null) 
-                        ? choice.Message.Content 
+                    accumulatedContent = (accumulatedContent == null)
+                        ? choice.Message.Content
                         : accumulatedContent + "\n" + choice.Message.Content;
                 }
 
@@ -132,18 +136,21 @@ public class Orchestrator
                     {
                         _logger.LogInformation($"Executing Tool: {toolCall.Function.Name}");
                         var toolResult = "Error executing tool.";
-                        try {
+                        try
+                        {
                             toolResult = await agent.HandleToolCallAsync(toolCall);
-                        } catch (Exception ex) {
+                        }
+                        catch (Exception ex)
+                        {
                             _logger.LogError(ex, $"Tool {toolCall.Function.Name} failed.");
                             toolResult = $"Error: {ex.Message}";
                         }
-                        
+
                         if (toolCall.Function.Name == "ask_multiple_choice" || toolCall.Function.Name == "ask_quiz_question")
                         {
                             lastQuestionOutput = toolResult;
                         }
-                        
+
                         var toolResponseMsg = new ChatMessage
                         {
                             Role = "tool",
@@ -154,17 +161,17 @@ public class Orchestrator
                         _sessionService.AddMessage(sessionId, toolResponseMsg);
                         request.Messages.Add(toolResponseMsg);
                     }
-                    
+
                     // CRITICAL: Continue the loop to let the model synthesize the results
                     continue;
                 }
 
                 // Final answer reached
                 var finalContent = choice.Message.Content ?? accumulatedContent;
-                
+
                 // If we have a question output from a tool call in this session, 
                 // and the final content doesn't seem to contain it (no numbered list), append it.
-                if (!string.IsNullOrEmpty(lastQuestionOutput) && 
+                if (!string.IsNullOrEmpty(lastQuestionOutput) &&
                     (string.IsNullOrEmpty(finalContent) || (!finalContent.Contains("1.") && !finalContent.Contains("**1.**"))))
                 {
                     finalContent = (finalContent ?? "").Trim() + "\n\n" + lastQuestionOutput;

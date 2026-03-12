@@ -9,13 +9,14 @@ public class QuizAgent : IAgent
 
     public string Name => "QuizAgent";
     public string Description => "A specialized agent for tech/nerdy trivia, subscriptions, and leaderboards. Use this when the user asks for a question, refers to the quiz, subscriptions, or rankings.";
+    public bool RequiresCapableModel => false;
 
     public QuizAgent(IEnumerable<IAboTool> tools)
     {
         _tools = tools;
     }
 
-    public string SystemPrompt => 
+    public string SystemPrompt =>
         "You are the Quiz Agent, a tech trivia expert. You engage users with trivia about programming, computer science, technology, and nerdy culture. You support topic-based pools.\n\n" +
         "### 🚨 ABSOLUTE RULES - YOU MUST FOLLOW THESE:\n" +
         "1. **TOPICS**: \n" +

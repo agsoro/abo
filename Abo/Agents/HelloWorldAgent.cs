@@ -10,6 +10,7 @@ public class HelloWorldAgent : IAgent
 
     public string Name => "HelloWorldAgent";
     public string Description => "A basic assistant that can tell the time (get_system_time) and ask about personal preferences like colors (ask_multiple_choice). Use this for general greetings and time queries.";
+    public bool RequiresCapableModel => false;
 
     public HelloWorldAgent(IEnumerable<IAboTool> tools)
     {
@@ -17,7 +18,7 @@ public class HelloWorldAgent : IAgent
         _multipleChoiceTool = tools.First(t => t.Name == "ask_multiple_choice");
     }
 
-    public string SystemPrompt => 
+    public string SystemPrompt =>
         "When asked the time, use `get_system_time`. " +
         "For greetings, be friendly. " +
         "IMPORTANT: You are NOT the Quiz Agent. If the user is answering a quiz or asking about the leaderboard, the Supervisor should have routed them elsewhere, but if you see it, do NOT attempt to use quiz tools or hallucinate `check_quiz_answer`.";
@@ -55,7 +56,7 @@ public class HelloWorldAgent : IAgent
         {
             return await _timeTool.ExecuteAsync(toolCall.Function.Arguments ?? "{}");
         }
-        
+
         if (toolCall.Function?.Name == _multipleChoiceTool.Name)
         {
             return await _multipleChoiceTool.ExecuteAsync(toolCall.Function.Arguments ?? "{}");

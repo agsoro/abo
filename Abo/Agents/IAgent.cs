@@ -7,6 +7,7 @@ public interface IAgent
     string Name { get; }
     string Description { get; }
     string SystemPrompt { get; }
+    bool RequiresCapableModel { get; }
     List<ToolDefinition> GetToolDefinitions();
     Task<string> HandleToolCallAsync(ToolCall toolCall);
 }

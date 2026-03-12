@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Process Viewer (BPMN)</title>
+
+    <!-- bpmn-js viewer -->
+    <link rel="stylesheet" href="https://unpkg.com/bpmn-js@17.0.2/dist/assets/bpmn-js.css">
+    <link rel="stylesheet" href="https://unpkg.com/bpmn-js@17.0.2/dist/assets/diagram-js.css">
+    <script src="https://unpkg.com/bpmn-js@17.0.2/dist/bpmn-viewer.development.js"></script>
+
+    <style>
+        body,
+        html {
+            margin: 0;
+            padding: 0;
+            height: 100%;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f4f5f7;
+        }
+
+        #header {
+            background-color: #2c3e50;
+            color: white;
+            padding: 15px 20px;
+            display: flex;
+            align-items: center;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+
+        #header h1 {
+            margin: 0;
+            font-size: 1.2rem;
+            flex-grow: 1;
+        }
+
+        #process-select {
+            padding: 8px 12px;
+            font-size: 1rem;
+            border-radius: 4px;
+            border: 1px solid #bdc3c7;
+            background-color: white;
+            min-width: 250px;
+        }
+
+        #canvas {
+            height: calc(100% - 62px);
+            width: 100%;
+        }
+
+        .errorMessage {
+            color: #e74c3c;
+            padding: 20px;
+            text-align: center;
+            font-weight: bold;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="header">
+        <h1>Company Process Library</h1>
+        <select id="process-select">
+            <option value="">-- Select a Process --</option>
+        </select>
+    </div>
+
+    <div id="canvas"></div>
+
+    <script type="module">
+        import { layoutProcess } from 'https://cdn.skypack.dev/bpmn-auto-layout';
+
+        const viewer = new BpmnJS({
+            container: '#canvas'
+        });
+
+        const selectEl = document.getElementById('process-select');
+
+        // Load list of processes
+        async function loadProcesses() {
+            try {
+                const response = await fetch('/api/processes');
+                if (!response.ok) throw new Error('Failed to load processes');
+                const processes = await response.json();
+
+                processes.forEach(proc => {
+                    const opt = document.createElement('option');
+                    opt.value = proc;
+                    opt.textContent = proc;
+                    selectEl.appendChild(opt);
+                });
+            } catch (err) {
+                console.error(err);
+                document.getElementById('canvas').innerHTML = '<div class="errorMessage">Failed to load process list. Check console.</div>';
+            }
+        }
+
+        // Render selected BPMN
+        async function renderProcess(processId) {
+            if (!processId) {
+                viewer.clear();
+                return;
+            }
+
+            try {
+                const response = await fetch(`/api/processes/${processId}`);
+                if (!response.ok) throw new Error(`Process ${processId} not found`);
+                const xml = await response.text();
+
+                let processedXml = xml;
+                try {
+                    processedXml = await layoutProcess(xml);
+                } catch (layoutErr) {
+                    console.warn('Auto-layout failed. Attempting to render raw XML.', layoutErr);
+                }
+
+                await viewer.importXML(processedXml);
+                viewer.get('canvas').zoom('fit-viewport');
+            } catch (err) {
+                console.error('Error rendering BPMN:', err);
+                document.getElementById('canvas').innerHTML = `<div class="errorMessage">Error loading diagram: ${err.message}</div>`;
+            }
+        }
+
+        selectEl.addEventListener('change', (e) => {
+            renderProcess(e.target.value);
+        });
+
+        // Initialize
+        loadProcesses();
+    </script>
+</body>
+
+</html>
