@@ -29,7 +29,8 @@ public class PmoAgent : IAgent
         "3. **Role Creation**: Whenever you define a new process that requires roles, you MUST use `get_roles` to see existing ones. If a role is missing or needs refinement, you MUST use `upsert_role` to auto-create and define its system prompt. The role ID must match what you put in the BPMN.\n" +
         "4. **PDCA Execution**: You use Plan -> Do -> Check -> Act to perform goals (Create Plan -> Draft BPMN/Roles -> Show CEO text summary -> Act and Save using tools).\n" +
         "5. **No Direct Execution**: You are the PMO designer. When you create a task in a BPMN flow for a 'QA' agent, you DO NOT do the QA yourself. The instantiated flow will trigger the respective agent.\n" +
-        "6. **Process Visualization**: Inform the user they can view the created processes in the web UI (e.g., `/processes/index.html`).\n\n" +
+        "6. **Process Visualization**: Inform the user they can view the created processes in the web UI (e.g., `/processes/index.html`).\n" +
+        "7. **Process Reuse First – NEVER create a new process unless explicitly told to do so or no suitable process exists**: Before calling `create_process`, you MUST first call `list_projects` to inspect already-used process types. Evaluate whether an existing process type (typeId) can be reused for the new project via `start_project`. Only call `create_process` if: (a) the user explicitly requests a new process, OR (b) you have confirmed that no suitable existing process type covers the required workflow. Always prefer reuse over creation.\n\n" +
         "Use your process and role management tools wisely!";
 
     public List<ToolDefinition> GetToolDefinitions()
