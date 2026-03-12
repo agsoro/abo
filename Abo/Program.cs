@@ -5,6 +5,7 @@ using Abo.Integrations.XpectoLive;
 using Abo.Tools;
 using Abo.Services;
 using Microsoft.AspNetCore.Mvc;
+using System.Text.Json;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -61,8 +62,8 @@ builder.Services.AddHostedService<QuizService>();
 
 var app = builder.Build();
 
-app.UseDefaultFiles(); // Add this line so `/` automatically serves `/index.html`
-app.UseStaticFiles(); // Serve wwwroot/index.html
+app.UseDefaultFiles(); // Serves `/index.html` automatically for `/`
+app.UseStaticFiles();  // Serves wwwroot static files
 
 // API: Health / Status
 app.MapGet("/api/status", (IConfiguration config) =>
@@ -73,7 +74,7 @@ app.MapGet("/api/status", (IConfiguration config) =>
     return Results.Ok(new { Status = "Running", Model = model, HasApiKey = hasKey });
 });
 
-// API: Processes
+// API: Processes – list all process IDs
 app.MapGet("/api/processes", () =>
 {
     var processesDir = Path.Combine(AppContext.BaseDirectory, "Data", "Processes");
@@ -85,6 +86,7 @@ app.MapGet("/api/processes", () =>
     return Results.Ok(files);
 });
 
+// API: Processes – fetch BPMN XML by ID
 app.MapGet("/api/processes/{id}", async (string id) =>
 {
     // Basic sanitization
@@ -97,7 +99,21 @@ app.MapGet("/api/processes/{id}", async (string id) =>
     return Results.Text(xml, "application/xml");
 });
 
-// API: Interact
+// API: Projects – fetch the status of a specific project by ID
+app.MapGet("/api/projects/{id}/status", async (string id) =>
+{
+    // Basic sanitization
+    if (id.Contains("..") || id.Contains("/") || id.Contains("\\")) return Results.BadRequest("Invalid project id.");
+
+    var statusPath = Path.Combine(AppContext.BaseDirectory, "Data", "Projects", id, "status.json");
+    if (!File.Exists(statusPath)) return Results.NotFound($"No status file found for project '{id}'.");
+
+    var json = await File.ReadAllTextAsync(statusPath);
+    var status = JsonSerializer.Deserialize<JsonElement>(json);
+    return Results.Ok(status);
+});
+
+// API: Interact – main chat endpoint
 app.MapPost("/api/interact", async ([FromBody] InteractRequest req, Orchestrator orchestrator, AgentSupervisor supervisor, UserService userService) =>
 {
     if (string.IsNullOrWhiteSpace(req.Message)) return Results.BadRequest("Message is empty.");
@@ -124,4 +140,3 @@ public class InteractRequest
     public string? UserId { get; set; }
     public string? SessionId { get; set; }
 }
-
