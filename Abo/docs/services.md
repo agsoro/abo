@@ -1,91 +1,91 @@
-# Services, Integrations und Web-API
+# Services, Integrations, and Web API
 
-Diese Datei dokumentiert die Hintergrunddienste (`BackgroundService`), den Benutzerdaten-Service, die Integrationen und alle verfügbaren HTTP-Endpunkte der ABO-Anwendung.
+This file documents the background services (`BackgroundService`), the user data service, integrations, and all available HTTP endpoints of the ABO application.
 
 ---
 
-## Hintergrunddienste (Background Services)
+## Background Services
 
 ### `MattermostListenerService`
 - **Namespace**: `Abo.Integrations.Mattermost`
-- **Typ**: `BackgroundService` (IHostedService)
-- **Aufgabe**: Verbindet sich per **WebSocket** mit dem Mattermost-Server und lauscht kontinuierlich auf neue Beiträge (`posted`-Events) in Channels und Direktnachrichten.
-- **Ablauf**:
-  1. Öffnet eine WebSocket-Verbindung zu `{MattermostBaseUrl}/websocket` mit `Bearer`-Token-Authentifizierung.
-  2. Empfängt eingehende Events. Nicht-`posted`-Events werden ignoriert.
-  3. Beim `hello`- oder `status_change`-Event wird die Bot-User-ID zur Selbsterkennung gecacht.
-  4. Eigene Nachrichten des Bots werden anhand der gecachten User-ID herausgefiltert (Loop-Prävention).
-  5. Der `AgentSupervisor` wählt den passenden Agenten aus (mit Gesprächshistorie als Kontext).
-  6. Während der Agenten-Verarbeitung wird alle 5 Sekunden ein Tipp-Indikator (`typing`) an den Channel gesendet.
-  7. Die fertige Antwort wird via REST-API (`MattermostClient.SendMessageAsync`) zurückgeschickt.
-- **Fehlerbehandlung**: Bei Verbindungsabbrüchen wird nach 10 Sekunden automatisch ein Reconnect versucht.
-- **Konfiguration**: Benötigt `Integrations:Mattermost:BaseUrl` und `Integrations:Mattermost:BotToken`.
+- **Type**: `BackgroundService` (IHostedService)
+- **Purpose**: Connects via **WebSocket** to the Mattermost server and continuously listens for new posts (`posted` events) in channels and direct messages.
+- **Flow**:
+  1. Opens a WebSocket connection to `{MattermostBaseUrl}/websocket` with `Bearer` token authentication.
+  2. Receives incoming events. Non-`posted` events are ignored.
+  3. On `hello` or `status_change` events, the bot user ID is cached for self-identification.
+  4. The bot's own messages are filtered out using the cached user ID (loop prevention).
+  5. The `AgentSupervisor` selects the appropriate agent (with conversation history as context).
+  6. During agent processing, a typing indicator (`typing`) is sent to the channel every 5 seconds.
+  7. The final response is sent back via the REST API (`MattermostClient.SendMessageAsync`).
+- **Error Handling**: On connection drops, a reconnect is automatically attempted after 10 seconds.
+- **Configuration**: Requires `Integrations:Mattermost:BaseUrl` and `Integrations:Mattermost:BotToken`.
 
 ---
 
 ### `QuizService`
 - **Namespace**: `Abo.Services`
-- **Typ**: `BackgroundService` (IHostedService)
-- **Aufgabe**: Sendet **stündlich** automatisch Quiz-Fragen an alle abonnierten Mattermost-Channels.
-- **Ablauf**:
-  1. Wartet 30 Sekunden nach dem Start, um andere Dienste hochfahren zu lassen.
-  2. Lädt alle Benutzer via `UserService` und filtert nach `IsSubscribedToQuiz == true`.
-  3. Ruft für jeden abonnierten Channel den `QuizAgent` via Orchestrator auf (Trigger: `SYSTEM_EVENT: HOURLY_QUESTION_TRIGGER`).
-  4. Sendet die Antwort des Agenten via `MattermostClient.SendMessageAsync`.
-  5. Wartet 1 Stunde und wiederholt den Vorgang.
+- **Type**: `BackgroundService` (IHostedService)
+- **Purpose**: Automatically sends quiz questions **hourly** to all subscribed Mattermost channels.
+- **Flow**:
+  1. Waits 30 seconds after startup to allow other services to initialize.
+  2. Loads all users via `UserService` and filters those with `IsSubscribedToQuiz == true`.
+  3. Invokes the `QuizAgent` via the orchestrator for each subscribed channel (trigger: `SYSTEM_EVENT: HOURLY_QUESTION_TRIGGER`).
+  4. Sends the agent's response via `MattermostClient.SendMessageAsync`.
+  5. Waits 1 hour and repeats.
 
 ---
 
-## Anwendungs-Services
+## Application Services
 
 ### `SessionService`
 - **Namespace**: `Abo.Core`
-- **Lebenszyklus**: Singleton
-- **Aufgabe**: Verwaltet die **In-Memory-Gesprächshistorie** pro Session (Channel).
-- **Besonderheiten**:
-  - Speichert maximal **20 Nachrichten** pro Session (älteste werden automatisch entfernt).
-  - Thread-sicher durch `ConcurrentDictionary` und `lock`.
-  - Der `Orchestrator` verwendet den `SessionId` (= Mattermost Channel-ID oder `web-session`) als Schlüssel.
-- **Methoden**:
-  - `GetHistory(sessionId)` – Gibt die Nachrichtenliste zurück (erstellt sie bei Bedarf).
-  - `AddMessage(sessionId, message)` – Fügt eine Nachricht hinzu und kürzt ggf. die History.
-  - `ClearHistory(sessionId)` – Löscht die gesamte History einer Session.
+- **Lifecycle**: Singleton
+- **Purpose**: Manages the **in-memory conversation history** per session (channel).
+- **Details**:
+  - Stores a maximum of **20 messages** per session (oldest are automatically removed).
+  - Thread-safe via `ConcurrentDictionary` and `lock`.
+  - The `Orchestrator` uses the `SessionId` (= Mattermost Channel ID or `web-session`) as the key.
+- **Methods**:
+  - `GetHistory(sessionId)` – Returns the message list (creates it if needed).
+  - `AddMessage(sessionId, message)` – Adds a message and trims the history if necessary.
+  - `ClearHistory(sessionId)` – Clears the entire history for a session.
 
 ---
 
 ### `UserService`
 - **Namespace**: `Abo.Services`
-- **Lebenszyklus**: Singleton
-- **Aufgabe**: Persistiert Benutzerdaten (Mattermost-User-ID, Username, Rollen, Quiz-Abonnement-Status) in `Data/users.json`.
-- **Dateiformat**: JSON-Dictionary mit dem Benutzernamen als Schlüssel.
-- **Thread-Sicherheit**: Alle Lese- und Schreiboperationen sind durch ein `lock`-Objekt gesichert.
-- **Wichtige Methoden**:
-  - `GetOrCreateUser(mattermostId, username)` – Gibt einen bestehenden Benutzer zurück oder legt einen neuen an.
-  - `UpdateUser(user)` – Speichert eine aktualisierte Benutzerinstanz.
-  - `HasRole(mattermostId, role)` – Prüft, ob ein Benutzer eine bestimmte Rolle besitzt.
-  - `AddRole(mattermostId, role)` – Fügt einem Benutzer eine Rolle hinzu.
-  - `RemoveRole(mattermostId, role)` – Entfernt eine Rolle von einem Benutzer.
-  - `GetAllUsers()` – Gibt alle Benutzer als Liste zurück.
+- **Lifecycle**: Singleton
+- **Purpose**: Persists user data (Mattermost user ID, username, roles, quiz subscription status) in `Data/users.json`.
+- **File format**: JSON dictionary with the username as the key.
+- **Thread Safety**: All read and write operations are protected by a `lock` object.
+- **Key Methods**:
+  - `GetOrCreateUser(mattermostId, username)` – Returns an existing user or creates a new one.
+  - `UpdateUser(user)` – Saves an updated user instance.
+  - `HasRole(mattermostId, role)` – Checks whether a user has a specific role.
+  - `AddRole(mattermostId, role)` – Adds a role to a user.
+  - `RemoveRole(mattermostId, role)` – Removes a role from a user.
+  - `GetAllUsers()` – Returns all users as a list.
 
 ---
 
-## Integrationen
+## Integrations
 
 ### Mattermost
 
 #### `MattermostClient`
 - **Namespace**: `Abo.Integrations.Mattermost`
-- **Typ**: Typisierter `HttpClient` (DI-registriert)
-- **Aufgabe**: REST-Kommunikation mit der Mattermost API (`/api/v4/`).
-- **Konfiguration**: `Integrations:Mattermost:BaseUrl` und `Integrations:Mattermost:BotToken`
-- **Methoden**:
-  - `SendMessageAsync(channelId, message, rootId?)` – Sendet eine Nachricht in einen Channel (optional als Thread-Reply mit `rootId`).
-  - `SendTypingAsync(channelId, parentId?)` – Sendet einen Tipp-Indikator.
-  - `GetUsernameAsync(userId)` – Löst eine Mattermost-User-ID in einen Benutzernamen auf.
+- **Type**: Typed `HttpClient` (DI-registered)
+- **Purpose**: REST communication with the Mattermost API (`/api/v4/`).
+- **Configuration**: `Integrations:Mattermost:BaseUrl` and `Integrations:Mattermost:BotToken`
+- **Methods**:
+  - `SendMessageAsync(channelId, message, rootId?)` – Sends a message to a channel (optionally as a thread reply with `rootId`).
+  - `SendTypingAsync(channelId, parentId?)` – Sends a typing indicator.
+  - `GetUsernameAsync(userId)` – Resolves a Mattermost user ID to a username.
 
 #### `MattermostOptions`
-- Konfigurationsklasse für `Integrations:Mattermost`-Sektion in `appsettings.json`.
-- Felder: `BaseUrl`, `BotToken`
+- Configuration class for the `Integrations:Mattermost` section in `appsettings.json`.
+- Fields: `BaseUrl`, `BotToken`
 
 ---
 
@@ -93,42 +93,42 @@ Diese Datei dokumentiert die Hintergrunddienste (`BackgroundService`), den Benut
 
 #### `XpectoLiveClient`
 - **Namespace**: `Abo.Integrations.XpectoLive`
-- **Typ**: Typisierter `HttpClient`
-- **Aufgabe**: Kommunikation mit der XpectoLive Backoffice REST-API.
-- **Authentifizierung**: `x-api-key`-Header.
-- **Konfiguration**: `Integrations:XpectoLive:BaseUrl` und `Integrations:XpectoLive:ApiKey`
-- **Methode**: `GetTicketsAsync(queryParameters)` – Ruft Tickets ab (aktuell Mock-Implementierung).
+- **Type**: Typed `HttpClient`
+- **Purpose**: Communication with the XpectoLive Backoffice REST API.
+- **Authentication**: `x-api-key` header.
+- **Configuration**: `Integrations:XpectoLive:BaseUrl` and `Integrations:XpectoLive:ApiKey`
+- **Method**: `GetTicketsAsync(queryParameters)` – Retrieves tickets (currently mock implementation).
 
 #### `XpectoLiveWikiClient` / `IXpectoLiveWikiClient`
 - **Namespace**: `Abo.Integrations.XpectoLive`
-- **Aufgabe**: Vollständige Implementierung für die XpectoLive Wiki-API.
-- **Konfiguration**: Identisch mit `XpectoLiveClient`.
-- **Methoden** (Auswahl):
-  - `GetSpacesAsync()` – Alle Wiki-Spaces abrufen.
-  - `CreateSpaceAsync(spaceNew)` – Neuen Space erstellen.
-  - `GetSpaceAsync(spaceId)` – Einen Space abrufen.
-  - `GetSpaceInfoAsync(spaceId)` – Seiteninformationen eines Spaces.
-  - `CreatePageAsync(spaceId, pageNew)` – Neue Seite anlegen.
-  - `GetPageAsync(spaceId, pageId)` – Eine Seite lesen.
-  - `UpdatePageDraftAsync(spaceId, pageId, contentUpdate)` – Entwurf einer Seite aktualisieren.
-  - `PublishPageDraftAsync(spaceId, pageId)` – Entwurf veröffentlichen.
-  - `MovePageAsync(...)` / `CopyPageAsync(...)` – Seite verschieben/kopieren.
-  - `JoinCollaborativeRoomAsync(...)` / `LeaveCollaborativeRoomAsync(...)` – Kollaborativen Editing-Raum betreten/verlassen.
-  - `RdpAsync(domain, user, computerName)` – RDP-Sitzung über XpectoLive initiieren.
+- **Purpose**: Full implementation for the XpectoLive Wiki API.
+- **Configuration**: Identical to `XpectoLiveClient`.
+- **Methods** (selection):
+  - `GetSpacesAsync()` – Retrieve all wiki spaces.
+  - `CreateSpaceAsync(spaceNew)` – Create a new space.
+  - `GetSpaceAsync(spaceId)` – Retrieve a space.
+  - `GetSpaceInfoAsync(spaceId)` – Page information for a space.
+  - `CreatePageAsync(spaceId, pageNew)` – Create a new page.
+  - `GetPageAsync(spaceId, pageId)` – Read a page.
+  - `UpdatePageDraftAsync(spaceId, pageId, contentUpdate)` – Update a page draft.
+  - `PublishPageDraftAsync(spaceId, pageId)` – Publish a draft.
+  - `MovePageAsync(...)` / `CopyPageAsync(...)` – Move/copy a page.
+  - `JoinCollaborativeRoomAsync(...)` / `LeaveCollaborativeRoomAsync(...)` – Join/leave a collaborative editing room.
+  - `RdpAsync(domain, user, computerName)` – Initiate an RDP session via XpectoLive.
 
 #### `XpectoLiveOptions`
-- Konfigurationsklasse für `Integrations:XpectoLive`-Sektion.
-- Felder: `BaseUrl`, `ApiKey`
+- Configuration class for the `Integrations:XpectoLive` section.
+- Fields: `BaseUrl`, `ApiKey`
 
 ---
 
-## Web-API Endpunkte
+## Web API Endpoints
 
-Die ABO-Anwendung stellt eine minimale REST-API bereit, die über `Program.cs` mit ASP.NET Core Minimal APIs definiert ist.
+The ABO application exposes a minimal REST API defined in `Program.cs` using ASP.NET Core Minimal APIs.
 
 ### `GET /api/status`
-- **Beschreibung**: Gibt den aktuellen Status der ABO-Anwendung zurück (Health-Check).
-- **Authentifizierung**: Keine
+- **Description**: Returns the current status of the ABO application (health check).
+- **Authentication**: None
 - **Response (200)**:
   ```json
   {
@@ -141,25 +141,25 @@ Die ABO-Anwendung stellt eine minimale REST-API bereit, die über `Program.cs` m
 ---
 
 ### `GET /api/processes`
-- **Beschreibung**: Listet alle verfügbaren BPMN-Prozess-IDs auf (Dateinamen ohne `.bpmn`-Erweiterung aus `Data/Processes/`).
-- **Response (200)**: JSON-Array mit Prozess-ID-Strings, z. B. `["Type_Dev_Sprint", "Type_Doc_Update"]`
+- **Description**: Lists all available BPMN process IDs (filenames without `.bpmn` extension from `Data/Processes/`).
+- **Response (200)**: JSON array of process ID strings, e.g. `["Type_Dev_Sprint", "Type_Doc_Update"]`
 
 ---
 
 ### `GET /api/processes/{id}`
-- **Beschreibung**: Gibt die vollständige BPMN 2.0 XML-Definition eines Prozesses zurück.
-- **Parameter**: `id` – Die Prozess-ID (entspricht dem Dateinamen ohne `.bpmn`).
-- **Response (200)**: BPMN-XML (`Content-Type: application/xml`)
-- **Response (400)**: Wenn `id` ungültige Zeichen enthält (`..`, `/`, `\`).
-- **Response (404)**: Wenn der Prozess nicht gefunden wird.
-- **Verwendung**: Wird vom Web-UI unter `/processes/index.html` genutzt, um Prozesse im BPMN-Viewer darzustellen.
+- **Description**: Returns the full BPMN 2.0 XML definition of a process.
+- **Parameters**: `id` – The process ID (corresponds to the filename without `.bpmn`).
+- **Response (200)**: BPMN XML (`Content-Type: application/xml`)
+- **Response (400)**: If `id` contains invalid characters (`..`, `/`, `\`).
+- **Response (404)**: If the process is not found.
+- **Usage**: Used by the Web UI at `/processes/index.html` to display processes in the BPMN viewer.
 
 ---
 
 ### `GET /api/projects/{id}/status`
-- **Beschreibung**: Gibt den aktuellen Status eines laufenden Projekts zurück (Inhalt von `Data/Projects/{id}/status.json`).
-- **Parameter**: `id` – Die Projekt-ID (z. B. `1001`).
-- **Response (200)**: JSON-Objekt mit Projektstatusfeldern:
+- **Description**: Returns the current status of a running project (contents of `Data/Projects/{id}/status.json`).
+- **Parameters**: `id` – The project ID (e.g. `1001`).
+- **Response (200)**: JSON object with project status fields:
   ```json
   {
     "ProjectId": "1001",
@@ -168,42 +168,41 @@ Die ABO-Anwendung stellt eine minimale REST-API bereit, die über `Program.cs` m
     "LastUpdated": "2025-01-15T10:30:00Z"
   }
   ```
-- **Response (400)**: Wenn `id` ungültige Zeichen enthält.
-- **Response (404)**: Wenn kein Projekt mit dieser ID existiert.
-- **Hinweis**: Dieser Link wird von `start_project` automatisch als `StatusLink` im `active_projects.json`-Eintrag gesetzt.
+- **Response (400)**: If `id` contains invalid characters.
+- **Response (404)**: If no project with this ID exists.
 
 ---
 
 ### `POST /api/interact`
-- **Beschreibung**: Der Haupt-Chat-Endpunkt. Verarbeitet eine Benutzernachricht, wählt den geeigneten Agenten aus und gibt die KI-Antwort zurück.
-- **Request-Body** (`application/json`):
+- **Description**: The main chat endpoint. Processes a user message, selects the appropriate agent, and returns the AI response.
+- **Request Body** (`application/json`):
   ```json
   {
-    "message": "Starte das Quiz!",
+    "message": "Start the quiz!",
     "userName": "max.muster",
     "userId": "mm-user-id-123",
     "sessionId": "channel-id-abc"
   }
   ```
-  - `message` (required): Die Benutzernachricht.
-  - `userName` (optional): Anzeigename des Benutzers. Standard: `"Web User"`.
-  - `userId` (optional): Eindeutige Benutzer-ID. Standard: `sessionId`.
-  - `sessionId` (optional): Session-/Channel-ID für die Gesprächshistorie. Standard: `"web-session"`.
+  - `message` (required): The user message.
+  - `userName` (optional): Display name of the user. Default: `"Web User"`.
+  - `userId` (optional): Unique user ID. Default: `sessionId`.
+  - `sessionId` (optional): Session/channel ID for conversation history. Default: `"web-session"`.
 - **Response (200)**:
   ```json
   {
-    "output": "Hier ist deine nächste Quiz-Frage: ..."
+    "output": "Here is your next quiz question: ..."
   }
   ```
-- **Response (400)**: Wenn `message` leer ist.
+- **Response (400)**: If `message` is empty.
 
 ---
 
-## Statische Dateien (Web-UI)
+## Static Files (Web UI)
 
-ABO dient statische Dateien aus dem `wwwroot/`-Verzeichnis. Wichtige Seiten:
+ABO serves static files from the `wwwroot/` directory. Key pages:
 
-| Pfad | Beschreibung |
+| Path | Description |
 |------|-------------|
-| `/` oder `/index.html` | Haupt-Chat-UI |
-| `/processes/index.html` | BPMN-Prozess-Viewer (visualisiert `.bpmn`-Dateien grafisch) |
+| `/` or `/index.html` | Main Chat UI |
+| `/processes/index.html` | BPMN Process Viewer (displays `.bpmn` files graphically) |

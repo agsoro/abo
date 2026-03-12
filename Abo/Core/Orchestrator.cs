@@ -32,11 +32,6 @@ public class Orchestrator
     public async Task<string> RunAgentLoopAsync(IAgent agent, string userMessage, string sessionId, string? userName = null, string? userId = null)
     {
         var apiEndpoint = _configuration["Config:ApiEndpoint"] ?? throw new InvalidOperationException("API Endpoint not configured.");
-        var modelName = _configuration["Config:ModelName"] ?? throw new InvalidOperationException("Model Name not configured.");
-        if (agent.RequiresCapableModel && !string.IsNullOrEmpty(_configuration["Config:CapableModelName"]))
-        {
-            modelName = _configuration["Config:CapableModelName"]!;
-        }
         var apiKey = _configuration["Config:ApiKey"] ?? string.Empty;
         var defaultLanguage = _configuration["Config:DefaultLanguage"] ?? "en-us";
 
@@ -60,7 +55,7 @@ public class Orchestrator
 
         var request = new ChatCompletionRequest
         {
-            Model = modelName,
+            Model = _configuration["Config:ModelName"] ?? "anthropic/claude-haiku-4.5", // Will be reassigned inside loop
             Messages = requestMessages,
             Tools = agent.GetToolDefinitions()
         };
@@ -80,6 +75,18 @@ public class Orchestrator
             while (currentLoop < maxLoops)
             {
                 currentLoop++;
+
+                // Recalculate model in case agent state changed (e.g. checked out a validation project)
+                var currentModelName = _configuration["Config:ModelName"] ?? "anthropic/claude-haiku-4.5";
+                if (agent.RequiresReviewModel && !string.IsNullOrEmpty(_configuration["Config:ReviewModelName"]))
+                {
+                    currentModelName = _configuration["Config:ReviewModelName"]!;
+                }
+                else if (agent.RequiresCapableModel && !string.IsNullOrEmpty(_configuration["Config:CapableModelName"]))
+                {
+                    currentModelName = _configuration["Config:CapableModelName"]!;
+                }
+                request.Model = currentModelName;
 
                 _logger.LogInformation($"[Session: {sessionId}] [Loop {currentLoop}] Sending request to {apiEndpoint}");
 

@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Text.RegularExpressions;
 
 namespace Abo.Core.Connectors;
 
@@ -164,5 +165,97 @@ public class LocalWindowsConnector : IConnector
         {
             return $"Failed to start process '{command}': {ex.Message}";
         }
+    }
+
+    public async Task<string> SearchRegexAsync(string relativePath, string pattern, int limitLinesPerFile)
+    {
+        var basePath = GetFullPath(relativePath);
+        if (!Directory.Exists(basePath) && !File.Exists(basePath))
+        {
+            return $"Error: Path '{relativePath}' not found.";
+        }
+
+        Regex regex;
+        try
+        {
+            regex = new Regex(pattern, RegexOptions.Compiled);
+        }
+        catch (Exception ex)
+        {
+            return $"Error: Invalid regex pattern '{pattern}'. {ex.Message}";
+        }
+
+        var results = new System.Text.StringBuilder();
+        var filesToSearch = new List<string>();
+
+        if (File.Exists(basePath))
+        {
+            filesToSearch.Add(basePath);
+        }
+        else
+        {
+            try
+            {
+                filesToSearch.AddRange(Directory.GetFiles(basePath, "*.*", SearchOption.AllDirectories));
+            }
+            catch (Exception ex)
+            {
+                return $"Error reading directory '{relativePath}': {ex.Message}";
+            }
+        }
+
+        foreach (var file in filesToSearch)
+        {
+            try
+            {
+                var relativeFilePath = Path.GetRelativePath(_environment.Dir, file);
+                var fileName = Path.GetFileName(file);
+                bool fileMatches = regex.IsMatch(fileName);
+
+                var matchedLines = new List<(int LineNumber, string Content)>();
+
+                // Try to read content; skip binary or unreadable files by catching exceptions
+                var lines = await File.ReadAllLinesAsync(file);
+                int lineNumber = 1;
+                foreach (var line in lines)
+                {
+                    if (regex.IsMatch(line))
+                    {
+                        matchedLines.Add((lineNumber, line));
+                        if (matchedLines.Count >= limitLinesPerFile)
+                        {
+                            break;
+                        }
+                    }
+                    lineNumber++;
+                }
+
+                if (fileMatches || matchedLines.Any())
+                {
+                    results.AppendLine($"File: {relativeFilePath}");
+                    if (fileMatches)
+                    {
+                        results.AppendLine("  -> Filename matches pattern");
+                    }
+
+                    foreach (var match in matchedLines)
+                    {
+                        results.AppendLine($"  Line {match.LineNumber}: {match.Content}");
+                    }
+                    results.AppendLine();
+                }
+            }
+            catch
+            {
+                // Ignore files we cannot read (e.g., binaries throwing encoding errors, access denied, etc.)
+            }
+        }
+
+        if (results.Length == 0)
+        {
+            return "No matches found.";
+        }
+
+        return results.ToString().TrimEnd();
     }
 }

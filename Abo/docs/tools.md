@@ -1,179 +1,179 @@
-# Tools und Plugins
+# Tools and Plugins
 
-Tools in ABO sind lokale C#-Methoden, die als Plugins fungieren und vom KI-Modell über JSON-basierte Tool-Calls ausgelöst werden können. Sie befinden sich im Verzeichnis `/Tools`.
+Tools in ABO are local C# methods that act as plugins and can be triggered by the AI model via JSON-based tool calls. They are located in the `/Tools` directory.
 
-## Implementierungsdetails
+## Implementation Details
 
-Da ABO reines .NET 10 ohne proprietäre SDKs verwendet, sind Tools Standard-C#-Klassen, die das Interface `IAboTool` implementieren.
+Since ABO uses pure .NET 10 without proprietary SDKs, tools are standard C# classes implementing the `IAboTool` interface.
 
-### Sicherheit, Ausführung und das "Tools"-Array
+### Security, Execution, and the "Tools" Array
 
-Wenn das KI-Modell einen Tool-Call anfordert:
-1. Der Orchestrator (oder ein spezialisierter Agent) serialisiert die verfügbaren Tools in das Standard-JSON-`tools`-Array-Format.
-2. Das Modell gibt eine Tool-Call-Payload zurück.
-3. Die Parameter werden sicher mittels `System.Text.Json` deserialisiert.
-4. Die entsprechende C#-Methode wird sicher in der lokalen Umgebung aufgerufen.
-5. Das Ergebnis wird serialisiert und als Tool-Message an das Modell zurückgegeben.
+When the AI model requests a tool call:
+1. The orchestrator (or a specialized agent) serializes the available tools into the standard JSON `tools` array format.
+2. The model returns a tool call payload.
+3. Parameters are safely deserialized using `System.Text.Json`.
+4. The corresponding C# method is safely invoked in the local environment.
+5. The result is serialized and returned to the model as a tool message.
 
-Dieser Ansatz vermeidet bewusst die Komplexität des vollen MCP (Model Context Protocol) und garantiert, dass die KI **keinen direkten Zugriff** auf Datenbanken oder interne APIs hat.
+This approach deliberately avoids the complexity of the full MCP (Model Context Protocol) and guarantees that the AI has **no direct access** to databases or internal APIs.
 
 ---
 
-## Allgemeine Tools
+## General Tools
 
 ### `get_system_time`
-- **Klasse**: `GetSystemTimeTool`
-- **Beschreibung**: Gibt die aktuelle UTC-Systemzeit zurück.
-- **Parameter**: keine
-- **Verwendet von**: HelloWorldAgent, QuizAgent, PmoAgent, EmployeeAgent
+- **Class**: `GetSystemTimeTool`
+- **Description**: Returns the current UTC system time.
+- **Parameters**: none
+- **Used by**: HelloWorldAgent, QuizAgent, PmoAgent, EmployeeAgent
 
 ---
 
-## Quiz-Tools
+## Quiz Tools
 
 ### `get_random_question`
-- **Klasse**: `GetRandomQuestionTool`
-- **Beschreibung**: Ruft eine zufällige Quizfrage aus dem Datenspeicher ab (optional nach Thema gefiltert).
-- **Parameter**: `topic` (optional, string)
+- **Class**: `GetRandomQuestionTool`
+- **Description**: Retrieves a random quiz question from the data store (optionally filtered by topic).
+- **Parameters**: `topic` (optional, string)
 
 ### `ask_quiz_question`
-- **Klasse**: `AskQuizQuestionTool`
-- **Beschreibung**: Präsentiert eine Multiple-Choice-Quizfrage formatiert als Markdown.
-- **Parameter**: `id` (string), `topic` (string), `options` (array)
-- **Wichtig**: Es müssen immer die Felder `id`, `topic` und `options` aus den Quelldaten der Frage weitergegeben werden.
+- **Class**: `AskQuizQuestionTool`
+- **Description**: Presents a multiple-choice quiz question formatted as Markdown.
+- **Parameters**: `id` (string), `topic` (string), `options` (array)
+- **Important**: The fields `id`, `topic`, and `options` must always be passed from the source data of the question.
 
 ### `add_quiz_question`
-- **Klasse**: `AddQuizQuestionTool`
-- **Beschreibung**: Fügt eine neue Quizfrage nach ausdrücklicher Benutzerbestätigung in den Datenspeicher ein.
-- **Parameter**: `topic`, `question`, `options`, `answer`, `explanation`, `explanationUrl` (optional), `userId`
+- **Class**: `AddQuizQuestionTool`
+- **Description**: Inserts a new quiz question into the data store after explicit user confirmation.
+- **Parameters**: `topic`, `question`, `options`, `answer`, `explanation`, `explanationUrl` (optional), `userId`
 
 ### `get_quiz_topics`
-- **Klasse**: `GetQuizTopicsTool`
-- **Beschreibung**: Gibt alle verfügbaren Quizthemen zurück.
-- **Parameter**: keine
+- **Class**: `GetQuizTopicsTool`
+- **Description**: Returns all available quiz topics.
+- **Parameters**: none
 
 ### `update_quiz_score`
-- **Klasse**: `QuizTools` (Score-Update)
-- **Beschreibung**: Aktualisiert den Punktestand eines Benutzers. Darf **nur** bei korrekter Antwort aufgerufen werden.
-- **Parameter**: `channelId`, `userName`, `topic` (optional)
+- **Class**: `QuizTools` (score update)
+- **Description**: Updates a user's score. Must **only** be called for a correct answer.
+- **Parameters**: `channelId`, `userName`, `topic` (optional)
 
 ### `get_quiz_leaderboard`
-- **Klasse**: `QuizTools` (Leaderboard)
-- **Beschreibung**: Gibt die aktuelle Rangliste des Quiz zurück.
-- **Parameter**: `channelId`
+- **Class**: `QuizTools` (leaderboard)
+- **Description**: Returns the current quiz leaderboard.
+- **Parameters**: `channelId`
 
 ### `subscribe_quiz` / `unsubscribe_quiz`
-- **Klasse**: `QuizTools`
-- **Beschreibung**: Verwaltet stündliche Quiz-Abonnements für einen Kanal.
-- **Parameter**: `channelId`, `userName`
+- **Class**: `QuizTools`
+- **Description**: Manages hourly quiz subscriptions for a channel.
+- **Parameters**: `channelId`, `userName`
 
 ### `ask_multiple_choice`
-- **Klasse**: `AskMultipleChoiceTool`
-- **Beschreibung**: Stellt eine generische Multiple-Choice-Frage (z. B. Lieblingsfarbe). Wird vom `HelloWorldAgent` verwendet.
-- **Parameter**: `question`, `options` (array)
+- **Class**: `AskMultipleChoiceTool`
+- **Description**: Asks a generic multiple-choice question (e.g. favorite color). Used by the `HelloWorldAgent`.
+- **Parameters**: `question`, `options` (array)
 
 ---
 
-## PMO- / Prozessmanagement-Tools
+## PMO / Process Management Tools
 
 ### `create_process`
-- **Klasse**: `CreateProcessTool`
-- **Beschreibung**: Erstellt eine neue BPMN-Prozessdefinition als `.bpmn`-Datei. Validiert das XML vor dem Speichern automatisch.
-- **Parameter**: `processId` (string, eindeutig), `bpmnXml` (string, vollständiges BPMN 2.0 XML)
-- **Wichtig**: Jeder Knoten, jedes Gateway und jeder Übergang **muss eine eindeutige ID** tragen.
+- **Class**: `CreateProcessTool`
+- **Description**: Creates a new BPMN process definition as a `.bpmn` file. Automatically validates the XML before saving.
+- **Parameters**: `processId` (string, unique), `bpmnXml` (string, complete BPMN 2.0 XML)
+- **Important**: Every node, gateway, and transition **must have a unique ID**.
 
 ### `update_process`
-- **Klasse**: `UpdateProcessTool`
-- **Beschreibung**: Aktualisiert eine bestehende BPMN-Prozessdefinition.
-- **Parameter**: `processId`, `bpmnXml`
+- **Class**: `UpdateProcessTool`
+- **Description**: Updates an existing BPMN process definition.
+- **Parameters**: `processId`, `bpmnXml`
 
 ### `check_bpmn`
-- **Klasse**: `CheckBpmnTool`
-- **Beschreibung**: Prüft, ob ein BPMN-XML-String wohlgeformt und parsebar ist. Sollte **vor dem Speichern** mittels `create_process` oder `update_process` verwendet werden.
-- **Parameter**: `bpmnXml`
+- **Class**: `CheckBpmnTool`
+- **Description**: Checks whether a BPMN XML string is well-formed and parseable. Should be used **before saving** via `create_process` or `update_process`.
+- **Parameters**: `bpmnXml`
 
 ### `start_project`
-- **Klasse**: `StartProjectTool`
-- **Beschreibung**: Startet eine neue Projektinstanz auf Basis eines existierenden BPMN-Prozesses. Erstellt Projektverzeichnis, `info.md`, `status.json` und trägt das Projekt in `active_projects.json` ein.
-- **Parameter**: `projectId`, `title`, `typeId`, `info`, `initialStepId`, `environmentName`, `parentId` (optional)
+- **Class**: `StartProjectTool`
+- **Description**: Starts a new project instance based on an existing BPMN process. Creates the project directory, `info.md`, `status.json`, and registers the project in `active_projects.json`.
+- **Parameters**: `projectId`, `title`, `typeId`, `info`, `initialStepId`, `environmentName`, `parentId` (optional)
 
 ### `list_projects`
-- **Klasse**: `ListProjectsTool`
-- **Beschreibung**: Listet alle aktiven Projekte mit Hierarchie, Typ, aktuellem BPMN-Schritt und Statuslink auf.
-- **Parameter**: keine
+- **Class**: `ListProjectsTool`
+- **Description**: Lists all active projects with hierarchy, type, current BPMN step, and status link.
+- **Parameters**: none
 
 ### `get_open_work`
-- **Klasse**: `GetOpenWorkTool`
-- **Beschreibung**: Analysiert alle aktiven Projekte und extrahiert strukturierte, handlungsfähige Aufgaben. Zeigt erwartete Rolle und Zustand basierend auf dem BPMN-Fluss.
-- **Parameter**: keine
+- **Class**: `GetOpenWorkTool`
+- **Description**: Analyzes all active projects and extracts structured, actionable tasks. Shows expected role and state based on the BPMN flow.
+- **Parameters**: none
 
 ### `upsert_role`
-- **Klasse**: `UpsertRoleTool`
-- **Beschreibung**: Erstellt oder aktualisiert eine KI-Agentenrolle (Name + System-Prompt). Rollen-IDs müssen mit den im BPMN verwendeten IDs übereinstimmen.
-- **Parameter**: `roleId`, `name`, `systemPrompt`
+- **Class**: `UpsertRoleTool`
+- **Description**: Creates or updates an AI agent role (name + system prompt). Role IDs must match those used in the BPMN.
+- **Parameters**: `roleId`, `name`, `systemPrompt`
 
 ### `get_roles`
-- **Klasse**: `GetRolesTool`
-- **Beschreibung**: Gibt alle aktuell definierten KI-Rollen und deren Beschreibungen zurück.
-- **Parameter**: keine
+- **Class**: `GetRolesTool`
+- **Description**: Returns all currently defined AI roles and their descriptions.
+- **Parameters**: none
 
 ### `get_environments`
-- **Klasse**: `GetEnvironmentsTool`
-- **Beschreibung**: Listet alle konfigurierten Umgebungen auf, die für Projekte genutzt werden können (z. B. lokale Verzeichnisse mit Name, Typ und Pfad).
-- **Parameter**: keine
+- **Class**: `GetEnvironmentsTool`
+- **Description**: Lists all configured environments available for projects (e.g. local directories with name, type, and path).
+- **Parameters**: none
 
 ---
 
-## Konnektor-Tools (EmployeeAgent)
+## Connector Tools (EmployeeAgent)
 
-Diese Tools sind **nur nach einem erfolgreichen `checkout_project`** nutzbar. Alle Pfade sind auf das Verzeichnis der ausgecheckten Projektumgebung beschränkt. Sie befinden sich im Unterordner `/Tools/Connector`.
+These tools are **only available after a successful `checkout_project`**. All paths are confined to the checked-out project environment's directory. They are located in the `/Tools/Connector` subfolder.
 
 ### `checkout_project`
-- **Beschreibung**: Checkt ein laufendes Projekt anhand seiner ID aus und bindet den Umgebungs-Konnektor daran. Voraussetzung für alle Dateisystem- und Shell-Tools.
-- **Parameter**: `projectId` (string)
-- **Implementiert in**: `EmployeeAgent.HandleCheckoutProjectAsync` (kein eigenes Tool-File)
+- **Description**: Checks out a running project by its ID and binds the environment connector to it. Required before any filesystem or shell tools.
+- **Parameters**: `projectId` (string)
+- **Implemented in**: `EmployeeAgent.HandleCheckoutProjectAsync` (no separate tool file)
 
 ### `complete_task`
-- **Beschreibung**: Markiert die aktuelle Aufgabe im ausgecheckten Projekt als abgeschlossen und aktualisiert den Status.
-- **Parameter**: `nextStepId` (optional, string) – ID des nächsten BPMN-Schritts
-- **Implementiert in**: `EmployeeAgent.HandleCompleteTaskAsync` (kein eigenes Tool-File)
+- **Description**: Marks the current task in the checked-out project as completed and updates the status.
+- **Parameters**: `nextStepId` (optional, string) – ID of the next BPMN step
+- **Implemented in**: `EmployeeAgent.HandleCompleteTaskAsync` (no separate tool file)
 
 ### `request_ceo_help`
-- **Beschreibung**: Stoppt die Arbeit und eskaliert eine Frage/ein Problem an den menschlichen CEO.
-- **Parameter**: `message` (string)
-- **Implementiert in**: `EmployeeAgent.HandleRequestCeoHelp` (kein eigenes Tool-File)
+- **Description**: Stops work and escalates a question/issue to the human CEO.
+- **Parameters**: `message` (string)
+- **Implemented in**: `EmployeeAgent.HandleRequestCeoHelp` (no separate tool file)
 
 ### `read_file`
-- **Klasse**: `ReadFileTool` (`/Tools/Connector/ReadFileTool.cs`)
-- **Beschreibung**: Liest den Inhalt einer Datei anhand eines relativen Pfades.
-- **Parameter**: `relativePath`
+- **Class**: `ReadFileTool` (`/Tools/Connector/ReadFileTool.cs`)
+- **Description**: Reads the contents of a file using a relative path.
+- **Parameters**: `relativePath`
 
 ### `write_file`
-- **Klasse**: `WriteFileTool` (`/Tools/Connector/WriteFileTool.cs`)
-- **Beschreibung**: Schreibt Inhalt in eine Datei (erstellt oder überschreibt).
-- **Parameter**: `relativePath`, `content`
+- **Class**: `WriteFileTool` (`/Tools/Connector/WriteFileTool.cs`)
+- **Description**: Writes content to a file (creates or overwrites).
+- **Parameters**: `relativePath`, `content`
 
 ### `delete_file`
-- **Klasse**: `DeleteFileTool` (`/Tools/Connector/DeleteFileTool.cs`)
-- **Beschreibung**: Löscht eine Datei aus dem Projektverzeichnis.
-- **Parameter**: `relativePath`
+- **Class**: `DeleteFileTool` (`/Tools/Connector/DeleteFileTool.cs`)
+- **Description**: Deletes a file from the project directory.
+- **Parameters**: `relativePath`
 
 ### `list_dir`
-- **Klasse**: `ListDirTool` (`/Tools/Connector/ListDirTool.cs`)
-- **Beschreibung**: Listet den Inhalt eines Verzeichnisses auf.
-- **Parameter**: `relativePath`
+- **Class**: `ListDirTool` (`/Tools/Connector/ListDirTool.cs`)
+- **Description**: Lists the contents of a directory.
+- **Parameters**: `relativePath`
 
 ### `mkdir`
-- **Klasse**: `MkDirTool` (`/Tools/Connector/MkDirTool.cs`)
-- **Beschreibung**: Erstellt ein neues Verzeichnis im Projekt.
-- **Parameter**: `relativePath`
+- **Class**: `MkDirTool` (`/Tools/Connector/MkDirTool.cs`)
+- **Description**: Creates a new directory in the project.
+- **Parameters**: `relativePath`
 
 ### `git`
-- **Klasse**: `GitTool` (`/Tools/Connector/GitTool.cs`)
-- **Beschreibung**: Führt einen Git-Befehl im Projektverzeichnis aus. Das Wort `git` darf **nicht** in den Argumenten enthalten sein.
-- **Parameter**: `arguments`
+- **Class**: `GitTool` (`/Tools/Connector/GitTool.cs`)
+- **Description**: Executes a git command in the project directory. The word `git` must **not** be included in the arguments.
+- **Parameters**: `arguments`
 
 ### `dotnet`
-- **Klasse**: `DotnetTool` (`/Tools/Connector/DotnetTool.cs`)
-- **Beschreibung**: Führt einen .NET CLI-Befehl im Projektverzeichnis aus. Das Wort `dotnet` darf **nicht** in den Argumenten enthalten sein.
-- **Parameter**: `arguments`
+- **Class**: `DotnetTool` (`/Tools/Connector/DotnetTool.cs`)
+- **Description**: Executes a .NET CLI command in the project directory. The word `dotnet` must **not** be included in the arguments.
+- **Parameters**: `arguments`

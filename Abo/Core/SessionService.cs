@@ -22,14 +22,24 @@ public class SessionService
         lock (history)
         {
             history.Add(message);
-            
+
             // Keep history lean
             if (history.Count > MaxHistoryMessages)
             {
-                // Remove oldest messages, but try to keep the system prompt if we were storing it here.
-                // However, our Orchestrator adds the system prompt fresh every time.
-                // So we just trim the oldest ones.
-                history.RemoveRange(0, history.Count - MaxHistoryMessages);
+                int excess = history.Count - MaxHistoryMessages;
+                int removeCount = excess;
+
+                // Advance removeCount to the next 'user' message to ensure we do not break tool chains
+                // Anthropic API will throw an error if a tool_result does not have a corresponding tool_calls block
+                while (removeCount < history.Count && history[removeCount].Role != "user")
+                {
+                    removeCount++;
+                }
+
+                if (removeCount < history.Count)
+                {
+                    history.RemoveRange(0, removeCount);
+                }
             }
         }
     }

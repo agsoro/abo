@@ -1,99 +1,99 @@
-# Agent-Übersicht
+# Agent Overview
 
-ABO unterstützt eine spezialisierte Multi-Agenten-Architektur. Anstatt eines einzigen monolithischen Bots koordiniert ein **Supervisor** spezialisierte Agenten.
+ABO supports a specialized multi-agent architecture. Instead of a single monolithic bot, a **Supervisor** coordinates specialized agents.
 
 ## Agent Supervisor
 
-Der `AgentSupervisor` ist der Einstiegspunkt für alle Benutzerinteraktionen. Er analysiert mithilfe des LLM die Absicht des Benutzers und wählt anhand von `Name` und `Description` den geeignetsten Agenten aus.
+The `AgentSupervisor` is the entry point for all user interactions. It uses the LLM to analyze the user's intent and selects the most appropriate agent based on each agent's `Name` and `Description`.
 
-## Registrierte Agenten
+## Registered Agents
 
-Agenten in ABO sind spezialisierte Rollen mit spezifischen Anweisungen, Tools und Einschränkungen. Alle Agenten implementieren das Interface `IAgent`.
+Agents in ABO are specialized roles with specific instructions, tools, and constraints. All agents implement the `IAgent` interface.
 
 ---
 
 ### HelloWorldAgent
-- **Klasse**: `Abo.Agents.HelloWorldAgent`
-- **Beschreibung**: Ein einfacher Assistent für allgemeine Begrüßungen, Zeitabfragen und grundlegende Tests.
-- **Fähiges Modell erforderlich**: Nein (`RequiresCapableModel = false`)
-- **Tools**: 
-  - `get_system_time` – Gibt die aktuelle Systemzeit aus.
-  - `ask_multiple_choice` – Stellt Multiple-Choice-Fragen zu persönlichen Präferenzen (z. B. Lieblingsfarbe).
-- **Verwendung**: Wird ausgewählt, wenn der Benutzer die Uhrzeit fragt oder allgemeine Begrüßungen äußert.
-- **Hinweis**: Dieser Agent ist **kein** Quiz-Agent. Falls Quiz-Anfragen fälschlicherweise hier ankommen, werden diese nicht bearbeitet.
+- **Class**: `Abo.Agents.HelloWorldAgent`
+- **Description**: A simple assistant for general greetings, time queries, and basic tests.
+- **Requires Capable Model**: No (`RequiresCapableModel = false`)
+- **Tools**:
+  - `get_system_time` – Returns the current system time.
+  - `ask_multiple_choice` – Asks multiple-choice questions about personal preferences (e.g. favorite color).
+- **Usage**: Selected when the user asks for the time or makes general greetings.
+- **Note**: This agent is **not** a quiz agent. If quiz requests mistakenly arrive here, they will not be handled.
 
 ---
 
 ### QuizAgent
-- **Klasse**: `Abo.Agents.QuizAgent`
-- **Beschreibung**: Ein spezialisierter Agent für Tech- und Nerd-Trivia, Abonnements und Ranglisten.
-- **Fähiges Modell erforderlich**: Nein (`RequiresCapableModel = false`)
+- **Class**: `Abo.Agents.QuizAgent`
+- **Description**: A specialized agent for tech and nerd trivia, subscriptions, and leaderboards.
+- **Requires Capable Model**: No (`RequiresCapableModel = false`)
 - **Tools**:
-  - `get_random_question` – Ruft eine zufällige Quizfrage aus dem Datenspeicher ab (optional nach Thema gefiltert).
-  - `ask_quiz_question` – Präsentiert eine Frage dem Benutzer (formatiertes Markdown mit `id`, `topic` und `options`).
-  - `add_quiz_question` – Fügt eine neue Quizfrage nach ausdrücklicher Benutzerbestätigung hinzu.
-  - `get_quiz_topics` – Gibt alle verfügbaren Themengebiete zurück.
-  - `update_quiz_score` – Aktualisiert den Punktestand **nur bei korrekter Antwort**.
-  - `get_quiz_leaderboard` – Zeigt die aktuelle Rangliste an.
-  - `subscribe_quiz` / `unsubscribe_quiz` – Verwaltet stündliche Quiz-Abonnements für einen Kanal.
-  - `get_system_time` – Gibt die aktuelle Systemzeit aus.
-- **Regeln**:
-  - Punkte werden **ausschließlich bei richtigen Antworten** vergeben. `update_quiz_score` darf niemals für eine falsche Antwort aufgerufen werden.
-  - Für jede Antwort ist eine verständliche Erklärung **Pflicht** (inkl. Link falls `explanationUrl` vorhanden).
-  - Neue Fragen werden **nur nach expliziter Benutzerbestätigung** gespeichert (kein automatisches Speichern).
-  - Es gibt kein `check_quiz_answer`-Tool – die Antwortauswertung erfolgt durch das Modell selbst anhand des Gesprächsverlaufs.
-  - Beim Aufruf von `add_quiz_question` muss die **Mattermost User ID** aus dem `[CONTEXT]` als `userId` übergeben werden.
-  - Für alle Tools müssen **Channel ID** und **User Name** aus dem `[CONTEXT]` verwendet werden.
+  - `get_random_question` – Retrieves a random quiz question from the data store (optionally filtered by topic).
+  - `ask_quiz_question` – Presents a question to the user (formatted Markdown with `id`, `topic`, and `options`).
+  - `add_quiz_question` – Adds a new quiz question after explicit user confirmation.
+  - `get_quiz_topics` – Returns all available topic areas.
+  - `update_quiz_score` – Updates the score **only for a correct answer**.
+  - `get_quiz_leaderboard` – Displays the current leaderboard.
+  - `subscribe_quiz` / `unsubscribe_quiz` – Manages hourly quiz subscriptions for a channel.
+  - `get_system_time` – Returns the current system time.
+- **Rules**:
+  - Points are awarded **exclusively for correct answers**. `update_quiz_score` must never be called for a wrong answer.
+  - A comprehensible explanation is **mandatory** for every answer (including a link if `explanationUrl` is available).
+  - New questions are **only saved after explicit user confirmation** (no automatic saving).
+  - There is no `check_quiz_answer` tool – answer evaluation is done by the model itself based on the conversation history.
+  - When calling `add_quiz_question`, the **Mattermost User ID** from the `[CONTEXT]` must be passed as `userId`.
+  - **Channel ID** and **User Name** from the `[CONTEXT]` must be used for all tools.
 
 ---
 
 ### PmoAgent (Project Management Office)
-- **Klasse**: `Abo.Agents.PmoAgent`
-- **Beschreibung**: Der PMO-Lead-Agent. Verantwortlich für das Entwerfen von BPMN-Prozessen, das Instanziieren von Projekten und das Verwalten von Rollen.
-- **Fähiges Modell erforderlich**: Ja (`RequiresCapableModel = true`)
+- **Class**: `Abo.Agents.PmoAgent`
+- **Description**: The PMO Lead agent. Responsible for designing BPMN processes, instantiating projects, and managing roles.
+- **Requires Capable Model**: Yes (`RequiresCapableModel = true`)
 - **Tools**:
-  - `create_process` – Erstellt eine neue BPMN-Prozessdefinition.
-  - `update_process` – Aktualisiert eine bestehende BPMN-Prozessdefinition.
-  - `start_project` – Startet eine neue Projektinstanz basierend auf einem existierenden Prozess.
-  - `list_projects` – Listet alle aktiven Projekte und deren aktuellen Status auf.
-  - `get_open_work` – Zeigt offene Arbeitspakete über alle Projekte hinweg.
-  - `upsert_role` – Erstellt oder aktualisiert eine KI-Agentenrolle mit System-Prompt.
-  - `get_roles` – Listet alle definierten Rollen auf.
-  - `get_system_time` – Gibt die aktuelle Systemzeit aus.
-- **Arbeitsweise**: Folgt dem PDCA-Zyklus (Plan → Do → Check → Act). Entwirft Prozesse, definiert Rollen und gibt die Ausführungsarbeit an den `EmployeeAgent` weiter.
-- **Regeln**:
-  - Jeder Knoten, jedes Gateway und jeder Übergang im BPMN **muss eine eindeutige ID** tragen.
-  - Vor dem Erstellen neuer Rollen immer `get_roles` prüfen.
-  - Der PMO-Agent führt **keine direkte Aufgabenarbeit** aus – er delegiert an instanziierte BPMN-Flows.
-  - Benutzer können Prozesse im Web-UI unter `/processes/index.html` visualisieren.
+  - `create_process` – Creates a new BPMN process definition.
+  - `update_process` – Updates an existing BPMN process definition.
+  - `start_project` – Starts a new project instance based on an existing process.
+  - `list_projects` – Lists all active projects and their current status.
+  - `get_open_work` – Shows open work items across all projects.
+  - `upsert_role` – Creates or updates an AI agent role with a system prompt.
+  - `get_roles` – Lists all defined roles.
+  - `get_system_time` – Returns the current system time.
+- **Approach**: Follows the PDCA cycle (Plan → Do → Check → Act). Designs processes, defines roles, and delegates execution work to the `EmployeeAgent`.
+- **Rules**:
+  - Every node, gateway, and transition in the BPMN **must have a unique ID**.
+  - Always check `get_roles` before creating new roles.
+  - The PMO agent does **not** perform direct task work – it delegates to instantiated BPMN flows.
+  - Users can visualize processes in the Web UI at `/processes/index.html`.
 
 ---
 
 ### EmployeeAgent
-- **Klasse**: `Abo.Agents.EmployeeAgent`
-- **Beschreibung**: Der generische Mitarbeiter-Agent. Übernimmt konkrete Aufgaben aus laufenden Projekten und führt sie eigenständig aus.
-- **Fähiges Modell erforderlich**: Ja (`RequiresCapableModel = true`)
-- **Lebenszyklus-Tools**:
-  - `checkout_project` – Bindet einen sicheren Konnektor an eine Projektumgebung (muss vor Dateisystem-/Shell-Tools aufgerufen werden).
-  - `complete_task` – Markiert die aktuelle Aufgabe als abgeschlossen und rückt den BPMN-Schritt vor. Optionaler Parameter: `nextStepId`.
-  - `request_ceo_help` – Eskaliert ein Problem an den menschlichen CEO.
-- **Globale Informations-Tools**: `list_projects`, `get_open_work`, `get_system_time`, `get_roles`, `get_environments`
-- **Konnektor-Tools** (nur nach `checkout_project` nutzbar):
-  - `read_file` – Datei lesen.
-  - `write_file` – Datei schreiben/erstellen.
-  - `delete_file` – Datei löschen.
-  - `list_dir` – Verzeichnisinhalt anzeigen.
-  - `mkdir` – Neues Verzeichnis erstellen.
-  - `git` – Git-Befehle ausführen (ohne das Wort `git`).
-  - `dotnet` – .NET CLI-Befehle ausführen (ohne das Wort `dotnet`).
-- **Sicherheit**: Alle Dateisystem- und Shell-Operationen sind auf das Verzeichnis der ausgecheckten Projektumgebung beschränkt. Pfade außerhalb sind nicht erreichbar.
+- **Class**: `Abo.Agents.EmployeeAgent`
+- **Description**: The generic worker agent. Takes on concrete tasks from running projects and executes them autonomously.
+- **Requires Capable Model**: Yes (`RequiresCapableModel = true`)
+- **Lifecycle Tools**:
+  - `checkout_project` – Binds a secure connector to a project environment (must be called before filesystem/shell tools).
+  - `complete_task` – Marks the current task as completed and advances the BPMN step. Optional parameter: `nextStepId`.
+  - `request_ceo_help` – Escalates an issue to the human CEO.
+- **Global Information Tools**: `list_projects`, `get_open_work`, `get_system_time`, `get_roles`, `get_environments`
+- **Connector Tools** (only available after `checkout_project`):
+  - `read_file` – Read a file.
+  - `write_file` – Write/create a file.
+  - `delete_file` – Delete a file.
+  - `list_dir` – List directory contents.
+  - `mkdir` – Create a new directory.
+  - `git` – Execute git commands (without the word `git`).
+  - `dotnet` – Execute .NET CLI commands (without the word `dotnet`).
+- **Security**: All filesystem and shell operations are confined to the checked-out project environment's directory. Paths outside are not accessible.
 - **Workflow**:
-  1. `list_projects` oder `get_open_work` aufrufen, um offene Arbeit zu finden.
-  2. `checkout_project` mit der `projectId` aufrufen.
-  3. Projektrolle und Aufgabe aus `info.md` oder BPMN lesen.
-  4. Arbeit mit Konnektor-Tools ausführen.
-  5. `complete_task` aufrufen (ggf. mit `nextStepId`).
+  1. Call `list_projects` or `get_open_work` to find open work.
+  2. Call `checkout_project` with the `projectId`.
+  3. Read the project role and task from `info.md` or BPMN.
+  4. Perform work using connector tools.
+  5. Call `complete_task` (optionally with `nextStepId`).
 
-## Implementierung
+## Implementation
 
-Alle Agenten implementieren das Interface `IAgent` (`Abo.Agents.IAgent`) und werden als transiente Services in `Program.cs` registriert. Der `AgentSupervisor` wählt dynamisch den passenden Agenten per LLM-gestützter Intentionsanalyse anhand von `Name` und `Description` jedes Agenten aus.
+All agents implement the `IAgent` interface (`Abo.Agents.IAgent`) and are registered as transient services in `Program.cs`. The `AgentSupervisor` dynamically selects the appropriate agent via LLM-based intent analysis using the `Name` and `Description` of each agent.

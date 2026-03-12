@@ -70,7 +70,6 @@ public class ListProjectsTool : IAboTool
         {
             output.AppendLine($"{indent}  - Environment: `{project.EnvironmentName}`");
         }
-        output.AppendLine($"{indent}  - Status: [Link]({project.StatusLink})");
 
         var children = allProjects.Where(p => p.ParentId == project.Id).ToList();
         foreach (var child in children)
@@ -87,6 +86,5 @@ public class ListProjectsTool : IAboTool
         public string? ParentId { get; set; }
         public string CurrentStepId { get; set; } = string.Empty;
         public string EnvironmentName { get; set; } = string.Empty;
-        public string StatusLink { get; set; } = string.Empty;
     }
 }

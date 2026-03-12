@@ -10,6 +10,7 @@ public class QuizAgent : IAgent
     public string Name => "QuizAgent";
     public string Description => "A specialized agent for tech/nerdy trivia, subscriptions, and leaderboards. Use this when the user asks for a question, refers to the quiz, subscriptions, or rankings.";
     public bool RequiresCapableModel => false;
+    public bool RequiresReviewModel => false;
 
     public QuizAgent(IEnumerable<IAboTool> tools)
     {

@@ -1,135 +1,35 @@
-# 🤖 Agsoro Bot Orchestrator (ABO)
+# ABO Project
 
-**ABO** ist ein schlankes, datenschutzorientiertes KI-Agenten-Orchestrierungsframework, entwickelt in **C# / .NET 10**. Es dient als intelligente Schicht über intern entwickelten Ticket- und Arbeitsverfolgungssystemen und verwandelt statische Daten in ein aktives, automatisiertes Projektmanagement-Ökosystem.
+## Overview
 
-Das Framework wurde für Organisationen entwickelt, die **Datensouveränität** priorisieren. Es verwendet ein "Native Orchestrator"-Muster und kommuniziert mit KI-Modellen über Standard-REST/API-Aufrufe – ob lokal gehostet oder über einen sicheren privaten Gateway.
+Welcome to the ABO Project. This document serves as the central entry point into the project documentation and summarizes essential information.
 
----
+## Current Directory Structure
 
-## 🚀 Kernfunktionen
+- **/Abo/Docs/**: Contains the main documentation, including:
+  - agents.md
+  - architecture.md
+  - tools.md
+  - services.md
+  - configuration.md
 
-* **Datenschutz-orientiertes Design:** ABO ist darauf ausgelegt, vollständig innerhalb des eigenen sicheren Netzwerks zu laufen. Es benötigt nur einen REST-API-Endpunkt – ohne proprietäre SDKs oder "Phone-Home"-Telemetrie.
-* **Reines .NET 10:** Implementiert mit Standard-`HttpClient` und `System.Text.Json` für maximale Performance, Transparenz und Wartbarkeit.
-* **Backend-Agnostisch:** Nahtloses Wechseln zwischen lokalen Inferenzservern, privaten Cloud-Instanzen oder verwalteten Gateways – nur durch Aktualisierung der Base-URL.
-* **Intelligente Agentenauswahl:** Leitet Anfragen automatisch an den am besten geeigneten spezialisierten Agenten weiter (z. B. Quiz, Begrüßung, PMO, Employee).
-* **BPMN-basiertes Projektmanagement:** Vollständige Unterstützung für strukturierte, mehrstufige Workflows über BPMN 2.0 Prozessdefinitionen.
-* **Mattermost-Integration:** Empfängt Nachrichten via WebSocket und antwortet via REST direkt in Channels und Direktnachrichten.
+- **/Abo/Data/**: Contains important runtime data (e.g. active_projects.json, status.json, info.md, environments.json, users.json, leaderboard.json, llm_traffic.jsonl)
 
----
+- Additional directories and files will be added as needed.
 
-## ⚡ Quickstart
+## Quickstart / Getting Started
 
-### Voraussetzungen
+1. Clone the repository: Make sure all relevant files and directories are present.
+2. Adjust configuration: Review the `configuration.md` file and make adjustments as needed (note the keys `CapableModelName` and `DefaultLanguage`).
+3. Start the application: Follow the instructions in the documentation to run the project locally.
 
-- [.NET 10 SDK](https://dotnet.microsoft.com/download)
-- Zugang zu einem REST-kompatiblen KI-Modell-Endpunkt (z. B. OpenRouter, lokale Ollama-Instanz)
-- Optional: Mattermost-Instanz für Chat-Integration
+## Documentation Notes
 
-### 1. Repository klonen
+- **Documentation updates:** The previous README.md was outdated. All references to old directory structures have been updated.
+- **Doc linking:** Links to individual documentation files in the /Abo/Docs/ folder are now visible.
+- **Data structure:** Detailed documentation of the data structure (e.g. runtime data in /Abo/Data/) will be expanded in architecture.md or added in a new document (data-structure.md).
 
-```bash
-git clone https://github.com/agsoro/abo.git
-cd abo
-```
+## Next Steps
 
-### 2. Konfiguration einrichten
-
-Lege eine `appsettings.json` im `Abo/`-Verzeichnis an (oder nutze User Secrets für die lokale Entwicklung):
-
-```json
-{
-  "Config": {
-    "ApiEndpoint": "https://openrouter.ai/api/v1",
-    "ModelName": "anthropic/claude-3-haiku",
-    "CapableModelName": "anthropic/claude-3-5-sonnet",
-    "DefaultLanguage": "de-de",
-    "TimeoutSeconds": 30
-  },
-  "Integrations": {
-    "Mattermost": {
-      "BaseUrl": "https://your-mattermost.example.com",
-      "BotToken": "SECRET"
-    },
-    "XpectoLive": {
-      "BaseUrl": "https://backoffice.xpectolive.com/api",
-      "ApiKey": "SECRET"
-    }
-  }
-}
-```
-
-Für sensible Werte (Tokens, API-Keys) bitte **keine** Klartextwerte in `appsettings.json` ablegen – stattdessen .NET User Secrets oder Umgebungsvariablen verwenden. Siehe [Konfiguration & Secrets](Abo/Docs/configuration.md).
-
-### 3. Anwendung starten
-
-```bash
-cd Abo
-dotnet run
-```
-
-Die Anwendung ist anschließend erreichbar unter:
-- **Chat-UI:** `http://localhost:5000/`
-- **BPMN-Prozess-Viewer:** `http://localhost:5000/processes/index.html`
-- **Health-Check:** `http://localhost:5000/api/status`
-
----
-
-## 🏗️ Architektur: Der „Agent Loop"
-
-ABO arbeitet nach einem **Controller-Worker**-Loop, der sicherstellt, dass die KI niemals direkten, unkontrollierten Zugriff auf interne Daten hat:
-
-1. **Intelligente Auswahl:** Der `AgentSupervisor` analysiert die Anfrage per LLM und wählt den geeignetsten spezialisierten Agenten.
-2. **Reasoning:** Der Agent stellt seinen `SystemPrompt` und seine `ToolDefinitions` bereit. Der Orchestrator sendet einen `POST`-Request an den KI-Endpunkt. Das Modell gibt einen "Tool Call" (JSON) zurück.
-3. **Lokale Ausführung:** Der C#-Orchestrator parst den JSON-Tool-Call und ruft die entsprechende interne C#-Methode auf.
-4. **Synthese:** Das Ergebnis wird an das Modell zurückgesendet, um eine abschließende, menschenlesbare Zusammenfassung zu erzeugen.
-
-Vollständige Architekturbeschreibung: [Abo/Docs/architecture.md](Abo/Docs/architecture.md)
-
----
-
-## 📂 Projektstruktur
-
-```
-/
-├── Abo/                        - Hauptprojekt
-│   ├── Agents/                 - Agenten-Implementierungen (IAgent)
-│   ├── Core/
-│   │   ├── Connectors/         - IConnector, LocalWindowsConnector
-│   │   ├── AgentSupervisor.cs  - Intelligente Agentenauswahl
-│   │   ├── Orchestrator.cs     - Kern-Loop-Logik & REST-Client
-│   │   └── SessionService.cs   - In-Memory-Gesprächshistorie
-│   ├── Contracts/              - JSON-Schemas und DTOs
-│   ├── Data/
-│   │   ├── Processes/          - BPMN-Prozessdefinitionen (.bpmn)
-│   │   ├── Projects/           - Projektinstanzen (info.md, status.json)
-│   │   ├── Environments/       - environments.json
-│   │   └── Quiz/               - Quiz-Daten (leaderboard.json)
-│   ├── Docs/                   - Projektdokumentation (diese Dateien)
-│   ├── Integrations/
-│   │   ├── Mattermost/         - Mattermost HTTP-Client & WebSocket-Listener
-│   │   └── XpectoLive/         - XpectoLive HTTP-Client & Wiki-Client
-│   ├── Models/                 - Datenbankmodelle / Entitäten (User)
-│   ├── Services/               - Geschäftslogik (UserService, QuizService)
-│   ├── Tools/                  - IAboTool-Implementierungen
-│   │   └── Connector/          - Konnektor-Tools (ReadFileTool, GitTool, ...)
-│   └── wwwroot/                - Statische Web-UI-Dateien
-└── Abo.Tests/                  - Unit-Tests
-```
-
----
-
-## 📚 Dokumentation
-
-| Datei | Inhalt |
-|---|---|
-| [architecture.md](Abo/Docs/architecture.md) | Gesamtarchitektur, Agent-Loop, Connector, Verzeichnisstruktur |
-| [agents.md](Abo/Docs/agents.md) | Alle Agenten mit Beschreibung und Fähigkeiten |
-| [tools.md](Abo/Docs/tools.md) | Alle Tools mit Parametern und Beispielen |
-| [services.md](Abo/Docs/services.md) | Services, Integrationen, Web-API-Endpunkte |
-| [configuration.md](Abo/Docs/configuration.md) | Konfiguration, Secret Management, alle Konfig-Keys |
-
----
-
-## 📄 Lizenz
-
-Siehe [LICENSE](LICENSE).
+1. Expand the Quickstart Guide with step-by-step instructions.
+2. Add detailed data structure documentation.

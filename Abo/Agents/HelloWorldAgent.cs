@@ -11,6 +11,7 @@ public class HelloWorldAgent : IAgent
     public string Name => "HelloWorldAgent";
     public string Description => "A basic assistant that can tell the time (get_system_time) and ask about personal preferences like colors (ask_multiple_choice). Use this for general greetings and time queries.";
     public bool RequiresCapableModel => false;
+    public bool RequiresReviewModel => false;
 
     public HelloWorldAgent(IEnumerable<IAboTool> tools)
     {

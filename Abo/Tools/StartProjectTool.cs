@@ -92,7 +92,8 @@ public class StartProjectTool : IAboTool
                 ProjectId = args.ProjectId,
                 CurrentStepId = args.InitialStepId,
                 Status = "Active",
-                LastUpdated = DateTime.UtcNow
+                LastUpdated = DateTime.UtcNow,
+                History = new()
             };
             var statePath = Path.Combine(projectFolder, "status.json");
             await File.WriteAllTextAsync(statePath, JsonSerializer.Serialize(state, new JsonSerializerOptions { WriteIndented = true }));
@@ -112,8 +113,7 @@ public class StartProjectTool : IAboTool
                 TypeId = args.TypeId,
                 ParentId = args.ParentId,
                 CurrentStepId = args.InitialStepId,
-                EnvironmentName = args.EnvironmentName,
-                StatusLink = $"/api/projects/{args.ProjectId}/status"
+                EnvironmentName = args.EnvironmentName
             });
 
             await File.WriteAllTextAsync(_activeProjectsFile, JsonSerializer.Serialize(activeProjects, new JsonSerializerOptions { WriteIndented = true }));
@@ -143,6 +143,14 @@ public class StartProjectTool : IAboTool
         public string CurrentStepId { get; set; } = string.Empty;
         public string Status { get; set; } = string.Empty;
         public DateTime LastUpdated { get; set; }
+        public List<ProcessStepHistory> History { get; set; } = new();
+    }
+
+    private class ProcessStepHistory
+    {
+        public string StepId { get; set; } = string.Empty;
+        public DateTime CompletedAt { get; set; }
+        public string? ResultNotes { get; set; }
     }
 
     private class ActiveProjectRecord
@@ -153,6 +161,5 @@ public class StartProjectTool : IAboTool
         public string? ParentId { get; set; }
         public string CurrentStepId { get; set; } = string.Empty;
         public string EnvironmentName { get; set; } = string.Empty;
-        public string StatusLink { get; set; } = string.Empty;
     }
 }

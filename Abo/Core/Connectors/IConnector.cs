@@ -9,4 +9,5 @@ public interface IConnector
     Task<string> MkDirAsync(string relativePath);
     Task<string> RunGitAsync(string arguments);
     Task<string> RunDotnetAsync(string arguments);
+    Task<string> SearchRegexAsync(string relativePath, string pattern, int limitLinesPerFile);
 }

@@ -13,12 +13,12 @@ public class MattermostListenerService : BackgroundService
     private readonly IServiceProvider _serviceProvider;
     private readonly ILogger<MattermostListenerService> _logger;
     private readonly MattermostOptions _options;
-    
+
     private string? _botUserId;
 
     public MattermostListenerService(
-        IServiceProvider serviceProvider, 
-        IOptions<MattermostOptions> options, 
+        IServiceProvider serviceProvider,
+        IOptions<MattermostOptions> options,
         ILogger<MattermostListenerService> logger)
     {
         _serviceProvider = serviceProvider;
@@ -58,7 +58,7 @@ public class MattermostListenerService : BackgroundService
                 while (ws.State == WebSocketState.Open && !stoppingToken.IsCancellationRequested)
                 {
                     var result = await ws.ReceiveAsync(new ArraySegment<byte>(buffer), stoppingToken);
-                    
+
                     if (result.MessageType == WebSocketMessageType.Close)
                     {
                         _logger.LogWarning("Mattermost WebSocket closed by server.");
@@ -71,7 +71,7 @@ public class MattermostListenerService : BackgroundService
                     {
                         var json = sb.ToString();
                         sb.Clear();
-                        
+
                         // Fire and forget processing to avoid blocking the listen loop
                         _ = Task.Run(() => HandleMessageAsync(json, stoppingToken), stoppingToken);
                     }
@@ -93,7 +93,7 @@ public class MattermostListenerService : BackgroundService
 
             var wsEvent = JsonSerializer.Deserialize<MattermostWebSocketEvent>(json);
             _logger.LogInformation($"Event received: {wsEvent?.Event}");
-            
+
             // Capture Bot User ID from hello or status events if we haven't yet
             if (string.IsNullOrEmpty(_botUserId) && wsEvent?.Event == "hello" && wsEvent.Broadcast?.UserId != null)
             {
@@ -120,7 +120,7 @@ public class MattermostListenerService : BackgroundService
             }
 
             var post = JsonSerializer.Deserialize<MattermostPost>(wsEvent.Data.PostJson);
-            if (post == null || string.IsNullOrWhiteSpace(post.Message)) 
+            if (post == null || string.IsNullOrWhiteSpace(post.Message))
             {
                 _logger.LogWarning("Post deserialized to null or empty message.");
                 return;
@@ -141,7 +141,7 @@ public class MattermostListenerService : BackgroundService
 
             // Spawning a background scope so we can use Scoped/Transient DI services
             using var scope = _serviceProvider.CreateScope();
-            
+
             // Re-resolve transient Orchestrator and Agent
             var orchestrator = scope.ServiceProvider.GetRequiredService<Orchestrator>();
             var supervisor = scope.ServiceProvider.GetRequiredService<AgentSupervisor>();
@@ -161,13 +161,16 @@ public class MattermostListenerService : BackgroundService
 
             _logger.LogInformation($"Invoking Orchestrator with {agent.Name} on received message...");
 
+            // Determine the thread ID to stay in the thread of the chat
+            var threadId = !string.IsNullOrEmpty(post.RootId) ? post.RootId : post.Id;
+
             // Send "typing..." indicator every 5 seconds while the agent is processing
             using var typingCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             var typingTask = Task.Run(async () =>
             {
                 while (!typingCts.Token.IsCancellationRequested)
                 {
-                    await mattermostClient.SendTypingAsync(post.ChannelId, post.RootId);
+                    await mattermostClient.SendTypingAsync(post.ChannelId, threadId);
                     try { await Task.Delay(TimeSpan.FromSeconds(5), typingCts.Token); }
                     catch (OperationCanceledException) { break; }
                 }
@@ -178,11 +181,11 @@ public class MattermostListenerService : BackgroundService
             // Stop typing indicator now that the answer is ready
             await typingCts.CancelAsync();
             await typingTask.ConfigureAwait(false);
-            
+
             _logger.LogInformation("Orchestrator produced reply, sending to Mattermost...");
-            
-            // Reply: Only use rootId if it already exists (don't force new threads in DMs)
-            await mattermostClient.SendMessageAsync(post.ChannelId, result, post.RootId);
+
+            // Reply in the same thread
+            await mattermostClient.SendMessageAsync(post.ChannelId, result, threadId);
 
         }
         catch (JsonException)

@@ -10,6 +10,7 @@ public class PmoAgent : IAgent
     public string Name => "PmoAgent";
     public string Description => "The Project Management Office (PMO) Lead Agent. Responsible for designing processes (BPMN), updating them, instantiating new project directories based on them, and listing active projects. Handles creating processes and tracking the life cycle of running projects.";
     public bool RequiresCapableModel => true;
+    public bool RequiresReviewModel => false;
 
     public PmoAgent(IEnumerable<IAboTool> tools)
     {
