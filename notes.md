@@ -1,110 +1,23 @@
-# Ergebnis: Dokumentationsbedarf analysieren (Step_AnalyzeDocNeeds)
-
-**Rolle**: Role_Tech_Lead  
-**Datum**: 2025  
-**Projekt**: Dokumentations-Update: Abo-Projekt (#1001)
-
----
+# QA Test Report — Feature ABO-0003 (LLM Call Viewer – Webinterface-Ansicht)
+- **Date**: 2026-03-12
+- **Tester**: Role_QA_Agent
+- **Environment**: abo (local / Code Review)
+- **Total Test Cases**: 3 (Code Review, Endpoint Verification, Frontend Check)
+- **Passed**: 2 | **Failed**: 0 | **Blocked**: 1 (Automatisierter Test geblockt durch laufende exe & fehlende Tests)
+- **Coverage**: N/A (Keine Unit-Tests vorhanden für diesen Integrationsteil)
+- **Open Bugs**: Keine kritischen Bugs im Code.
+- **Sign-Off Status**: ⚠️ CONDITIONAL
 
 ## Zusammenfassung
+Der Feature-Branch `feature/abo-0003-llm-call-viewer` fügt den neuen Endpoint `GET /api/llm-traffic` hinzu und stellt unter `/llm-traffic/index.html` ein Polling-basiertes Web-Dashboard für LLM-Logs bereit.
 
-Der Quellcode und die bestehende Dokumentation des ABO-Projekts wurden vollständig analysiert. Die vorhandene Dokumentation ist bereits gut strukturiert, weist jedoch einige Lücken und Verbesserungspotenziale auf. Nachfolgend sind alle Befunde detailliert aufgeführt.
+### Positiv:
+- Der Endpoint liest fehlerfrei aus `Data/llm_traffic.jsonl`, handhabt fehlerhaft kodierte Zeilen mittels `try-catch` robust und sortiert die Einträge absteigend nach Aktualität (Reverse-Take).
+- Das Frontend liest standardisiert und bietet Dark-Mode Unterstützung sowie nützliche Filtermöglichkeiten (Typ, Session). Zudem wurde die Navigation in der `index.html` sinnvoll erweitert.
 
----
+### Kritik & Auflagen (Conditional Sign-Off):
+1. **Performance Bottleneck bei großen Dateien**: In `Abo/Program.cs` verwendet der Endpoint `File.ReadAllLinesAsync(logPath)`. Dies liest die *gesamte* Log-Datei in den Arbeitsspeicher. Wenn `llm_traffic.jsonl` auf mehrere hunderte Megabyte anwächst, wird der Server unter Druck geraten. **Empfehlung Code-Improvement**: Für große Files sollte die Datei rückwärts zeilenweise gelesen werden (z.B. Streams). Es tritt momentan kein Fehler auf, muss aber für zukünftige Optimierungen notiert werden.
+2. **Keine Automatisierte Testabdeckung**: Keine Tests für den neuen `/api/llm-traffic` Endpoint vorhanden.
+3. **Dokumentation veraltet**: In `Abo/Docs/services.md` und ggf. `Abo/Docs/architecture.md` fehlt die Beschreibung des neu hinzugefügten Endpoints `GET /api/llm-traffic`.
 
-## Bestand: Vorhandene Dokumentation
-
-Im Ordner `/Abo/Docs/` existieren folgende Dateien:
-
-| Datei | Inhalt | Qualität |
-|---|---|---|
-| `agents.md` | Beschreibung aller Agenten (HelloWorld, Quiz, PMO, Employee) | ✅ Vollständig, sehr gut |
-| `architecture.md` | Gesamtarchitektur, Agent-Loop, Connector, API-Endpunkte | ✅ Vollständig, sehr gut |
-| `tools.md` | Alle Tools mit Parametern und Beschreibungen | ✅ Vollständig, sehr gut |
-| `services.md` | Services, Integrationen, Web-API-Endpunkte | ✅ Vollständig, sehr gut |
-| `configuration.md` | Konfiguration, Secret Management | ⚠️ Auf Englisch (Inkonsistenz), inhaltlich gut |
-| `wiki_schemas.json` | Wiki-API-Schemas | Datendatei, keine Dokumentation nötig |
-| `xpectolive-swagger.json` | Swagger-Spezifikation | Datendatei, keine Dokumentation nötig |
-
----
-
-## Identifizierte Dokumentationslücken
-
-### 🔴 FEHLEND – Kritisch
-
-1. **`README.md` im Projektstamm ist veraltet**  
-   - Verweist auf alte Verzeichnisstruktur (`/agents`, `/tools`, `/core`, `/contracts`)  
-   - Tatsächliche Struktur weicht ab (z.B. `/Integrations`, `/Services`, `/Models`, `/Data`)  
-   - Kein Hinweis auf die BPMN/PMO-Funktionalität, nur allgemeine Bot-Beschreibung  
-   - **Maßnahme**: README.md aktualisieren mit korrekter Verzeichnisstruktur und Beschreibung aller Features
-
-2. **`/Abo/Docs/` fehlt im README.md**  
-   - Die Docs-Verzeichnisstruktur und die Verlinkung zu den einzelnen Docs fehlen im Stamm-README  
-   - **Maßnahme**: Links zu allen Docs-Dateien in README.md aufnehmen
-
-3. **Kein Quickstart / Getting-Started-Guide**  
-   - Es gibt keine Schritt-für-Schritt-Anleitung, wie man ABO lokal aufsetzt und startet  
-   - `configuration.md` erklärt Konfiguration, aber nicht den vollständigen Ablauf (Clone → Config → Run)  
-   - **Maßnahme**: Quickstart-Sektion in README.md oder eigene `getting-started.md` erstellen
-
-4. **`/Abo/Data/`-Struktur undokumentiert**  
-   - Die Laufzeitdaten (Prozesse, Projekte, Environments, Quiz, Users) sind nirgends beschrieben  
-   - Kein Hinweis auf `active_projects.json`, `status.json`, `info.md`, `environments.json`, `users.json`, `leaderboard.json`  
-   - **Maßnahme**: Neue Datei `data-structure.md` erstellen ODER Sektion in `architecture.md` ergänzen
-
-### 🟡 VERBESSERUNGSBEDARF – Mittel
-
-5. **`configuration.md` ist auf Englisch**  
-   - Alle anderen Docs-Dateien sind auf Deutsch, `configuration.md` ist auf Englisch  
-   - **Maßnahme**: `configuration.md` ins Deutsche übersetzen (Konsistenz)
-
-6. **`CapableModelName`-Konfiguration fehlt in `configuration.md`**  
-   - Im Orchestrator (`Orchestrator.cs`) wird `Config:CapableModelName` für Agenten mit `RequiresCapableModel = true` (PmoAgent, EmployeeAgent) verwendet  
-   - Dieser Konfigurationsschlüssel ist in `configuration.md` nicht dokumentiert  
-   - **Maßnahme**: `CapableModelName` in `configuration.md` ergänzen
-
-7. **`Config:DefaultLanguage`-Konfiguration fehlt**  
-   - Der Orchestrator nutzt `Config:DefaultLanguage`, dieser Schlüssel ist nirgends dokumentiert  
-   - **Maßnahme**: `DefaultLanguage` in `configuration.md` ergänzen
-
-8. **LLM-Traffic-Log (`llm_traffic.jsonl`) undokumentiert**  
-   - Der Orchestrator schreibt alle API-Anfragen/Antworten in `Data/llm_traffic.jsonl`  
-   - Dieses Debugging-Feature ist nirgendwo erwähnt  
-   - **Maßnahme**: In `architecture.md` oder `configuration.md` als Debugging-Hinweis ergänzen
-
-9. **`InteractRequest`-Schema in `services.md` leicht veraltet**  
-   - Das JSON-Request-Beispiel in `services.md` zeigt `userId` als optional, stimmt aber mit `Program.cs` überein – OK  
-   - Kein Hinweis darauf, dass die Bot-User-ID durch den `MattermostListenerService` automatisch herausgefiltert wird  
-   - **Maßnahme**: Kleiner Hinweis in `services.md`
-
-### 🟢 GUT – Keine Änderung nötig
-
-- `agents.md`: Vollständig, aktuell, korrekt  
-- `architecture.md`: Sehr detailliert, deckt alle Kernkomponenten ab  
-- `tools.md`: Umfassend, alle Tools mit Parametern dokumentiert  
-- `services.md`: Detailliert mit allen API-Endpunkten und Response-Schemas  
-
----
-
-## Empfohlene Maßnahmen (Priorisiert)
-
-| Prio | Maßnahme | Datei | Aufwand |
-|---|---|---|---|
-| 1 | README.md aktualisieren (Struktur, Features, Links zu Docs) | `README.md` | Mittel |
-| 2 | Quickstart-Guide hinzufügen | `README.md` oder neu: `getting-started.md` | Mittel |
-| 3 | Data-Struktur dokumentieren | `architecture.md` erweitern oder `data-structure.md` neu | Klein |
-| 4 | `configuration.md` ins Deutsche übersetzen + `CapableModelName` + `DefaultLanguage` ergänzen | `configuration.md` | Klein |
-| 5 | LLM-Traffic-Log als Debugging-Feature erwähnen | `architecture.md` oder `configuration.md` | Sehr klein |
-
----
-
-## Technischer Kontext für den nächsten Schritt
-
-- **Projektstamm**: `C:\src\agsoro\abo`
-- **Docs-Verzeichnis**: `Abo/Docs/`
-- **Schlüsseldateien**: `README.md`, `Abo/Docs/configuration.md`, `Abo/Docs/architecture.md`
-- **Quellcode-Referenzen**:
-  - `Orchestrator.cs`: nutzt `Config:CapableModelName` und `Config:DefaultLanguage`
-  - `Program.cs`: vollständige DI-Registrierung aller Tools/Agents/Services
-  - `AgentSupervisor.cs`: Auswahllogik mit Fallback auf HelloWorldAgent
-- **Sprache der Docs**: Deutsch (außer `configuration.md` – muss angeglichen werden)
+Empfehlung an den nächsten Schritt: Die API-Dokumentation muss vor dem endgültigen Abschluss zwingend aktualisiert werden. Der Code an sich ist funktional in Ordnung, deshalb wird die QA-Phase "Bedingt" freigegeben.
