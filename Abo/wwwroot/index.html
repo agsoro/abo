@@ -51,6 +51,7 @@
             display: flex;
             align-items: center;
             gap: 0.75rem;
+            flex-wrap: wrap;
         }
 
         .header-nav a {
@@ -61,6 +62,7 @@
             border-radius: 0.25rem;
             border: 1px solid var(--border-color);
             transition: all 0.2s;
+            white-space: nowrap;
         }
 
         .header-nav a:hover {
@@ -215,6 +217,8 @@
         <nav class="header-nav">
             <a href="/" class="active">💬 Chat</a>
             <a href="/processes/">⚙️ Prozesse</a>
+            <a href="/agents/">🤖 Agents</a>
+            <a href="/open-work/">📋 Offene Arbeit</a>
             <a href="/llm-traffic/">📊 LLM Traffic</a>
             <a href="/llm-stats/">📈 LLM Stats</a>
         </nav>

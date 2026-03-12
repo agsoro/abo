@@ -99,6 +99,17 @@ app.MapGet("/api/processes/{id}", async (string id) =>
     return Results.Text(xml, "application/xml");
 });
 
+// API: Projects – list all active projects
+app.MapGet("/api/projects", async () =>
+{
+    var projectsPath = Path.Combine(AppContext.BaseDirectory, "Data", "Projects", "active_projects.json");
+    if (!File.Exists(projectsPath)) return Results.Ok(new List<object>());
+
+    var json = await File.ReadAllTextAsync(projectsPath);
+    var projects = JsonSerializer.Deserialize<JsonElement>(json);
+    return Results.Ok(projects);
+});
+
 // API: Projects – fetch the status of a specific project by ID
 app.MapGet("/api/projects/{id}/status", async (string id) =>
 {
@@ -113,15 +124,61 @@ app.MapGet("/api/projects/{id}/status", async (string id) =>
     return Results.Ok(status);
 });
 
-// API: Projects – list all active projects
-app.MapGet("/api/projects", async () =>
+// API: Active Sessions – list currently active agent sessions
+app.MapGet("/api/sessions", (SessionService sessionService) =>
+{
+    var sessions = sessionService.GetActiveSessions();
+    return Results.Ok(sessions);
+});
+
+// API: Open Work – list all projects with their current step and open tasks
+app.MapGet("/api/open-work", async () =>
 {
     var projectsPath = Path.Combine(AppContext.BaseDirectory, "Data", "Projects", "active_projects.json");
     if (!File.Exists(projectsPath)) return Results.Ok(new List<object>());
 
     var json = await File.ReadAllTextAsync(projectsPath);
-    var projects = JsonSerializer.Deserialize<JsonElement>(json);
-    return Results.Ok(projects);
+    var projectsElement = JsonSerializer.Deserialize<JsonElement>(json);
+
+    var result = new List<object>();
+
+    foreach (var project in projectsElement.EnumerateArray())
+    {
+        var projectId = project.GetProperty("Id").GetString() ?? "";
+        var title = project.GetProperty("Title").GetString() ?? "";
+        var typeId = project.TryGetProperty("TypeId", out var t) ? t.GetString() ?? "" : "";
+        var currentStepId = project.TryGetProperty("CurrentStepId", out var cs) ? cs.GetString() ?? "" : "";
+        var status = project.TryGetProperty("Status", out var s) ? s.GetString() ?? "" : "";
+        var environmentName = project.TryGetProperty("EnvironmentName", out var e) ? e.GetString() ?? "" : "";
+
+        // Read LastUpdated from project status file
+        string? lastUpdated = null;
+        var statusPath = Path.Combine(AppContext.BaseDirectory, "Data", "Projects", projectId, "status.json");
+        if (File.Exists(statusPath))
+        {
+            try
+            {
+                var statusJson = await File.ReadAllTextAsync(statusPath);
+                var statusEl = JsonSerializer.Deserialize<JsonElement>(statusJson);
+                if (statusEl.TryGetProperty("LastUpdated", out var lu))
+                    lastUpdated = lu.GetString();
+            }
+            catch { /* ignore */ }
+        }
+
+        result.Add(new
+        {
+            ProjectId = projectId,
+            Title = title,
+            TypeId = typeId,
+            CurrentStepId = currentStepId,
+            Status = status,
+            EnvironmentName = environmentName,
+            LastUpdated = lastUpdated
+        });
+    }
+
+    return Results.Ok(result);
 });
 
 // API: LLM Traffic – fetch LLM call/response log entries

@@ -9,15 +9,18 @@ namespace Abo.Core;
 public class SessionService
 {
     private readonly ConcurrentDictionary<string, List<ChatMessage>> _history = new();
+    private readonly ConcurrentDictionary<string, DateTime> _lastActivity = new();
     private const int MaxHistoryMessages = 20;
 
     public List<ChatMessage> GetHistory(string sessionId)
     {
+        _lastActivity[sessionId] = DateTime.UtcNow;
         return _history.GetOrAdd(sessionId, _ => new List<ChatMessage>());
     }
 
     public void AddMessage(string sessionId, ChatMessage message)
     {
+        _lastActivity[sessionId] = DateTime.UtcNow;
         var history = GetHistory(sessionId);
         lock (history)
         {
@@ -47,5 +50,45 @@ public class SessionService
     public void ClearHistory(string sessionId)
     {
         _history.TryRemove(sessionId, out _);
+        _lastActivity.TryRemove(sessionId, out _);
     }
+
+    /// <summary>
+    /// Returns a list of currently active sessions with their message counts and last activity timestamps.
+    /// Sessions with no activity in the last 24 hours are considered inactive.
+    /// </summary>
+    public List<SessionInfo> GetActiveSessions()
+    {
+        var cutoff = DateTime.UtcNow.AddHours(-24);
+        var result = new List<SessionInfo>();
+
+        foreach (var kvp in _history)
+        {
+            var sessionId = kvp.Key;
+            _lastActivity.TryGetValue(sessionId, out var lastActive);
+
+            if (lastActive < cutoff) continue;
+
+            var messageCount = kvp.Value.Count;
+            var lastRole = kvp.Value.LastOrDefault()?.Role ?? "—";
+
+            result.Add(new SessionInfo
+            {
+                SessionId = sessionId,
+                MessageCount = messageCount,
+                LastActivity = lastActive,
+                LastRole = lastRole
+            });
+        }
+
+        return result.OrderByDescending(s => s.LastActivity).ToList();
+    }
+}
+
+public class SessionInfo
+{
+    public string SessionId { get; set; } = string.Empty;
+    public int MessageCount { get; set; }
+    public DateTime LastActivity { get; set; }
+    public string LastRole { get; set; } = string.Empty;
 }
