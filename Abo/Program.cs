@@ -144,10 +144,15 @@ app.MapPost("/api/interact", async ([FromBody] InteractRequest req, Orchestrator
             }
         }, typingCts.Token);
 
-        response = await orchestrator.RunAgentLoopAsync(agent, req.Message, sessionId, req.UserName, userId);
-
-        await typingCts.CancelAsync();
-        await typingTask.ConfigureAwait(false);
+        try
+        {
+            response = await orchestrator.RunAgentLoopAsync(agent, req.Message, sessionId, req.UserName, userId);
+        }
+        finally
+        {
+            await typingCts.CancelAsync();
+            await typingTask.ConfigureAwait(false);
+        }
     }
     else
     {
