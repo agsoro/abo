@@ -170,6 +170,17 @@ public class EmployeeAgent : IAgent
 
             // We need a local class for deserialization
             var projects = JsonSerializer.Deserialize<List<ProjectRecord>>(activeProjectsJson, jsOptions);
+
+            // Migration: ensure all entries have a Status
+            if (projects != null)
+            {
+                foreach (var p in projects)
+                {
+                    if (string.IsNullOrWhiteSpace(p.Status))
+                        p.Status = "running";
+                }
+            }
+
             var project = projects?.FirstOrDefault(p => p.Id == projectId);
 
             if (project == null) return $"Error: Project '{projectId}' not found in active projects.";
@@ -301,6 +312,17 @@ public class EmployeeAgent : IAgent
             {
                 var activeProjectsJson = await File.ReadAllTextAsync(activeProjectsFile);
                 projects = JsonSerializer.Deserialize<List<ProjectRecord>>(activeProjectsJson, jsOptions);
+
+                // Migration: ensure all entries have a Status
+                if (projects != null)
+                {
+                    foreach (var p in projects)
+                    {
+                        if (string.IsNullOrWhiteSpace(p.Status))
+                            p.Status = "running";
+                    }
+                }
+
                 proj = projects?.FirstOrDefault(p => p.Id == _currentProjectId);
             }
 
@@ -404,6 +426,7 @@ public class EmployeeAgent : IAgent
                 else
                 {
                     proj.CurrentStepId = nextStepId;
+                    proj.Status = "running";
                 }
                 await File.WriteAllTextAsync(activeProjectsFile, JsonSerializer.Serialize(projects, jsOptions));
             }
@@ -451,6 +474,7 @@ public class EmployeeAgent : IAgent
         public string? ParentId { get; set; }
         public string CurrentStepId { get; set; } = string.Empty;
         public string EnvironmentName { get; set; } = string.Empty;
+        public string Status { get; set; } = "running";
     }
 
     private class ProcessState

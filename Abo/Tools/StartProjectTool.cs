@@ -104,6 +104,12 @@ public class StartProjectTool : IAboTool
             {
                 var existingJson = await File.ReadAllTextAsync(_activeProjectsFile);
                 activeProjects = JsonSerializer.Deserialize<List<ActiveProjectRecord>>(existingJson, jsOptions) ?? new();
+                // Migration: ensure existing entries have a Status
+                foreach (var p in activeProjects)
+                {
+                    if (string.IsNullOrWhiteSpace(p.Status))
+                        p.Status = "running";
+                }
             }
 
             activeProjects.Add(new ActiveProjectRecord
@@ -113,7 +119,8 @@ public class StartProjectTool : IAboTool
                 TypeId = args.TypeId,
                 ParentId = args.ParentId,
                 CurrentStepId = args.InitialStepId,
-                EnvironmentName = args.EnvironmentName
+                EnvironmentName = args.EnvironmentName,
+                Status = "running"
             });
 
             await File.WriteAllTextAsync(_activeProjectsFile, JsonSerializer.Serialize(activeProjects, new JsonSerializerOptions { WriteIndented = true }));
@@ -161,5 +168,6 @@ public class StartProjectTool : IAboTool
         public string? ParentId { get; set; }
         public string CurrentStepId { get; set; } = string.Empty;
         public string EnvironmentName { get; set; } = string.Empty;
+        public string Status { get; set; } = "running";
     }
 }

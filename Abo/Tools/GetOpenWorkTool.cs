@@ -46,6 +46,13 @@ public class GetOpenWorkTool : IAboTool
                 return "No open project work found.";
             }
 
+            // Migration: ensure all entries have a Status
+            foreach (var p in activeProjects)
+            {
+                if (string.IsNullOrWhiteSpace(p.Status))
+                    p.Status = "running";
+            }
+
             var output = new System.Text.StringBuilder();
             output.AppendLine("# Open Work Items\n");
 
@@ -98,6 +105,7 @@ public class GetOpenWorkTool : IAboTool
 
                 output.AppendLine($"### Project: {project.Title} (ID: `{project.Id}`)");
                 output.AppendLine($"- **Environment**: `{project.EnvironmentName}`");
+                output.AppendLine($"- **Project Status**: `{project.Status}`");
                 output.AppendLine($"- **Current Step**: {nodeName} (`{project.CurrentStepId}`)");
                 output.AppendLine($"- **BPMN Node Type**: `{nodeType}`");
                 output.AppendLine($"- **State**: {status}");
@@ -119,5 +127,6 @@ public class GetOpenWorkTool : IAboTool
         public string TypeId { get; set; } = string.Empty;
         public string CurrentStepId { get; set; } = string.Empty;
         public string EnvironmentName { get; set; } = string.Empty;
+        public string Status { get; set; } = "running";
     }
 }

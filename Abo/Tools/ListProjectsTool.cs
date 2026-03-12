@@ -42,6 +42,13 @@ public class ListProjectsTool : IAboTool
                 return "No active projects found.";
             }
 
+            // Migration: ensure all entries have a Status
+            foreach (var p in activeProjects)
+            {
+                if (string.IsNullOrWhiteSpace(p.Status))
+                    p.Status = "running";
+            }
+
             var output = new System.Text.StringBuilder();
             output.AppendLine("# Active Projects Hierarchy");
 
@@ -66,6 +73,7 @@ public class ListProjectsTool : IAboTool
         output.AppendLine($"{indent}- **[{project.Id}] {project.Title}**");
         output.AppendLine($"{indent}  - Type: `{project.TypeId}`");
         output.AppendLine($"{indent}  - Step: `{project.CurrentStepId}`");
+        output.AppendLine($"{indent}  - Status: `{project.Status}`");
         if (!string.IsNullOrWhiteSpace(project.EnvironmentName))
         {
             output.AppendLine($"{indent}  - Environment: `{project.EnvironmentName}`");
@@ -86,5 +94,6 @@ public class ListProjectsTool : IAboTool
         public string? ParentId { get; set; }
         public string CurrentStepId { get; set; } = string.Empty;
         public string EnvironmentName { get; set; } = string.Empty;
+        public string Status { get; set; } = "running";
     }
 }
