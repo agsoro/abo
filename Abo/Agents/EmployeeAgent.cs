@@ -293,6 +293,30 @@ public class EmployeeAgent : IAgent
         return null; // Max hops exceeded
     }
 
+    /// <summary>
+    /// Determines whether a given stepId represents a terminal/end state in the BPMN process.
+    /// This covers:
+    ///   1. The stepId is an actual endEvent node in the BPMN XML.
+    ///   2. The stepId does not exist in the BPMN at all (orphaned/legacy step IDs like "Event_End").
+    ///      These must be treated as completed because no further workflow exists.
+    /// </summary>
+    private static bool IsEndState(XDocument xdoc, string stepId)
+    {
+        var node = xdoc.Descendants().FirstOrDefault(e => e.Attribute("id")?.Value == stepId);
+
+        // Case 1: Node is explicitly an endEvent
+        if (node != null && node.Name.LocalName == "endEvent")
+            return true;
+
+        // Case 2: Node does not exist in the BPMN at all (orphaned step ID)
+        // This handles legacy/misspelled IDs like "Event_End" that were committed to
+        // active_projects.json but never existed in the actual BPMN definition.
+        if (node == null)
+            return true;
+
+        return false;
+    }
+
     private async Task<string> HandleCompleteTaskAsync(string argsJson)
     {
         if (string.IsNullOrEmpty(_currentProjectId)) return "Error: No checked-out project to complete.";
@@ -328,50 +352,47 @@ public class EmployeeAgent : IAgent
 
             if (proj == null) return "Error: Could not locate active project record.";
 
-            // If nextStepId is not provided, dynamically resolve it from the BPMN definition
-            // using the enhanced resolver that skips gateways automatically
-            if (string.IsNullOrWhiteSpace(nextStepId))
-            {
-                var bpmnFile = Path.Combine(_dataDir, "Processes", $"{proj.TypeId}.bpmn");
-                if (File.Exists(bpmnFile))
-                {
-                    try
-                    {
-                        var xml = await File.ReadAllTextAsync(bpmnFile);
-                        var xdoc = XDocument.Parse(xml);
-
-                        var resolved = ResolveNextActionableStep(xdoc, proj.CurrentStepId);
-
-                        if (resolved == "GATEWAY_REQUIRES_DECISION")
-                        {
-                            return "Error: The current step leads to a decision gateway with multiple paths. You MUST provide the 'nextStepId' parameter to indicate which path the process should take.";
-                        }
-
-                        nextStepId = resolved;
-                    }
-                    catch
-                    {
-                        // Ignore XML parse errors and fall back to manual supply / stuck state
-                    }
-                }
-            }
-
-            // Check if nextStepId is an endEvent (either provided or resolved)
-            bool reachedEndEvent = false;
-            var bpmnFileCheck = Path.Combine(_dataDir, "Processes", $"{proj.TypeId}.bpmn");
-            if (File.Exists(bpmnFileCheck) && !string.IsNullOrWhiteSpace(nextStepId))
+            // Load the BPMN document once for all subsequent checks
+            XDocument? bpmnXdoc = null;
+            var bpmnFile = Path.Combine(_dataDir, "Processes", $"{proj.TypeId}.bpmn");
+            if (File.Exists(bpmnFile))
             {
                 try
                 {
-                    var xml = await File.ReadAllTextAsync(bpmnFileCheck);
-                    var xdoc = XDocument.Parse(xml);
-                    var targetNode = xdoc.Descendants().FirstOrDefault(e => e.Attribute("id")?.Value == nextStepId);
-                    if (targetNode != null && targetNode.Name.LocalName == "endEvent")
-                    {
-                        reachedEndEvent = true;
-                    }
+                    var xml = await File.ReadAllTextAsync(bpmnFile);
+                    bpmnXdoc = XDocument.Parse(xml);
                 }
-                catch { }
+                catch { /* Ignore XML parse errors */ }
+            }
+
+            // If nextStepId is not provided, dynamically resolve it from the BPMN definition
+            // using the enhanced resolver that skips gateways automatically
+            if (string.IsNullOrWhiteSpace(nextStepId) && bpmnXdoc != null)
+            {
+                var resolved = ResolveNextActionableStep(bpmnXdoc, proj.CurrentStepId);
+
+                if (resolved == "GATEWAY_REQUIRES_DECISION")
+                {
+                    return "Error: The current step leads to a decision gateway with multiple paths. You MUST provide the 'nextStepId' parameter to indicate which path the process should take.";
+                }
+
+                nextStepId = resolved;
+            }
+
+            // Determine if the project has reached an end state.
+            // An end state is reached when:
+            //   a) nextStepId is null/empty (no further steps found in BPMN)
+            //   b) nextStepId points to an actual endEvent node in the BPMN
+            //   c) nextStepId references a node that does NOT exist in the BPMN
+            //      (e.g. legacy IDs like "Event_End" that were erroneously stored in active_projects.json)
+            bool reachedEndEvent = false;
+            if (string.IsNullOrWhiteSpace(nextStepId))
+            {
+                reachedEndEvent = true;
+            }
+            else if (bpmnXdoc != null)
+            {
+                reachedEndEvent = IsEndState(bpmnXdoc, nextStepId);
             }
 
             var projectDir = Path.Combine(_dataDir, "Projects", _currentProjectId);
@@ -407,7 +428,7 @@ public class EmployeeAgent : IAgent
                         ResultNotes = resultNotes
                     });
 
-                    state.Status = (string.IsNullOrWhiteSpace(nextStepId) || reachedEndEvent) ? "Completed" : "Active";
+                    state.Status = reachedEndEvent ? "Completed" : "Active";
                     if (!string.IsNullOrWhiteSpace(nextStepId)) state.CurrentStepId = nextStepId;
                     state.LastUpdated = DateTime.UtcNow;
 
@@ -418,14 +439,14 @@ public class EmployeeAgent : IAgent
             // Update active_projects.json
             if (projects != null && proj != null)
             {
-                if (reachedEndEvent || string.IsNullOrWhiteSpace(nextStepId))
+                if (reachedEndEvent)
                 {
                     // Project is done: remove from active list
                     projects.Remove(proj);
                 }
                 else
                 {
-                    proj.CurrentStepId = nextStepId;
+                    proj.CurrentStepId = nextStepId!;
                     proj.Status = "running";
                 }
                 await File.WriteAllTextAsync(activeProjectsFile, JsonSerializer.Serialize(projects, jsOptions));
@@ -436,7 +457,7 @@ public class EmployeeAgent : IAgent
             _currentConnector = null;
             _connectorTools.Clear();
 
-            if (reachedEndEvent || string.IsNullOrWhiteSpace(nextStepId))
+            if (reachedEndEvent)
             {
                 return $"Success. Task completed for project '{oldProj}'. You have been un-bound from it. The project has reached an endEvent and is now fully completed and will be removed from the active projects list. Please explicitly inform the CEO about the successful completion and closure of the project in your next message.";
             }

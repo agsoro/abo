@@ -53,6 +53,48 @@ public class GetOpenWorkTool : IAboTool
                     p.Status = "running";
             }
 
+            // Migration: remove projects whose CurrentStepId points to a non-existent or end-event
+            // node in their BPMN definition. This cleans up orphaned projects that were stuck
+            // at IDs like "Event_End" which never existed in the BPMN.
+            var toRemove = new List<ActiveProjectRecord>();
+            foreach (var p in activeProjects)
+            {
+                var bpmnFile = Path.Combine(_processesDirectory, $"{p.TypeId}.bpmn");
+                if (File.Exists(bpmnFile))
+                {
+                    try
+                    {
+                        var xml = await File.ReadAllTextAsync(bpmnFile);
+                        var xdoc = XDocument.Parse(xml);
+                        var node = xdoc.Descendants().FirstOrDefault(e => e.Attribute("id")?.Value == p.CurrentStepId);
+
+                        // Flag for removal if: node doesn't exist in BPMN OR node is an endEvent
+                        if (node == null || node.Name.LocalName == "endEvent")
+                        {
+                            toRemove.Add(p);
+                        }
+                    }
+                    catch { /* Ignore BPMN parse errors for this project */ }
+                }
+            }
+
+            bool changed = false;
+            if (toRemove.Any())
+            {
+                foreach (var p in toRemove)
+                    activeProjects.Remove(p);
+
+                // Persist the cleaned-up list
+                await File.WriteAllTextAsync(_activeProjectsFile,
+                    System.Text.Json.JsonSerializer.Serialize(activeProjects, new JsonSerializerOptions { WriteIndented = true }));
+                changed = true;
+            }
+
+            if (!activeProjects.Any())
+            {
+                return "No open project work found." + (changed ? " (Orphaned/completed projects were automatically cleaned up.)" : "");
+            }
+
             var output = new System.Text.StringBuilder();
             output.AppendLine("# Open Work Items\n");
 
