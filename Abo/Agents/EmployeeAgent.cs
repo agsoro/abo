@@ -213,6 +213,75 @@ public class EmployeeAgent : IAgent
         }
     }
 
+    /// <summary>
+    /// Resolves the next actionable task step from a BPMN document.
+    /// Automatically skips over gateways and intermediate events by following
+    /// the single outgoing path (for exclusive gateways without a condition,
+    /// or when only one outgoing flow exists).
+    /// Returns null if the target is an endEvent (project is done),
+    /// or the step ID of the next userTask / serviceTask / scriptTask.
+    /// Returns "GATEWAY_REQUIRES_DECISION" if a gateway has multiple unresolvable paths.
+    /// </summary>
+    private static string? ResolveNextActionableStep(XDocument xdoc, string fromStepId, int maxHops = 10)
+    {
+        var current = fromStepId;
+
+        for (int i = 0; i < maxHops; i++)
+        {
+            var outgoingFlows = xdoc.Descendants()
+                .Where(e => e.Name.LocalName == "sequenceFlow" && e.Attribute("sourceRef")?.Value == current)
+                .ToList();
+
+            if (outgoingFlows.Count == 0)
+                return null; // No outgoing flows → dead end, treat as completed
+
+            if (outgoingFlows.Count > 1)
+            {
+                // Multiple paths: this is a decision gateway that requires explicit nextStepId
+                // Check if the current node itself is an exclusive gateway
+                var currentNode = xdoc.Descendants().FirstOrDefault(e => e.Attribute("id")?.Value == current);
+                if (currentNode != null && currentNode.Name.LocalName == "exclusiveGateway")
+                    return "GATEWAY_REQUIRES_DECISION";
+
+                // If current node is a task with multiple outgoing flows (unusual), also require decision
+                return "GATEWAY_REQUIRES_DECISION";
+            }
+
+            // Exactly one outgoing flow → follow it
+            var targetRef = outgoingFlows.First().Attribute("targetRef")?.Value;
+            if (string.IsNullOrWhiteSpace(targetRef))
+                return null;
+
+            var targetNode = xdoc.Descendants().FirstOrDefault(e => e.Attribute("id")?.Value == targetRef);
+            if (targetNode == null)
+                return null;
+
+            var nodeType = targetNode.Name.LocalName;
+
+            // If it's an endEvent → project is complete
+            if (nodeType == "endEvent")
+                return targetRef; // Return the endEvent ID so caller can detect completion
+
+            // If it's an actionable task → return it
+            if (nodeType == "userTask" || nodeType == "serviceTask" || nodeType == "scriptTask" || nodeType == "task")
+                return targetRef;
+
+            // If it's a gateway or intermediate event with a single outgoing flow → traverse through it
+            if (nodeType == "exclusiveGateway" || nodeType == "parallelGateway" ||
+                nodeType == "inclusiveGateway" || nodeType == "intermediateCatchEvent" ||
+                nodeType == "intermediateThrowEvent")
+            {
+                current = targetRef; // Continue traversal from this gateway
+                continue;
+            }
+
+            // Unknown node type → return it and let the caller handle
+            return targetRef;
+        }
+
+        return null; // Max hops exceeded
+    }
+
     private async Task<string> HandleCompleteTaskAsync(string argsJson)
     {
         if (string.IsNullOrEmpty(_currentProjectId)) return "Error: No checked-out project to complete.";
@@ -238,6 +307,7 @@ public class EmployeeAgent : IAgent
             if (proj == null) return "Error: Could not locate active project record.";
 
             // If nextStepId is not provided, dynamically resolve it from the BPMN definition
+            // using the enhanced resolver that skips gateways automatically
             if (string.IsNullOrWhiteSpace(nextStepId))
             {
                 var bpmnFile = Path.Combine(_dataDir, "Processes", $"{proj.TypeId}.bpmn");
@@ -248,21 +318,14 @@ public class EmployeeAgent : IAgent
                         var xml = await File.ReadAllTextAsync(bpmnFile);
                         var xdoc = XDocument.Parse(xml);
 
-                        // Find all outgoing sequence flows from the current step
-                        var seqFlows = xdoc.Descendants().Where(e => e.Name.LocalName == "sequenceFlow" && e.Attribute("sourceRef")?.Value == proj.CurrentStepId).ToList();
+                        var resolved = ResolveNextActionableStep(xdoc, proj.CurrentStepId);
 
-                        if (seqFlows.Count == 1)
+                        if (resolved == "GATEWAY_REQUIRES_DECISION")
                         {
-                            var targetRef = seqFlows.First().Attribute("targetRef")?.Value;
-                            if (!string.IsNullOrWhiteSpace(targetRef))
-                            {
-                                nextStepId = targetRef;
-                            }
+                            return "Error: The current step leads to a decision gateway with multiple paths. You MUST provide the 'nextStepId' parameter to indicate which path the process should take.";
                         }
-                        else if (seqFlows.Count > 1)
-                        {
-                            return "Error: The current step has multiple outgoing paths (decisions or gateways). You MUST provide the 'nextStepId' parameter to indicate which path the process should take.";
-                        }
+
+                        nextStepId = resolved;
                     }
                     catch
                     {
@@ -335,6 +398,7 @@ public class EmployeeAgent : IAgent
             {
                 if (reachedEndEvent || string.IsNullOrWhiteSpace(nextStepId))
                 {
+                    // Project is done: remove from active list
                     projects.Remove(proj);
                 }
                 else
@@ -354,7 +418,7 @@ public class EmployeeAgent : IAgent
                 return $"Success. Task completed for project '{oldProj}'. You have been un-bound from it. The project has reached an endEvent and is now fully completed and will be removed from the active projects list. Please explicitly inform the CEO about the successful completion and closure of the project in your next message.";
             }
 
-            return $"Success. Task completed for project '{oldProj}'. You have been un-bound from it.";
+            return $"Success. Task completed for project '{oldProj}'. Advanced to next step: '{nextStepId}'. You have been un-bound from it.";
         }
         catch (Exception ex)
         {
