@@ -35,6 +35,8 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
+            flex-wrap: wrap;
+            gap: 0.75rem;
         }
 
         header h1 {
@@ -43,6 +45,27 @@
             display: flex;
             align-items: center;
             gap: 0.5rem;
+        }
+
+        .header-nav {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .header-nav a {
+            color: var(--text-muted);
+            text-decoration: none;
+            font-size: 0.875rem;
+            padding: 0.35rem 0.75rem;
+            border-radius: 0.25rem;
+            border: 1px solid var(--border-color);
+            transition: all 0.2s;
+        }
+
+        .header-nav a:hover {
+            color: var(--text-color);
+            border-color: var(--primary-color);
         }
 
         #status-badge {
@@ -183,6 +206,10 @@
 <body>
     <header>
         <h1>🤖 ABO <span style="font-size: 1rem; color: var(--text-muted); font-weight: normal;">Agsoro Bot Orchestrator</span></h1>
+        <nav class="header-nav">
+            <a href="/processes/">⚙️ Processes</a>
+            <a href="/llm-traffic/">📊 LLM Traffic</a>
+        </nav>
         <div id="status-badge">Checking API Status...</div>
     </header>
 

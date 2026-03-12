@@ -113,6 +113,37 @@ app.MapGet("/api/projects/{id}/status", async (string id) =>
     return Results.Ok(status);
 });
 
+// API: LLM Traffic – fetch LLM call/response log entries
+app.MapGet("/api/llm-traffic", async (HttpContext httpContext) =>
+{
+    var limitParam = httpContext.Request.Query["limit"].FirstOrDefault();
+    var limit = int.TryParse(limitParam, out var parsedLimit) && parsedLimit > 0 ? parsedLimit : 100;
+
+    var logPath = Path.Combine(AppContext.BaseDirectory, "Data", "llm_traffic.jsonl");
+    if (!File.Exists(logPath)) return Results.Ok(new List<object>());
+
+    var lines = await File.ReadAllLinesAsync(logPath);
+
+    var entries = new List<JsonElement>();
+    foreach (var line in lines)
+    {
+        if (string.IsNullOrWhiteSpace(line)) continue;
+        try
+        {
+            var entry = JsonSerializer.Deserialize<JsonElement>(line);
+            entries.Add(entry);
+        }
+        catch
+        {
+            // Skip malformed lines
+        }
+    }
+
+    // Return newest entries first, limited by the limit parameter
+    var result = entries.AsEnumerable().Reverse().Take(limit).ToList();
+    return Results.Ok(result);
+});
+
 // API: Interact – main chat endpoint
 app.MapPost("/api/interact", async ([FromBody] InteractRequest req, Orchestrator orchestrator, AgentSupervisor supervisor, UserService userService, MattermostClient mattermostClient) =>
 {

@@ -1,0 +1,518 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ABO – LLM Traffic Viewer</title>
+    <style>
+        :root {
+            --bg-color: #0f172a;
+            --surface-color: #1e293b;
+            --text-color: #f8fafc;
+            --text-muted: #94a3b8;
+            --primary-color: #3b82f6;
+            --primary-hover: #2563eb;
+            --border-color: #334155;
+            --request-color: #2563eb;
+            --request-bg: #1e3a5f;
+            --response-color: #16a34a;
+            --response-bg: #14532d;
+            --error-color: #dc2626;
+            --error-bg: #450a0a;
+            --tag-radius: 0.25rem;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            margin: 0;
+            padding: 0;
+            min-height: 100vh;
+        }
+
+        header {
+            background-color: var(--surface-color);
+            padding: 1rem 2rem;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 0.75rem;
+        }
+
+        header h1 {
+            margin: 0;
+            font-size: 1.5rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .header-nav {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .header-nav a {
+            color: var(--text-muted);
+            text-decoration: none;
+            font-size: 0.9rem;
+            padding: 0.35rem 0.75rem;
+            border-radius: var(--tag-radius);
+            border: 1px solid var(--border-color);
+            transition: all 0.2s;
+        }
+
+        .header-nav a:hover {
+            color: var(--text-color);
+            border-color: var(--primary-color);
+        }
+
+        #status-indicator {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 0.875rem;
+            color: var(--text-muted);
+        }
+
+        #status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background-color: #94a3b8;
+            transition: background-color 0.3s;
+        }
+
+        #status-dot.live {
+            background-color: #16a34a;
+            box-shadow: 0 0 6px #16a34a;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        main {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 1.5rem 1rem;
+        }
+
+        .toolbar {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.75rem;
+            margin-bottom: 1.25rem;
+            align-items: center;
+        }
+
+        .toolbar label {
+            color: var(--text-muted);
+            font-size: 0.875rem;
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+        }
+
+        .toolbar select,
+        .toolbar input[type="text"],
+        .toolbar input[type="number"] {
+            background-color: var(--surface-color);
+            border: 1px solid var(--border-color);
+            color: var(--text-color);
+            padding: 0.4rem 0.75rem;
+            border-radius: var(--tag-radius);
+            font-size: 0.875rem;
+        }
+
+        .toolbar select:focus,
+        .toolbar input:focus {
+            outline: none;
+            border-color: var(--primary-color);
+        }
+
+        .toolbar .spacer {
+            flex: 1;
+        }
+
+        #entry-count {
+            font-size: 0.875rem;
+            color: var(--text-muted);
+            white-space: nowrap;
+        }
+
+        .entry-list {
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+        }
+
+        .entry-card {
+            background-color: var(--surface-color);
+            border: 1px solid var(--border-color);
+            border-radius: 0.5rem;
+            overflow: hidden;
+        }
+
+        .entry-header {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            padding: 0.75rem 1rem;
+            cursor: pointer;
+            user-select: none;
+            flex-wrap: wrap;
+        }
+
+        .entry-header:hover {
+            background-color: rgba(255,255,255,0.03);
+        }
+
+        .type-badge {
+            font-size: 0.75rem;
+            font-weight: 700;
+            padding: 0.2rem 0.6rem;
+            border-radius: 9999px;
+            letter-spacing: 0.05em;
+            text-transform: uppercase;
+            min-width: 5rem;
+            text-align: center;
+        }
+
+        .type-badge.REQUEST {
+            background-color: var(--request-bg);
+            color: #60a5fa;
+            border: 1px solid var(--request-color);
+        }
+
+        .type-badge.RESPONSE {
+            background-color: var(--response-bg);
+            color: #4ade80;
+            border: 1px solid var(--response-color);
+        }
+
+        .type-badge.ERROR {
+            background-color: var(--error-bg);
+            color: #f87171;
+            border: 1px solid var(--error-color);
+        }
+
+        .entry-timestamp {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            font-family: monospace;
+            white-space: nowrap;
+        }
+
+        .entry-session {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            background-color: rgba(255,255,255,0.05);
+            padding: 0.15rem 0.5rem;
+            border-radius: var(--tag-radius);
+            font-family: monospace;
+            max-width: 200px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .entry-preview {
+            flex: 1;
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            max-width: 40vw;
+        }
+
+        .expand-icon {
+            margin-left: auto;
+            color: var(--text-muted);
+            font-size: 0.75rem;
+            transition: transform 0.2s;
+            flex-shrink: 0;
+        }
+
+        .entry-card.expanded .expand-icon {
+            transform: rotate(180deg);
+        }
+
+        .entry-body {
+            display: none;
+            border-top: 1px solid var(--border-color);
+            padding: 1rem;
+            background-color: rgba(0,0,0,0.2);
+        }
+
+        .entry-card.expanded .entry-body {
+            display: block;
+        }
+
+        .entry-body pre {
+            margin: 0;
+            font-family: 'Consolas', 'Courier New', monospace;
+            font-size: 0.8rem;
+            color: #e2e8f0;
+            white-space: pre-wrap;
+            word-break: break-word;
+            max-height: 600px;
+            overflow-y: auto;
+            background-color: rgba(0,0,0,0.3);
+            padding: 0.75rem;
+            border-radius: 0.25rem;
+            border: 1px solid var(--border-color);
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 4rem 2rem;
+            color: var(--text-muted);
+        }
+
+        .empty-state .icon {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+        }
+
+        #last-updated {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            text-align: right;
+            margin-top: 0.5rem;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>📊 LLM Traffic <span style="font-size: 1rem; color: var(--text-muted); font-weight: normal;">Viewer</span></h1>
+        <div class="header-nav">
+            <a href="/">💬 Chat</a>
+            <a href="/processes/">⚙️ Processes</a>
+        </div>
+        <div id="status-indicator">
+            <div id="status-dot"></div>
+            <span id="status-text">Verbinde...</span>
+        </div>
+    </header>
+
+    <main>
+        <div class="toolbar">
+            <label>
+                Typ:
+                <select id="filter-type">
+                    <option value="">Alle</option>
+                    <option value="REQUEST">REQUEST</option>
+                    <option value="RESPONSE">RESPONSE</option>
+                    <option value="ERROR">ERROR</option>
+                </select>
+            </label>
+            <label>
+                Session:
+                <input type="text" id="filter-session" placeholder="Session ID filtern..." style="width: 200px;">
+            </label>
+            <label>
+                Limit:
+                <input type="number" id="limit-input" value="100" min="1" max="1000" style="width: 80px;">
+            </label>
+            <div class="spacer"></div>
+            <span id="entry-count">0 Einträge</span>
+        </div>
+
+        <div id="entry-list" class="entry-list">
+            <div class="empty-state">
+                <div class="icon">⏳</div>
+                <p>Lade Daten...</p>
+            </div>
+        </div>
+
+        <div id="last-updated"></div>
+    </main>
+
+    <script>
+        const entryListEl = document.getElementById('entry-list');
+        const entryCountEl = document.getElementById('entry-count');
+        const lastUpdatedEl = document.getElementById('last-updated');
+        const statusDot = document.getElementById('status-dot');
+        const statusText = document.getElementById('status-text');
+        const filterType = document.getElementById('filter-type');
+        const filterSession = document.getElementById('filter-session');
+        const limitInput = document.getElementById('limit-input');
+
+        let allEntries = [];
+        let expandedIds = new Set(); // Track which entries are expanded by index+timestamp key
+
+        function getEntryKey(entry) {
+            return `${entry.Timestamp}_${entry.SessionId}_${entry.Type}`;
+        }
+
+        function formatTimestamp(ts) {
+            if (!ts) return '—';
+            try {
+                const d = new Date(ts);
+                return d.toLocaleString('de-DE', {
+                    year: 'numeric', month: '2-digit', day: '2-digit',
+                    hour: '2-digit', minute: '2-digit', second: '2-digit',
+                    timeZone: 'UTC',
+                    timeZoneName: 'short'
+                });
+            } catch {
+                return ts;
+            }
+        }
+
+        function formatContent(content) {
+            if (!content) return '(leer)';
+            try {
+                const parsed = JSON.parse(content);
+                return JSON.stringify(parsed, null, 2);
+            } catch {
+                return content;
+            }
+        }
+
+        function getPreview(content) {
+            if (!content) return '';
+            // Try to extract a meaningful preview from JSON content
+            try {
+                const parsed = JSON.parse(content);
+                // For REQUEST: show model + first user message
+                if (parsed.model) {
+                    const msgs = parsed.messages || [];
+                    const userMsg = msgs.find(m => m.role === 'user');
+                    const preview = userMsg?.content || '';
+                    const previewText = typeof preview === 'string' ? preview : JSON.stringify(preview);
+                    return `[${parsed.model}] ${previewText.substring(0, 120)}`;
+                }
+                // For RESPONSE: show the assistant's content
+                const choice = parsed.choices?.[0];
+                if (choice) {
+                    const c = choice.message?.content || '';
+                    return c.substring(0, 120);
+                }
+                return JSON.stringify(parsed).substring(0, 120);
+            } catch {
+                return content.substring(0, 120);
+            }
+        }
+
+        function applyFilters() {
+            const typeFilter = filterType.value;
+            const sessionFilter = filterSession.value.trim().toLowerCase();
+
+            return allEntries.filter(entry => {
+                if (typeFilter && entry.Type !== typeFilter) return false;
+                if (sessionFilter && !(entry.SessionId || '').toLowerCase().includes(sessionFilter)) return false;
+                return true;
+            });
+        }
+
+        function renderEntries() {
+            const filtered = applyFilters();
+            entryCountEl.textContent = `${filtered.length} Eintrag${filtered.length !== 1 ? 'e' : ''}`;
+
+            if (filtered.length === 0) {
+                entryListEl.innerHTML = `
+                    <div class="empty-state">
+                        <div class="icon">🔍</div>
+                        <p>Keine Einträge gefunden.</p>
+                    </div>`;
+                return;
+            }
+
+            const fragment = document.createDocumentFragment();
+
+            filtered.forEach((entry, idx) => {
+                const key = getEntryKey(entry);
+                const isExpanded = expandedIds.has(key);
+
+                const card = document.createElement('div');
+                card.className = `entry-card${isExpanded ? ' expanded' : ''}`;
+
+                const typeClass = (entry.Type || 'UNKNOWN').toUpperCase();
+                const preview = getPreview(entry.Content);
+                const formattedContent = formatContent(entry.Content);
+
+                card.innerHTML = `
+                    <div class="entry-header">
+                        <span class="type-badge ${typeClass}">${entry.Type || '?'}</span>
+                        <span class="entry-timestamp">${formatTimestamp(entry.Timestamp)}</span>
+                        <span class="entry-session" title="${entry.SessionId || ''}">${entry.SessionId || '—'}</span>
+                        <span class="entry-preview" title="${preview}">${preview}</span>
+                        <span class="expand-icon">▼</span>
+                    </div>
+                    <div class="entry-body">
+                        <pre>${escapeHtml(formattedContent)}</pre>
+                    </div>
+                `;
+
+                const header = card.querySelector('.entry-header');
+                header.addEventListener('click', () => {
+                    card.classList.toggle('expanded');
+                    if (card.classList.contains('expanded')) {
+                        expandedIds.add(key);
+                    } else {
+                        expandedIds.delete(key);
+                    }
+                });
+
+                fragment.appendChild(card);
+            });
+
+            entryListEl.innerHTML = '';
+            entryListEl.appendChild(fragment);
+        }
+
+        function escapeHtml(str) {
+            return str
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        }
+
+        async function fetchData() {
+            const limit = parseInt(limitInput.value) || 100;
+            try {
+                const res = await fetch(`/api/llm-traffic?limit=${limit}`);
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                const data = await res.json();
+                allEntries = data;
+
+                statusDot.className = 'live';
+                statusText.textContent = 'Live';
+
+                renderEntries();
+
+                const now = new Date();
+                lastUpdatedEl.textContent = `Zuletzt aktualisiert: ${now.toLocaleTimeString('de-DE')}`;
+            } catch (err) {
+                statusDot.className = '';
+                statusText.textContent = 'Fehler';
+                console.error('Fehler beim Laden der LLM-Traffic-Daten:', err);
+            }
+        }
+
+        // Event Listeners for filters (re-render without new fetch)
+        filterType.addEventListener('change', renderEntries);
+        filterSession.addEventListener('input', renderEntries);
+        limitInput.addEventListener('change', fetchData);
+
+        // Initial load + Auto-Update every 5 seconds
+        fetchData();
+        setInterval(fetchData, 5000);
+    </script>
+</body>
+</html>
