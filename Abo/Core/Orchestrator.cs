@@ -11,8 +11,8 @@ public class Orchestrator
     private readonly ILogger<Orchestrator> _logger;
 
     private readonly SessionService _sessionService;
-    private readonly string _logPath = "Data/llm_traffic.jsonl";
-    private readonly string _consumptionLogPath = "Data/llm_consumption.jsonl";
+    private readonly string _logPath = Path.Combine(AppContext.BaseDirectory, "Data", "llm_traffic.jsonl");
+    private readonly string _consumptionLogPath = Path.Combine(AppContext.BaseDirectory, "Data", "llm_consumption.jsonl");
 
     public Orchestrator(HttpClient httpClient, IConfiguration configuration, ILogger<Orchestrator> logger, SessionService sessionService)
     {
@@ -21,8 +21,8 @@ public class Orchestrator
         _logger = logger;
         _sessionService = sessionService;
 
-        var dir = Path.GetDirectoryName(_logPath);
-        if (!Directory.Exists(dir)) Directory.CreateDirectory(dir!);
+        var dataDir = Path.Combine(AppContext.BaseDirectory, "Data");
+        if (!Directory.Exists(dataDir)) Directory.CreateDirectory(dataDir);
     }
 
     public List<ChatMessage> GetSessionHistory(string sessionId)
