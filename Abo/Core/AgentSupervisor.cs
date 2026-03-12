@@ -22,7 +22,7 @@ public class AgentSupervisor
     public async Task<IAgent> GetBestAgentAsync(string userMessage, List<ChatMessage>? history = null)
     {
         _logger.LogInformation($"Determining best agent for message: '{userMessage}'");
-        
+
         var apiEndpoint = _configuration["Config:ApiEndpoint"];
         var modelName = _configuration["Config:ModelName"];
         var apiKey = _configuration["Config:ApiKey"];
@@ -42,14 +42,15 @@ public class AgentSupervisor
             contextText = "RECENT CONVERSATION HISTORY:\n" + string.Join("\n", lastMessages.Select(m => $"[{m.Role.ToUpper()}]: {m.Content}")) + "\n\n";
         }
 
-        var systemPrompt = 
+        var systemPrompt =
             "You are the Agent Supervisor. Your job is to select the BEST agent to handle a user's request based on the CURRENT message and RECENT history.\n\n" +
             "AVAILABLE AGENTS:\n" + agentList + "\n\n" +
-            contextText + 
+            contextText +
             "Rules:\n" +
             "1. Return ONLY the name of the agent.\n" +
             "2. If the user is answering a quiz question (e.g. providing a number or a simple 'yes'/'no' to a quiz prompt), select 'QuizAgent'.\n" +
-            "3. If the user is just saying hello or asking for the time, select 'HelloWorldAgent'.";
+            "3. If the user is asking to do project work, code, or take the next task from a project, select 'EmployeeAgent'.\n" +
+            "4. If the user is just saying hello or asking for the time, select 'HelloWorldAgent'.";
 
         var request = new ChatCompletionRequest
         {

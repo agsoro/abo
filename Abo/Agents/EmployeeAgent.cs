@@ -43,7 +43,7 @@ public class EmployeeAgent : IAgent
         var definitions = new List<ToolDefinition>();
 
         // 1. Global tools
-        var allowedGlobalTools = new[] { "list_projects", "get_system_time", "get_roles", "get_environments" };
+        var allowedGlobalTools = new[] { "list_projects", "get_open_work", "get_system_time", "get_roles", "get_environments" };
         foreach (var tool in _globalTools.Where(t => allowedGlobalTools.Contains(t.Name)))
         {
             definitions.Add(CreateDef(tool));

@@ -44,6 +44,7 @@ builder.Services.AddTransient<IAboTool, ListProjectsTool>();
 builder.Services.AddTransient<IAboTool, UpsertRoleTool>();
 builder.Services.AddTransient<IAboTool, GetRolesTool>();
 builder.Services.AddTransient<IAboTool, GetEnvironmentsTool>();
+builder.Services.AddTransient<IAboTool, GetOpenWorkTool>();
 
 // Register Agents
 builder.Services.AddTransient<HelloWorldAgent>();

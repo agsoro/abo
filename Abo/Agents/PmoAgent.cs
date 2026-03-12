@@ -34,7 +34,7 @@ public class PmoAgent : IAgent
     public List<ToolDefinition> GetToolDefinitions()
     {
         var definitions = new List<ToolDefinition>();
-        var allowedToolNames = new[] { "create_process", "update_process", "start_project", "list_projects", "upsert_role", "get_roles", "get_system_time" };
+        var allowedToolNames = new[] { "create_process", "update_process", "start_project", "list_projects", "get_open_work", "upsert_role", "get_roles", "get_system_time" };
 
         foreach (var tool in _tools.Where(t => allowedToolNames.Contains(t.Name)))
         {
