@@ -98,7 +98,7 @@ public class Orchestrator
                 request.Model = currentModelName;
 
                 // Auto summarize if request.Messages is getting long
-                if (request.Messages.Count > 12)
+                if (request.Messages.Count > 20)
                 {
                     int keepTailCount = 4;
                     int splitIndex = request.Messages.Count - keepTailCount;

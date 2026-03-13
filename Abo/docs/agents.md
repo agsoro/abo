@@ -96,6 +96,8 @@ Agents in ABO are specialized roles with specific instructions, tools, and const
   - `checkout_task` – Binds a secure connector to a project environment (must be called before filesystem/shell tools).
   - `complete_task` – Marks the current task as completed and advances the BPMN step. Optional parameter: `nextStepId`.
   - `request_ceo_help` – Escalates an issue to the human CEO.
+  - `take_notes` – Stores temporary notes, remarks, or intermediate findings during tasks.
+  - `read_notes` – Reads the temporary notes stored for the current project.
 - **Global Information Tools**: `get_system_time`, `get_environments`
 - **Connector Tools** (only available after `checkout_task`):
   - `read_file` – Read a file.

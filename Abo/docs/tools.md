@@ -143,6 +143,16 @@ These tools are **only available after a successful `checkout_task`**. All paths
 - **Parameters**: `message` (string)
 - **Implemented in**: `SpecialistAgent.HandleRequestCeoHelp` (no separate tool file)
 
+### `take_notes`
+- **Description**: Stores temporary notes, remarks, or intermediate findings during your task. These are securely saved to the project's remarks file.
+- **Parameters**: `note` (string)
+- **Implemented in**: `SpecialistAgent.HandleTakeNotesAsync` (no separate tool file)
+
+### `read_notes`
+- **Description**: Reads the temporary notes, remarks, or intermediate findings stored for the current project.
+- **Parameters**: none
+- **Implemented in**: `SpecialistAgent.HandleReadNotesAsync` (no separate tool file)
+
 ### `read_file`
 - **Class**: `ReadFileTool` (`/Tools/Connector/ReadFileTool.cs`)
 - **Description**: Reads the contents of a file using a relative path.

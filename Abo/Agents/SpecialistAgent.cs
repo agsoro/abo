@@ -112,6 +112,28 @@ public class SpecialistAgent : IAgent
             }
         });
 
+        definitions.Add(new ToolDefinition
+        {
+            Type = "function",
+            Function = new FunctionDefinition
+            {
+                Name = "take_notes",
+                Description = "Stores temporary notes, remarks, or intermediate findings during your task. These are securely saved to the project's remarks file.",
+                Parameters = new { type = "object", properties = new { note = new { type = "string" } }, required = new[] { "note" } }
+            }
+        });
+
+        definitions.Add(new ToolDefinition
+        {
+            Type = "function",
+            Function = new FunctionDefinition
+            {
+                Name = "read_notes",
+                Description = "Reads the temporary notes, remarks, or intermediate findings stored for the current project.",
+                Parameters = new { type = "object", properties = new { }, required = Array.Empty<string>() }
+            }
+        });
+
         // 3. Connector tool signatures (always exposed, but restricted functionally if not checked out)
         var dummyEnv = new ConnectorEnvironment { Dir = "C:\\" };
         var dummyConn = new LocalWindowsConnector(dummyEnv);
@@ -152,6 +174,8 @@ public class SpecialistAgent : IAgent
         if (name == "checkout_task") return await HandleCheckoutTaskAsync(args);
         if (name == "complete_task") return await HandleCompleteTaskAsync(args);
         if (name == "request_ceo_help") return HandleRequestCeoHelp(args);
+        if (name == "take_notes") return await HandleTakeNotesAsync(args);
+        if (name == "read_notes") return await HandleReadNotesAsync(args);
 
         // Handle Global Tools
         var globalTool = _globalTools.FirstOrDefault(t => t.Name == name);
@@ -431,6 +455,64 @@ public class SpecialistAgent : IAgent
         catch (Exception ex)
         {
             return $"Error parsing help message: {ex.Message}";
+        }
+    }
+
+    private async Task<string> HandleTakeNotesAsync(string argsJson)
+    {
+        if (string.IsNullOrEmpty(_currentProjectId)) return "Error: You must check out a task before taking notes.";
+
+        try
+        {
+            var args = JsonSerializer.Deserialize<Dictionary<string, string>>(argsJson);
+            if (args == null || !args.TryGetValue("note", out var note))
+            {
+                return "Error: 'note' is required.";
+            }
+
+            var projectDir = Path.Combine(_dataDir, "Projects", _currentProjectId);
+            if (!Directory.Exists(projectDir))
+            {
+                Directory.CreateDirectory(projectDir);
+            }
+
+            var remarksFile = Path.Combine(projectDir, "remarks.md");
+            var timestamp = DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss UTC");
+            var noteEntry = $"\n\n### Remark ({timestamp})\n{note}\n---";
+
+            if (!File.Exists(remarksFile))
+            {
+                await File.WriteAllTextAsync(remarksFile, $"# Project Remarks\nTemporary notes and intermediate findings stored by specialists during tasks.");
+            }
+            await File.AppendAllTextAsync(remarksFile, noteEntry);
+
+            return "Note successfully saved to remarks.md.";
+        }
+        catch (Exception ex)
+        {
+            return $"Error saving note: {ex.Message}";
+        }
+    }
+
+    private async Task<string> HandleReadNotesAsync(string argsJson)
+    {
+        if (string.IsNullOrEmpty(_currentProjectId)) return "Error: You must check out a task before reading notes.";
+
+        try
+        {
+            var projectDir = Path.Combine(_dataDir, "Projects", _currentProjectId);
+            var remarksFile = Path.Combine(projectDir, "remarks.md");
+
+            if (!File.Exists(remarksFile))
+            {
+                return "No remarks or notes found for this project.";
+            }
+
+            return await File.ReadAllTextAsync(remarksFile);
+        }
+        catch (Exception ex)
+        {
+            return $"Error reading notes: {ex.Message}";
         }
     }
 
