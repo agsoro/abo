@@ -46,7 +46,7 @@ public class Orchestrator
         // Prepare the request with full history + current system prompt
         var requestMessages = new List<ChatMessage>
         {
-            new ChatMessage { Role = "system", Content = $"{agent.SystemPrompt}\n\n[CONTEXT] Current Session/Channel ID: {sessionId}\n[CONTEXT] User Name: {userName ?? "Unknown"}\n[CONTEXT] User ID (Mattermost): {userId ?? "unknown"}\n[CONTEXT] The default language for all responses and output is '{defaultLanguage}', unless the user explicitly requests otherwise." }
+            new ChatMessage { Role = "system", Content = $"{agent.SystemPrompt}\n\n[CONTEXT] The default language for all responses '{defaultLanguage}', code/docu is 'en-us'" }
         };
 
         lock (history)
@@ -102,11 +102,11 @@ public class Orchestrator
                 {
                     int keepTailCount = 4;
                     int splitIndex = request.Messages.Count - keepTailCount;
-                    
+
                     while (splitIndex < request.Messages.Count)
                     {
                         var msg = request.Messages[splitIndex];
-                        if (msg.Role == "tool") 
+                        if (msg.Role == "tool")
                         {
                             splitIndex++;
                         }
@@ -114,7 +114,7 @@ public class Orchestrator
                         {
                             break;
                         }
-                        else 
+                        else
                         {
                             break;
                         }
@@ -125,17 +125,17 @@ public class Orchestrator
                         _logger.LogInformation($"[Session: {sessionId}] History reached {request.Messages.Count} messages. Summarizing older context...");
                         var messagesToSummarize = request.Messages.GetRange(1, splitIndex - 1);
                         var summaryText = await SummarizeMessagesAsync(messagesToSummarize, currentModelName, sessionId);
-                        
-                        var summaryMessage = new ChatMessage 
-                        { 
-                            Role = "user", 
-                            Content = "Here is a summary of the earlier conversation and actions for context:\n\n" + summaryText 
+
+                        var summaryMessage = new ChatMessage
+                        {
+                            Role = "user",
+                            Content = "Here is a summary of the earlier conversation and actions for context:\n\n" + summaryText
                         };
 
-                        var newRequestMessages = new List<ChatMessage> { request.Messages[0] }; 
+                        var newRequestMessages = new List<ChatMessage> { request.Messages[0] };
                         newRequestMessages.Add(summaryMessage);
                         newRequestMessages.AddRange(request.Messages.Skip(splitIndex));
-                        
+
                         request.Messages = newRequestMessages;
 
                         var newHistory = new List<ChatMessage>();
@@ -257,9 +257,9 @@ public class Orchestrator
                 }
 
                 _logger.LogInformation($"[Session: {sessionId}] Raw model output: '{finalContent}'");
-                
+
                 var finalOutput = finalContent?.Trim() ?? "(Empty content)";
-                
+
                 if (terminateAfterSynthesis)
                 {
                     return finalOutput;
@@ -326,7 +326,7 @@ public class Orchestrator
         };
 
         var jsonRequest = JsonSerializer.Serialize(request, new JsonSerializerOptions { WriteIndented = true });
-        
+
         await LogTrafficAsync(sessionId, "SUMMARY_REQUEST", jsonRequest);
 
         var httpRequest = new HttpRequestMessage(HttpMethod.Post, apiEndpoint)
@@ -339,7 +339,7 @@ public class Orchestrator
             httpRequest.Headers.Add("Authorization", $"Bearer {apiKey}");
         }
 
-        try 
+        try
         {
             var httpResponse = await _httpClient.SendAsync(httpRequest);
             var responseString = await httpResponse.Content.ReadAsStringAsync();
@@ -360,7 +360,7 @@ public class Orchestrator
         {
             _logger.LogError(ex, "Error summarizing history.");
         }
-        
+
         return "Summary failed.";
     }
 
