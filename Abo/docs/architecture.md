@@ -52,7 +52,7 @@ The `EmployeeAgent` uses a **connector pattern** for secure filesystem access:
 1. The agent calls `checkout_project` with a `projectId`.
 2. ABO resolves the configured **environment** (`ConnectorEnvironment`) of the project (stored in `environments.json`).
 3. A `LocalWindowsConnector` is instantiated and bound to the environment's directory.
-4. All subsequent filesystem and shell tools (`read_file`, `write_file`, `git`, `dotnet`, etc.) are **confined** to that directory.
+4. All subsequent filesystem and shell tools (`read_file`, `write_file`, `git`, `dotnet`, `python`, `search_regex`, etc.) are **confined** to that directory.
 5. After the task is completed (`complete_task`), the connector is released.
 
 ```
@@ -61,9 +61,23 @@ The `EmployeeAgent` uses a **connector pattern** for secure filesystem access:
 [ABO-Core: Environment Resolution]
   ↓ ConnectorEnvironment { Dir = "C:\src\project" }
 [LocalWindowsConnector]
-  ↓ read_file / write_file / git / dotnet ...
+  ↓ read_file / write_file / git / dotnet / python / search_regex ...
 [Filesystem (confined to Dir)]
 ```
+
+### Available Connector Tools
+
+| Tool | Class | Description |
+|---|---|---|
+| `read_file` | `ReadFileTool` | Read a file by relative path |
+| `write_file` | `WriteFileTool` | Write/create a file |
+| `delete_file` | `DeleteFileTool` | Delete a file |
+| `list_dir` | `ListDirTool` | List directory contents |
+| `mkdir` | `MkDirTool` | Create a new directory |
+| `git` | `GitTool` | Execute git commands |
+| `dotnet` | `DotnetTool` | Execute .NET CLI commands |
+| `python` | `PythonTool` | Execute Python commands (requires Python in PATH) |
+| `search_regex` | `SearchRegexTool` | Search for regex patterns across files and filenames |
 
 ---
 
@@ -89,8 +103,16 @@ ABO exposes a minimal REST API (ASP.NET Core Minimal APIs) and a static Web UI:
 | `/api/processes/{id}` | GET | Returns the BPMN XML definition of a process |
 | `/api/projects/{id}/status` | GET | Returns the current BPMN step and status of a project |
 | `/api/interact` | POST | Main chat endpoint: receives messages, selects agent, returns response |
-| `/` | GET | Web UI (`wwwroot/index.html`) |
+| `/api/projects` | GET | Lists all active projects (name, ID, status) |
+| `/api/llm-consumption` | GET | Returns LLM consumption statistics (supports `?limit=N`) |
+| `/api/open-work` | GET | Returns currently open work items across all active projects |
+| `/api/sessions` | GET | Returns active agent sessions with history length and timestamps |
+| `/` | GET | Web UI (`wwwroot/index.html`) – Chat interface |
 | `/processes/index.html` | GET | BPMN process viewer |
+| `/agents/index.html` | GET | Agent / session overview |
+| `/open-work/index.html` | GET | Open work dashboard |
+| `/llm-traffic/index.html` | GET | LLM traffic log viewer |
+| `/llm-stats/index.html` | GET | LLM consumption statistics dashboard |
 
 Detailed API documentation with request/response schemas: see [services.md](services.md).
 
@@ -115,6 +137,7 @@ The `/Data/` directory contains all ABO runtime data. These files are written an
     leaderboard.json      - Quiz leaderboard with scores
   users.json              - All users (Mattermost ID, username, roles, quiz subscription)
   llm_traffic.jsonl       - LLM requests/responses (debugging, JSONL format)
+  llm_consumption.jsonl   - LLM token/cost tracking per agent run (JSONL format)
 ```
 
 ### Key Data Files in Detail
@@ -129,6 +152,7 @@ The `/Data/` directory contains all ABO runtime data. These files are written an
 | `users.json` | Persisted user data: Mattermost ID, username, roles array, quiz subscription flag. |
 | `leaderboard.json` | Quiz system scores, indexed by username. |
 | `llm_traffic.jsonl` | Debug log: every AI API request and response is logged as a JSON line. Useful for error analysis. Can grow large under heavy usage. |
+| `llm_consumption.jsonl` | Token and cost tracking per agent run (prompt tokens, completion tokens, total tokens, cost in USD, session ID). |
 
 ---
 
@@ -155,6 +179,8 @@ The `/Data/` directory contains all ABO runtime data. These files are written an
   /Models         - Database models / entities (User)
   /Services       - Business logic services (UserService, QuizService)
   /Tools          - IAboTool implementations
-    /Connector    - Connector tools (ReadFileTool, GitTool, ...)
-  /wwwroot        - Static Web UI files (BPMN viewer, Chat UI)
+    /Connector    - Connector tools (ReadFileTool, WriteFileTool, GitTool, DotnetTool,
+                    PythonTool, SearchRegexTool, ...)
+  /wwwroot        - Static Web UI files (Chat, BPMN viewer, Agents, Open Work,
+                    LLM Traffic, LLM Stats dashboards)
 ```

@@ -35,7 +35,7 @@ public class EmployeeAgent : IAgent
         "1. **Find Work**: Use `list_projects` to see all active projects and their current step/state. Find a project that has work to do.\n" +
         "2. **Checkout Project**: Once you choose a project, you MUST use `checkout_project` providing its `projectId`. This securely binds your file/shell tools (the Connector) to that project's specific environment. DO NOT guess paths.\n" +
         "3. **Adopt Role & Announce**: Read the project's `info.md` and `notes.md` (if it exists) to understand the requirements, context, and previous step results. Instruct yourself to mentally 'slip into' the required Role. Important: You must ALWAYS provide a chat message to the CEO announcing that you are starting this task and which role you are taking. DO NOT wait for the CEO to acknowledge, but immediately proceed to execute further tools.\n" +
-        "4. **Execute**: Use the connector tools (`read_file`, `write_file`, `list_dir`, `mkdir`, `git`, `dotnet`) to perform your work. All relative paths are automatically rooted in the checked-out project's directory.\n" +
+        "4. **Execute**: Use the connector tools (`read_file`, `write_file`, `list_dir`, `mkdir`, `git`, `dotnet`, `python`) to perform your work. All relative paths are automatically rooted in the checked-out project's directory.\n" +
         "5. **Complete**: When the task is done, use 'complete_task' to signal completion. You MUST supply 'resultNotes' detailing your executed work, outputs, and any context needed by the next Role. Important: You must ALWAYS provide a final chat message directly to the CEO, giving a status update on what you accomplished and a short explanation of *how and why* you made your decisions. You may then proceed to the next task if applicable.\n\n" +
         "### RULES:\n" +
         "- You cannot use file/system tools until you have checked out a project.\n" +
@@ -106,6 +106,7 @@ public class EmployeeAgent : IAgent
         definitions.Add(CreateDef(new MkDirTool(dummyConn)));
         definitions.Add(CreateDef(new GitTool(dummyConn)));
         definitions.Add(CreateDef(new DotnetTool(dummyConn)));
+        definitions.Add(CreateDef(new PythonTool(dummyConn)));
         definitions.Add(CreateDef(new SearchRegexTool(dummyConn)));
 
         return definitions;
@@ -140,7 +141,7 @@ public class EmployeeAgent : IAgent
         if (globalTool != null) return await globalTool.ExecuteAsync(args);
 
         // Handle Connector Tools
-        var connectorToolNames = new[] { "read_file", "write_file", "delete_file", "list_dir", "mkdir", "git", "dotnet", "search_regex" };
+        var connectorToolNames = new[] { "read_file", "write_file", "delete_file", "list_dir", "mkdir", "git", "dotnet", "python", "search_regex" };
         if (connectorToolNames.Contains(name))
         {
             if (_currentConnector == null || string.IsNullOrEmpty(_currentProjectId))
@@ -214,6 +215,7 @@ public class EmployeeAgent : IAgent
             _connectorTools.Add(new MkDirTool(_currentConnector));
             _connectorTools.Add(new GitTool(_currentConnector));
             _connectorTools.Add(new DotnetTool(_currentConnector));
+            _connectorTools.Add(new PythonTool(_currentConnector));
             _connectorTools.Add(new SearchRegexTool(_currentConnector));
 
             return $"Successfully checked out project '{projectId}'. You are now bound to environment '{targetEnv.Name}' located at '{targetEnv.Dir}'. Your relative paths will root here.";

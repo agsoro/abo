@@ -86,6 +86,8 @@ Agents in ABO are specialized roles with specific instructions, tools, and const
   - `mkdir` – Create a new directory.
   - `git` – Execute git commands (without the word `git`).
   - `dotnet` – Execute .NET CLI commands (without the word `dotnet`).
+  - `python` – Execute Python commands (without the word `python`). Requires Python to be installed and available in the system PATH. Useful for running scripts, tests (`-m pytest`), package management (`-m pip install ...`), or virtual environments (`-m venv .venv`).
+  - `search_regex` – Search for a regex pattern across files and filenames within a directory. Returns matching file paths, line numbers, and content snippets.
 - **Security**: All filesystem and shell operations are confined to the checked-out project environment's directory. Paths outside are not accessible.
 - **Workflow**:
   1. Call `list_projects` or `get_open_work` to find open work.

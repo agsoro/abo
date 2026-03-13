@@ -177,3 +177,26 @@ These tools are **only available after a successful `checkout_project`**. All pa
 - **Class**: `DotnetTool` (`/Tools/Connector/DotnetTool.cs`)
 - **Description**: Executes a .NET CLI command in the project directory. The word `dotnet` must **not** be included in the arguments.
 - **Parameters**: `arguments`
+
+### `python`
+- **Class**: `PythonTool` (`/Tools/Connector/PythonTool.cs`)
+- **Description**: Runs a Python command in the project directory. The word `python` must **not** be included in the arguments. Uses the system's `python` executable, which must be installed and available in the system PATH.
+- **Parameters**: `arguments` (string) – e.g. `script.py`, `-m pytest`, `-m venv .venv`, `-m pip install -r requirements.txt`
+- **Examples**:
+  - Run a script: `arguments = "main.py"`
+  - Install dependencies: `arguments = "-m pip install -r requirements.txt"`
+  - Run tests with pytest: `arguments = "-m pytest"`
+  - Create a virtual environment: `arguments = "-m venv .venv"`
+- **Implemented in**: `LocalWindowsConnector.RunPythonAsync` → delegates to `RunProcessAsync("python", arguments)`
+- **Note**: The working directory is always set to the checked-out project's environment directory.
+
+### `search_regex`
+- **Class**: `SearchRegexTool` (`/Tools/Connector/SearchRegexTool.cs`)
+- **Description**: Searches for a regex pattern within filenames and file contents across the specified directory. Useful for finding code patterns, usages, or content across multiple files.
+- **Parameters**:
+  - `searchPath` (string) – Relative path to search within. Use `'.'` or empty string for the project root.
+  - `pattern` (string) – A valid .NET regular expression pattern.
+  - `limitLinesPerFile` (integer, optional) – Maximum number of matching lines returned per file. Defaults to `10`.
+- **Returns**: A list of files with matching lines (file path + line number + content). If a filename itself matches the pattern, it is also flagged.
+- **Limits**: Results per file are capped at `limitLinesPerFile` lines and at 10 KB of output per file to prevent token overload.
+- **Implemented in**: `LocalWindowsConnector.SearchRegexAsync`
