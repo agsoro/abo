@@ -54,8 +54,8 @@ builder.Services.AddTransient<QuizAgent>();
 builder.Services.AddTransient<IAgent, QuizAgent>(sp => sp.GetRequiredService<QuizAgent>());
 builder.Services.AddTransient<PmoAgent>();
 builder.Services.AddTransient<IAgent, PmoAgent>(sp => sp.GetRequiredService<PmoAgent>());
-builder.Services.AddTransient<EmployeeAgent>();
-builder.Services.AddTransient<IAgent, EmployeeAgent>(sp => sp.GetRequiredService<EmployeeAgent>());
+builder.Services.AddTransient<ManagerAgent>();
+builder.Services.AddTransient<IAgent, ManagerAgent>(sp => sp.GetRequiredService<ManagerAgent>());
 
 // Register Background Services
 builder.Services.AddHostedService<QuizService>();
@@ -147,7 +147,7 @@ app.MapGet("/api/open-work", async () =>
         var projectId = project.GetProperty("Id").GetString() ?? "";
         var title = project.GetProperty("Title").GetString() ?? "";
         var typeId = project.TryGetProperty("TypeId", out var t) ? t.GetString() ?? "" : "";
-        var currentStepId = project.TryGetProperty("CurrentStepId", out var cs) ? cs.GetString() ?? "" : "";
+        var currentStep = project.TryGetProperty("CurrentStep", out var cs) ? cs : default;
         var status = project.TryGetProperty("Status", out var s) ? s.GetString() ?? "" : "";
         var environmentName = project.TryGetProperty("EnvironmentName", out var e) ? e.GetString() ?? "" : "";
 
@@ -171,7 +171,7 @@ app.MapGet("/api/open-work", async () =>
             ProjectId = projectId,
             Title = title,
             TypeId = typeId,
-            CurrentStepId = currentStepId,
+            CurrentStep = currentStep,
             Status = status,
             EnvironmentName = environmentName,
             LastUpdated = lastUpdated

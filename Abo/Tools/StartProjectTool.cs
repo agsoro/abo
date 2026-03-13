@@ -1,4 +1,7 @@
 using System.Text.Json;
+using System.Text.RegularExpressions;
+using System.Xml.Linq;
+using Abo.Contracts.Models;
 using Abo.Tools;
 
 namespace Abo.Tools;
@@ -74,6 +77,38 @@ public class StartProjectTool : IAboTool
 
         try
         {
+            // Parse XML to get Step details
+            var xdoc = XDocument.Load(processFile);
+            var stepNode = xdoc.Descendants().FirstOrDefault(e => e.Attribute("id")?.Value == args.InitialStepId);
+
+            if (stepNode == null)
+            {
+                return $"Error: The initial step '{args.InitialStepId}' does not exist in the BPMN process.";
+            }
+
+            var stepName = stepNode.Attribute("name")?.Value ?? args.InitialStepId;
+            var requiredRole = stepNode.Attributes().FirstOrDefault(a => a.Name.LocalName == "assignee")?.Value ?? string.Empty;
+
+            if (string.IsNullOrWhiteSpace(requiredRole))
+            {
+                var docs = stepNode.Descendants().FirstOrDefault(e => e.Name.LocalName == "documentation")?.Value;
+                if (!string.IsNullOrWhiteSpace(docs))
+                {
+                    var roleMatch = Regex.Match(docs, @"Role:\s*(Role_[^\s\r\n]+)");
+                    if (roleMatch.Success)
+                    {
+                        requiredRole = roleMatch.Groups[1].Value;
+                    }
+                }
+            }
+
+            var initialStepInfo = new ProcessStepInfo
+            {
+                StepId = args.InitialStepId,
+                StepName = stepName,
+                RequiredRole = requiredRole
+            };
+
             // 1. Create project folder
             var projectFolder = Path.Combine(_projectsDirectory, args.ProjectId);
             if (Directory.Exists(projectFolder))
@@ -90,7 +125,7 @@ public class StartProjectTool : IAboTool
             var state = new ProcessState
             {
                 ProjectId = args.ProjectId,
-                CurrentStepId = args.InitialStepId,
+                CurrentStep = initialStepInfo,
                 Status = "Active",
                 LastUpdated = DateTime.UtcNow,
                 History = new()
@@ -118,7 +153,7 @@ public class StartProjectTool : IAboTool
                 Title = args.Title,
                 TypeId = args.TypeId,
                 ParentId = args.ParentId,
-                CurrentStepId = args.InitialStepId,
+                CurrentStep = initialStepInfo,
                 EnvironmentName = args.EnvironmentName,
                 Status = "running"
             });
@@ -147,7 +182,7 @@ public class StartProjectTool : IAboTool
     private class ProcessState
     {
         public string ProjectId { get; set; } = string.Empty;
-        public string CurrentStepId { get; set; } = string.Empty;
+        public ProcessStepInfo CurrentStep { get; set; } = new();
         public string Status { get; set; } = string.Empty;
         public DateTime LastUpdated { get; set; }
         public List<ProcessStepHistory> History { get; set; } = new();
@@ -155,7 +190,7 @@ public class StartProjectTool : IAboTool
 
     private class ProcessStepHistory
     {
-        public string StepId { get; set; } = string.Empty;
+        public ProcessStepInfo Step { get; set; } = new();
         public DateTime CompletedAt { get; set; }
         public string? ResultNotes { get; set; }
     }
@@ -166,7 +201,7 @@ public class StartProjectTool : IAboTool
         public string Title { get; set; } = string.Empty;
         public string TypeId { get; set; } = string.Empty;
         public string? ParentId { get; set; }
-        public string CurrentStepId { get; set; } = string.Empty;
+        public ProcessStepInfo CurrentStep { get; set; } = new();
         public string EnvironmentName { get; set; } = string.Empty;
         public string Status { get; set; } = "running";
     }

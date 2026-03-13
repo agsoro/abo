@@ -8,7 +8,7 @@ The Agsoro Bot Orchestrator (ABO) is built on a **Controller-Worker** loop that 
 
 The core orchestration loop ensures that the AI never has direct, uncontrolled access to internal data. All actions are mediated by the C# orchestrator:
 
-1. **Intelligent Selection**: When a request comes in, the `AgentSupervisor` uses the LLM to analyze the intent and select the most appropriate specialized agent (e.g. `QuizAgent`, `HelloWorldAgent`, `PmoAgent`, or `EmployeeAgent`).
+1. **Intelligent Selection**: When a request comes in, the `AgentSupervisor` uses the LLM to analyze the intent and select the most appropriate specialized agent (e.g. `QuizAgent`, `HelloWorldAgent`, `PmoAgent`, or `SpecialistAgent`).
 2. **Reasoning**: The selected agent provides its `SystemPrompt` and `ToolDefinitions`. The orchestrator sends a REST `POST` request to the AI endpoint. The model returns a "Tool Call" in JSON.
 3. **Local Execution**: The C# orchestrator parses the JSON tool call and invokes the corresponding internal C# method.
 4. **Synthesis**: The result is sent back to the AI model to generate a final, human-readable summary or action confirmation.
@@ -40,29 +40,29 @@ ABO implements a full BPMN-based project management system:
   - `info.md` – Project goals, context, and initial parameters.
   - `status.json` – Current BPMN step, status, and timestamps.
 - **`active_projects.json`** is the central list of all running projects (in `/Data/Projects/`).
-- The `PmoAgent` designs processes and roles; the `EmployeeAgent` performs the actual work.
+- The `PmoAgent` designs processes and roles; the `ManagerAgent` delegates work to `SpecialistAgent` instances that perform the actual work.
 - The current project status is accessible via the REST endpoint `GET /api/projects/{id}/status`.
 
 ---
 
-## Secure Connector (EmployeeAgent)
+## Secure Connector (SpecialistAgent)
 
-The `EmployeeAgent` uses a **connector pattern** for secure filesystem access:
+The `SpecialistAgent` uses a **connector pattern** for secure filesystem and network access:
 
-1. The agent calls `checkout_project` with a `projectId`.
+1. The agent calls `checkout_task` with a `projectId`.
 2. ABO resolves the configured **environment** (`ConnectorEnvironment`) of the project (stored in `environments.json`).
 3. A `LocalWindowsConnector` is instantiated and bound to the environment's directory.
-4. All subsequent filesystem and shell tools (`read_file`, `write_file`, `git`, `dotnet`, `python`, `search_regex`, etc.) are **confined** to that directory.
+4. All subsequent filesystem and shell tools (`read_file`, `write_file`, `git`, `dotnet`, `python`, `search_regex`, `http_get`, etc.) are **confined** to that directory (filesystem) or security-validated (HTTP).
 5. After the task is completed (`complete_task`), the connector is released.
 
 ```
-[EmployeeAgent]
-  ↓ checkout_project(projectId)
+[SpecialistAgent]
+  ↓ checkout_task(projectId)
 [ABO-Core: Environment Resolution]
   ↓ ConnectorEnvironment { Dir = "C:\src\project" }
 [LocalWindowsConnector]
-  ↓ read_file / write_file / git / dotnet / python / search_regex ...
-[Filesystem (confined to Dir)]
+  ↓ read_file / write_file / git / dotnet / python / search_regex / http_get ...
+[Filesystem (confined to Dir) / External HTTP (SSRF-protected)]
 ```
 
 ### Available Connector Tools
@@ -78,6 +78,25 @@ The `EmployeeAgent` uses a **connector pattern** for secure filesystem access:
 | `dotnet` | `DotnetTool` | Execute .NET CLI commands |
 | `python` | `PythonTool` | Execute Python commands (requires Python in PATH) |
 | `search_regex` | `SearchRegexTool` | Search for regex patterns across files and filenames |
+| `http_get` | `HttpGetTool` | Send HTTP GET requests to external APIs (SSRF-protected, 100 KB cap) |
+
+### HttpGet Security Architecture
+
+The `http_get` tool delegates to `LocalWindowsConnector.HttpGetAsync`, which enforces a multi-layered security model via the separate `HttpGetSecurityHelper` class:
+
+```
+[HttpGetTool.ExecuteAsync]
+  ↓ URL-Parsing + Parameter-Validation
+[LocalWindowsConnector.HttpGetAsync]
+  ↓ Schema-Check (http/https only)
+  ↓ SSRF-Check: HttpGetSecurityHelper.CheckSsrfAsync(uri)
+    ├── Loopback-Hostname-Block (localhost, 127.0.0.1, [::1])
+    ├── Direct IP: IPAddress.IsLoopback() + IsPrivateIpAddress()
+    └── DNS-Resolution: alle Adressen prüfen (RFC-1918 Bitmasken)
+  ↓ HttpClient.SendAsync (ResponseHeadersRead)
+  ↓ Body-Truncation (max 100 KB)
+[External HTTP Target / Error Response]
+```
 
 ---
 
@@ -162,7 +181,8 @@ The `/Data/` directory contains all ABO runtime data. These files are written an
 /Abo
   /Agents         - Agent implementations (IAgent)
   /Core
-    /Connectors   - IConnector, LocalWindowsConnector, ConnectorEnvironment
+    /Connectors   - IConnector, LocalWindowsConnector, HttpGetSecurityHelper,
+                    ConnectorEnvironment
     AgentSupervisor.cs
     Orchestrator.cs
     SessionService.cs
@@ -180,7 +200,7 @@ The `/Data/` directory contains all ABO runtime data. These files are written an
   /Services       - Business logic services (UserService, QuizService)
   /Tools          - IAboTool implementations
     /Connector    - Connector tools (ReadFileTool, WriteFileTool, GitTool, DotnetTool,
-                    PythonTool, SearchRegexTool, ...)
+                    PythonTool, SearchRegexTool, HttpGetTool)
   /wwwroot        - Static Web UI files (Chat, BPMN viewer, Agents, Open Work,
                     LLM Traffic, LLM Stats dashboards)
 ```

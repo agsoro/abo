@@ -77,6 +77,7 @@ public class Orchestrator
         int totalOutputTokens = 0;
         double totalCost = 0.0;
         string currentModelName = request.Model;
+        bool terminateAfterSynthesis = false;
 
         try
         {
@@ -95,6 +96,54 @@ public class Orchestrator
                     currentModelName = _configuration["Config:CapableModelName"]!;
                 }
                 request.Model = currentModelName;
+
+                // Auto summarize if request.Messages is getting long
+                if (request.Messages.Count > 12)
+                {
+                    int keepTailCount = 4;
+                    int splitIndex = request.Messages.Count - keepTailCount;
+                    
+                    while (splitIndex < request.Messages.Count)
+                    {
+                        var msg = request.Messages[splitIndex];
+                        if (msg.Role == "tool") 
+                        {
+                            splitIndex++;
+                        }
+                        else if (msg.Role == "assistant" && msg.ToolCalls != null && msg.ToolCalls.Count > 0)
+                        {
+                            break;
+                        }
+                        else 
+                        {
+                            break;
+                        }
+                    }
+
+                    if (splitIndex > 1 && splitIndex < request.Messages.Count)
+                    {
+                        _logger.LogInformation($"[Session: {sessionId}] History reached {request.Messages.Count} messages. Summarizing older context...");
+                        var messagesToSummarize = request.Messages.GetRange(1, splitIndex - 1);
+                        var summaryText = await SummarizeMessagesAsync(messagesToSummarize, currentModelName, sessionId);
+                        
+                        var summaryMessage = new ChatMessage 
+                        { 
+                            Role = "user", 
+                            Content = "Here is a summary of the earlier conversation and actions for context:\n\n" + summaryText 
+                        };
+
+                        var newRequestMessages = new List<ChatMessage> { request.Messages[0] }; 
+                        newRequestMessages.Add(summaryMessage);
+                        newRequestMessages.AddRange(request.Messages.Skip(splitIndex));
+                        
+                        request.Messages = newRequestMessages;
+
+                        var newHistory = new List<ChatMessage>();
+                        newHistory.Add(summaryMessage);
+                        newHistory.AddRange(request.Messages.Skip(splitIndex));
+                        _sessionService.ReplaceHistory(sessionId, newHistory);
+                    }
+                }
 
                 _logger.LogInformation($"[Session: {sessionId}] [Loop {currentLoop}] Sending request to {apiEndpoint}");
 
@@ -184,6 +233,12 @@ public class Orchestrator
 
                         _sessionService.AddMessage(sessionId, toolResponseMsg);
                         request.Messages.Add(toolResponseMsg);
+
+                        if ((agent.Name == "SpecialistAgent" && toolCall.Function.Name == "complete_task") ||
+                            (agent.Name == "ManagerAgent" && toolCall.Function.Name == "delegate_task"))
+                        {
+                            terminateAfterSynthesis = true;
+                        }
                     }
 
                     // CRITICAL: Continue the loop to let the model synthesize the results
@@ -202,7 +257,18 @@ public class Orchestrator
                 }
 
                 _logger.LogInformation($"[Session: {sessionId}] Raw model output: '{finalContent}'");
-                return finalContent?.Trim() ?? "(Empty content)";
+                
+                var finalOutput = finalContent?.Trim() ?? "(Empty content)";
+                
+                if (terminateAfterSynthesis)
+                {
+                    return finalOutput;
+                }
+
+                if (terminateAfterSynthesis || choice.Message.ToolCalls == null || choice.Message.ToolCalls.Count == 0)
+                {
+                    return finalOutput;
+                }
             }
         }
         catch (Exception ex)
@@ -223,6 +289,79 @@ public class Orchestrator
         }
 
         return "Error: Max agent loops reached.";
+    }
+
+    private async Task<string> SummarizeMessagesAsync(List<ChatMessage> messages, string modelName, string sessionId)
+    {
+        var apiEndpoint = _configuration["Config:ApiEndpoint"] ?? throw new InvalidOperationException("API Endpoint not configured.");
+        var apiKey = _configuration["Config:ApiKey"] ?? string.Empty;
+
+        var contentList = new List<string>();
+        foreach (var m in messages)
+        {
+            var text = m.Content ?? "";
+            if (m.ToolCalls != null && m.ToolCalls.Any())
+            {
+                var toolsString = string.Join(", ", m.ToolCalls.Select(tc => $"{tc.Function.Name}({tc.Function.Arguments})"));
+                text += $"\n[Tool Calls: {toolsString}]";
+            }
+            contentList.Add($"[{m.Role.ToUpper()}]: {text}");
+        }
+        var content = string.Join("\n\n", contentList);
+
+        var prompt = "Please provide a concise but highly detailed summary of the following sequence of messages and tool executions. " +
+                     "Keep important context, paths, IDs, findings, and code snippets, as the agent relies on this to continue its task. " +
+                     "Just output the summary, no intro/outro.\n\n" + content;
+
+        var request = new ChatCompletionRequest
+        {
+            Model = modelName,
+            Messages = new List<ChatMessage>
+            {
+                new ChatMessage { Role = "system", Content = "You are a specialized summarizer. Compress the context perfectly." },
+                new ChatMessage { Role = "user", Content = prompt }
+            },
+            MaxTokens = 2000,
+            Temperature = 0.0f
+        };
+
+        var jsonRequest = JsonSerializer.Serialize(request, new JsonSerializerOptions { WriteIndented = true });
+        
+        await LogTrafficAsync(sessionId, "SUMMARY_REQUEST", jsonRequest);
+
+        var httpRequest = new HttpRequestMessage(HttpMethod.Post, apiEndpoint)
+        {
+            Content = new StringContent(jsonRequest, System.Text.Encoding.UTF8, "application/json")
+        };
+
+        if (!string.IsNullOrEmpty(apiKey))
+        {
+            httpRequest.Headers.Add("Authorization", $"Bearer {apiKey}");
+        }
+
+        try 
+        {
+            var httpResponse = await _httpClient.SendAsync(httpRequest);
+            var responseString = await httpResponse.Content.ReadAsStringAsync();
+            await LogTrafficAsync(sessionId, "SUMMARY_RESPONSE", responseString);
+
+            if (httpResponse.IsSuccessStatusCode)
+            {
+                var aiResponse = JsonSerializer.Deserialize<ChatCompletionResponse>(responseString);
+                var choice = aiResponse?.Choices.FirstOrDefault();
+                return choice?.Message.Content?.Trim() ?? "Summary failed.";
+            }
+            else
+            {
+                _logger.LogWarning($"Summary API failed: {httpResponse.StatusCode} - {responseString}");
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error summarizing history.");
+        }
+        
+        return "Summary failed.";
     }
 
     private async Task LogTrafficAsync(string sessionId, string type, string content)

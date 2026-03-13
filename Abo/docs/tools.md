@@ -124,24 +124,24 @@ This approach deliberately avoids the complexity of the full MCP (Model Context 
 
 ---
 
-## Connector Tools (EmployeeAgent)
+## Connector Tools (SpecialistAgent)
 
-These tools are **only available after a successful `checkout_project`**. All paths are confined to the checked-out project environment's directory. They are located in the `/Tools/Connector` subfolder.
+These tools are **only available after a successful `checkout_task`**. All paths are confined to the checked-out project environment's directory. They are located in the `/Tools/Connector` subfolder.
 
-### `checkout_project`
+### `checkout_task`
 - **Description**: Checks out a running project by its ID and binds the environment connector to it. Required before any filesystem or shell tools.
 - **Parameters**: `projectId` (string)
-- **Implemented in**: `EmployeeAgent.HandleCheckoutProjectAsync` (no separate tool file)
+- **Implemented in**: `SpecialistAgent.HandleCheckoutTaskAsync` (no separate tool file)
 
 ### `complete_task`
 - **Description**: Marks the current task in the checked-out project as completed and updates the status.
 - **Parameters**: `nextStepId` (optional, string) – ID of the next BPMN step
-- **Implemented in**: `EmployeeAgent.HandleCompleteTaskAsync` (no separate tool file)
+- **Implemented in**: `SpecialistAgent.HandleCompleteTaskAsync` (no separate tool file)
 
 ### `request_ceo_help`
 - **Description**: Stops work and escalates a question/issue to the human CEO.
 - **Parameters**: `message` (string)
-- **Implemented in**: `EmployeeAgent.HandleRequestCeoHelp` (no separate tool file)
+- **Implemented in**: `SpecialistAgent.HandleRequestCeoHelp` (no separate tool file)
 
 ### `read_file`
 - **Class**: `ReadFileTool` (`/Tools/Connector/ReadFileTool.cs`)
@@ -200,3 +200,24 @@ These tools are **only available after a successful `checkout_project`**. All pa
 - **Returns**: A list of files with matching lines (file path + line number + content). If a filename itself matches the pattern, it is also flagged.
 - **Limits**: Results per file are capped at `limitLinesPerFile` lines and at 10 KB of output per file to prevent token overload.
 - **Implemented in**: `LocalWindowsConnector.SearchRegexAsync`
+
+### `http_get` *(neu – ABO-XXXX)*
+- **Class**: `HttpGetTool` (`/Tools/Connector/HttpGetTool.cs`)
+- **Description**: Sends an HTTP GET request to the specified URL and returns the HTTP status code and response body. Use this to query external APIs, health endpoints, or fetch remote data. Response is limited to 100 KB.
+- **Parameters**:
+  - `url` (string, **required**) – The full URL to send the GET request to (must start with `http://` or `https://`).
+  - `headers` (object, optional) – Optional HTTP headers as key-value pairs (e.g. `{ "Authorization": "Bearer token", "Accept": "application/json" }`).
+  - `timeoutSeconds` (integer, optional) – Request timeout in seconds. Defaults to `30`. Maximum: `120`.
+- **Returns**: Formatted plaintext string with HTTP status code, Content-Type, and response body.
+  - **Success**: `HTTP 200 OK\nContent-Type: application/json\n\n{...}`
+  - **Error**: `Error (HTTP 404): Not Found\nURL: ...\n\n{...}`
+  - **Timeout**: `Error (Timeout): Request exceeded 30 seconds timeout.\nURL: ...`
+  - **SSRF Block**: `Error (SSRF Protection): Requests to private/internal IP addresses are not allowed (RFC-1918). Host: ...`
+- **Security**:
+  - **SSRF Protection**: Requests to loopback (`localhost`, `127.0.0.1`, `[::1]`) and RFC-1918 private IPs (`10.x`, `172.16-31.x`, `192.168.x`, link-local `169.254.x`) are blocked.
+  - **Schema Restriction**: Only `http://` and `https://` schemas are allowed. `ftp://`, `file://`, `javascript:`, etc. are rejected.
+  - **Response Size Cap**: Response body is truncated at **100 KB** to prevent LLM context overflow.
+  - **Header Injection**: System headers (`Host`, `Content-Length`, `Transfer-Encoding`, `Connection`, `Upgrade`, `Proxy-Authorization`, `Proxy-Connection`) cannot be overridden by callers.
+  - **Timeout Cap**: Maximum timeout is capped at **120 seconds** to prevent agent-loop blocking.
+- **Implemented in**: `LocalWindowsConnector.HttpGetAsync` + `HttpGetSecurityHelper` (SSRF/header logic)
+- **Tests**: `Abo.Tests/HttpGetToolTests.cs` (98 tests total, covering all security scenarios)

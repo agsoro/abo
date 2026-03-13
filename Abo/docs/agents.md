@@ -60,7 +60,7 @@ Agents in ABO are specialized roles with specific instructions, tools, and const
   - `upsert_role` – Creates or updates an AI agent role with a system prompt.
   - `get_roles` – Lists all defined roles.
   - `get_system_time` – Returns the current system time.
-- **Approach**: Follows the PDCA cycle (Plan → Do → Check → Act). Designs processes, defines roles, and delegates execution work to the `EmployeeAgent`.
+- **Approach**: Follows the PDCA cycle (Plan → Do → Check → Act). Designs processes, defines roles, and delegates execution work to the `ManagerAgent`.
 - **Rules**:
   - Every node, gateway, and transition in the BPMN **must have a unique ID**.
   - Always check `get_roles` before creating new roles.
@@ -69,16 +69,35 @@ Agents in ABO are specialized roles with specific instructions, tools, and const
 
 ---
 
-### EmployeeAgent
-- **Class**: `Abo.Agents.EmployeeAgent`
-- **Description**: The generic worker agent. Takes on concrete tasks from running projects and executes them autonomously.
+---
+
+### ManagerAgent
+- **Class**: `Abo.Agents.ManagerAgent`
+- **Description**: The Project Lead / Manager. Identifies open tasks from active projects and delegates them to specialized agents who do the actual work.
+- **Requires Capable Model**: Yes (`RequiresCapableModel = true`)
+- **Tools**:
+  - `list_projects` – Lists all active projects and their current status.
+  - `get_open_work` – Shows open work items across all projects.
+  - `get_roles` – Lists all defined roles.
+  - `get_system_time` – Returns the current system time.
+  - `delegate_task` – Assigns specific work to a `SpecialistAgent` and executes the sub-agent workflow.
+- **Workflow**:
+  1. Use `get_open_work` to identify active projects needing work.
+  2. Determine the required role using `get_roles`.
+  3. Call `delegate_task` with `projectId`, `roleId`, and detailed instructions.
+
+---
+
+### SpecialistAgent
+- **Class**: `Abo.Agents.SpecialistAgent`
+- **Description**: The generic worker agent. Takes on concrete tasks delegated by the `ManagerAgent` and executes them autonomously in a specialized role.
 - **Requires Capable Model**: Yes (`RequiresCapableModel = true`)
 - **Lifecycle Tools**:
-  - `checkout_project` – Binds a secure connector to a project environment (must be called before filesystem/shell tools).
+  - `checkout_task` – Binds a secure connector to a project environment (must be called before filesystem/shell tools).
   - `complete_task` – Marks the current task as completed and advances the BPMN step. Optional parameter: `nextStepId`.
   - `request_ceo_help` – Escalates an issue to the human CEO.
-- **Global Information Tools**: `list_projects`, `get_open_work`, `get_system_time`, `get_roles`, `get_environments`
-- **Connector Tools** (only available after `checkout_project`):
+- **Global Information Tools**: `get_system_time`, `get_environments`
+- **Connector Tools** (only available after `checkout_task`):
   - `read_file` – Read a file.
   - `write_file` – Write/create a file.
   - `delete_file` – Delete a file.
@@ -86,16 +105,15 @@ Agents in ABO are specialized roles with specific instructions, tools, and const
   - `mkdir` – Create a new directory.
   - `git` – Execute git commands (without the word `git`).
   - `dotnet` – Execute .NET CLI commands (without the word `dotnet`).
-  - `python` – Execute Python commands (without the word `python`). Requires Python to be installed and available in the system PATH. Useful for running scripts, tests (`-m pytest`), package management (`-m pip install ...`), or virtual environments (`-m venv .venv`).
-  - `search_regex` – Search for a regex pattern across files and filenames within a directory. Returns matching file paths, line numbers, and content snippets.
+  - `python` – Execute Python commands (without the word `python`).
+  - `search_regex` – Search for a regex pattern across files and filenames within a directory.
 - **Security**: All filesystem and shell operations are confined to the checked-out project environment's directory. Paths outside are not accessible.
 - **Workflow**:
-  1. Call `list_projects` or `get_open_work` to find open work.
-  2. Call `checkout_project` with the `projectId`.
-  3. Read the project role and task from `info.md` or BPMN.
-  4. Perform work using connector tools.
-  5. Call `complete_task` (optionally with `nextStepId`).
+  1. The agent is instantiated with a specific role and prompt by the `ManagerAgent`.
+  2. Call `checkout_task` with the `projectId` provided in the instructions.
+  3. Perform work using connector tools based on instructions.
+  4. Call `complete_task` (optionally with `nextStepId`).
 
 ## Implementation
 
-All agents implement the `IAgent` interface (`Abo.Agents.IAgent`) and are registered as transient services in `Program.cs`. The `AgentSupervisor` dynamically selects the appropriate agent via LLM-based intent analysis using the `Name` and `Description` of each agent.
+All primary agents implement the `IAgent` interface (`Abo.Agents.IAgent`) and are registered as transient services in `Program.cs`. The `AgentSupervisor` dynamically selects the appropriate agent via LLM-based intent analysis using the `Name` and `Description` of each agent. `SpecialistAgent` is instantiated dynamically by `ManagerAgent` and is not available to the `AgentSupervisor`.

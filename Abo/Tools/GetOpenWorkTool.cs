@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Xml.Linq;
+using Abo.Contracts.Models;
 using Abo.Tools;
 
 namespace Abo.Tools;
@@ -66,7 +67,7 @@ public class GetOpenWorkTool : IAboTool
                     {
                         var xml = await File.ReadAllTextAsync(bpmnFile);
                         var xdoc = XDocument.Parse(xml);
-                        var node = xdoc.Descendants().FirstOrDefault(e => e.Attribute("id")?.Value == p.CurrentStepId);
+                        var node = xdoc.Descendants().FirstOrDefault(e => e.Attribute("id")?.Value == p.CurrentStep.StepId);
 
                         // Flag for removal if: node doesn't exist in BPMN OR node is an endEvent
                         if (node == null || node.Name.LocalName == "endEvent")
@@ -117,11 +118,11 @@ public class GetOpenWorkTool : IAboTool
                         XNamespace bpmn = "http://www.omg.org/spec/BPMN/20100524/MODEL";
 
                         // Find node by ID across all elements in the process
-                        var node = xdoc.Descendants().FirstOrDefault(e => e.Attribute("id")?.Value == project.CurrentStepId);
+                        var node = xdoc.Descendants().FirstOrDefault(e => e.Attribute("id")?.Value == project.CurrentStep.StepId);
 
                         if (node != null)
                         {
-                            nodeName = node.Attribute("name")?.Value ?? project.CurrentStepId;
+                            nodeName = node.Attribute("name")?.Value ?? project.CurrentStep.StepId;
                             nodeType = node.Name.LocalName; // e.g., userTask, scriptTask, startEvent
 
                             status = nodeType switch
@@ -148,7 +149,9 @@ public class GetOpenWorkTool : IAboTool
                 output.AppendLine($"### Project: {project.Title} (ID: `{project.Id}`)");
                 output.AppendLine($"- **Environment**: `{project.EnvironmentName}`");
                 output.AppendLine($"- **Project Status**: `{project.Status}`");
-                output.AppendLine($"- **Current Step**: {nodeName} (`{project.CurrentStepId}`)");
+                output.AppendLine($"- **Current Step**: {nodeName} (`{project.CurrentStep.StepId}`)");
+                if (!string.IsNullOrWhiteSpace(project.CurrentStep.RequiredRole))
+                    output.AppendLine($"- **Required Role**: `{project.CurrentStep.RequiredRole}`");
                 output.AppendLine($"- **BPMN Node Type**: `{nodeType}`");
                 output.AppendLine($"- **State**: {status}");
                 output.AppendLine();
@@ -167,7 +170,7 @@ public class GetOpenWorkTool : IAboTool
         public string Id { get; set; } = string.Empty;
         public string Title { get; set; } = string.Empty;
         public string TypeId { get; set; } = string.Empty;
-        public string CurrentStepId { get; set; } = string.Empty;
+        public ProcessStepInfo CurrentStep { get; set; } = new();
         public string EnvironmentName { get; set; } = string.Empty;
         public string Status { get; set; } = "running";
     }

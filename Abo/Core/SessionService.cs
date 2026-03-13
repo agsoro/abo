@@ -47,6 +47,12 @@ public class SessionService
         }
     }
 
+    public void ReplaceHistory(string sessionId, List<ChatMessage> newHistory)
+    {
+        _lastActivity[sessionId] = DateTime.UtcNow;
+        _history[sessionId] = newHistory;
+    }
+
     public void ClearHistory(string sessionId)
     {
         _history.TryRemove(sessionId, out _);

@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Xml.Linq;
+using Abo.Contracts.Models;
 using Abo.Tools;
 
 namespace Abo.Tools;
@@ -65,7 +66,7 @@ public class ListProjectsTool : IAboTool
                     {
                         var xml = await File.ReadAllTextAsync(bpmnFile);
                         var xdoc = XDocument.Parse(xml);
-                        var node = xdoc.Descendants().FirstOrDefault(e => e.Attribute("id")?.Value == p.CurrentStepId);
+                        var node = xdoc.Descendants().FirstOrDefault(e => e.Attribute("id")?.Value == p.CurrentStep.StepId);
 
                         // Flag for removal if: node doesn't exist in BPMN OR node is an endEvent
                         if (node == null || node.Name.LocalName == "endEvent")
@@ -117,7 +118,8 @@ public class ListProjectsTool : IAboTool
         var indent = new string(' ', indentLevel * 4);
         output.AppendLine($"{indent}- **[{project.Id}] {project.Title}**");
         output.AppendLine($"{indent}  - Type: `{project.TypeId}`");
-        output.AppendLine($"{indent}  - Step: `{project.CurrentStepId}`");
+        output.AppendLine($"{indent}  - Step: `{project.CurrentStep.StepId}` ({project.CurrentStep.StepName})");
+        output.AppendLine($"{indent}  - Role: `{project.CurrentStep.RequiredRole}`");
         output.AppendLine($"{indent}  - Status: `{project.Status}`");
         if (!string.IsNullOrWhiteSpace(project.EnvironmentName))
         {
@@ -137,7 +139,7 @@ public class ListProjectsTool : IAboTool
         public string Title { get; set; } = string.Empty;
         public string TypeId { get; set; } = string.Empty;
         public string? ParentId { get; set; }
-        public string CurrentStepId { get; set; } = string.Empty;
+        public ProcessStepInfo CurrentStep { get; set; } = new();
         public string EnvironmentName { get; set; } = string.Empty;
         public string Status { get; set; } = "running";
     }
