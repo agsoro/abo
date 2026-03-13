@@ -76,23 +76,45 @@ public class MattermostClient
     }
 
     /// <summary>
-    /// Sends a "user is typing" indicator to a Mattermost channel.
-    /// Should be called repeatedly (e.g. every 5 seconds) while processing.
+    /// Sends a "user is typing" indicator to a Mattermost channel via the REST API.
+    /// NOTE: This REST endpoint is unreliable for bot tokens on many Mattermost server
+    /// configurations. Typing indicators should preferably be sent via the authenticated
+    /// WebSocket connection (action: "user_typing") — see MattermostListenerService.
+    /// This method is retained as a diagnostic fallback and logs the HTTP response status.
     /// </summary>
     public async Task SendTypingAsync(string channelId, string? parentId = null)
     {
         if (string.IsNullOrEmpty(_options.BotToken) || string.IsNullOrEmpty(_options.BaseUrl))
+        {
+            _logger.LogWarning("SendTypingAsync: BotToken or BaseUrl is not configured, skipping.");
             return;
+        }
 
         try
         {
-            var payload = new { channel_id = channelId, parent_id = parentId ?? string.Empty };
+            // Omit parent_id entirely when empty to avoid API rejection.
+            object payload = string.IsNullOrEmpty(parentId)
+                ? new { channel_id = channelId }
+                : new { channel_id = channelId, parent_id = parentId };
+
             var content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
-            await _httpClient.PostAsync("users/me/typing", content);
+            var response = await _httpClient.PostAsync("users/me/typing", content);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                var body = await response.Content.ReadAsStringAsync();
+                _logger.LogWarning(
+                    "SendTypingAsync REST call failed with {StatusCode}: {Body}",
+                    response.StatusCode, body);
+            }
+            else
+            {
+                _logger.LogDebug("SendTypingAsync REST call succeeded for channel {ChannelId}.", channelId);
+            }
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Failed to send typing indicator.");
+            _logger.LogWarning(ex, "Failed to send typing indicator via REST.");
         }
     }
 

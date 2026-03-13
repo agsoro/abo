@@ -16,6 +16,12 @@ public class MattermostListenerService : BackgroundService
 
     private string? _botUserId;
 
+    // Shared WebSocket reference so that HandleMessageAsync can send typing events
+    // over the same connection that is already authenticated.
+    private ClientWebSocket? _activeWebSocket;
+    private readonly SemaphoreSlim _wsSendLock = new(1, 1);
+    private int _wsSeq = 0;
+
     public MattermostListenerService(
         IServiceProvider serviceProvider,
         IOptions<MattermostOptions> options,
@@ -52,6 +58,10 @@ public class MattermostListenerService : BackgroundService
                 await ws.ConnectAsync(uri, stoppingToken);
                 _logger.LogInformation("Successfully connected to Mattermost WebSocket.");
 
+                // Make the active socket available for outgoing typing messages
+                _activeWebSocket = ws;
+                _wsSeq = 0;
+
                 var buffer = new byte[8192];
                 var sb = new StringBuilder();
 
@@ -82,6 +92,68 @@ public class MattermostListenerService : BackgroundService
                 _logger.LogError(ex, "Mattermost WebSocket connection error. Retrying in 10 seconds...");
                 await Task.Delay(TimeSpan.FromSeconds(10), stoppingToken);
             }
+            finally
+            {
+                _activeWebSocket = null;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Sends a "user_typing" action over the currently active WebSocket connection.
+    /// Mattermost expects typing indicators via WebSocket, not via the REST endpoint,
+    /// because the REST endpoint /api/v4/users/me/typing is only available on self-hosted
+    /// instances with specific permissions and is unreliable in practice.
+    /// </summary>
+    private async Task SendTypingOverWebSocketAsync(string channelId, string? parentId)
+    {
+        var ws = _activeWebSocket;
+        if (ws == null || ws.State != WebSocketState.Open)
+        {
+            _logger.LogDebug("Cannot send typing indicator: WebSocket not available or not open.");
+            return;
+        }
+
+        try
+        {
+            var seq = Interlocked.Increment(ref _wsSeq);
+            var action = new MattermostWebSocketAction
+            {
+                Action = "user_typing",
+                Seq = seq,
+                Data = new Dictionary<string, string>
+                {
+                    { "channel_id", channelId }
+                }
+            };
+
+            // Only include parent_id when it is a meaningful thread root, not an empty string.
+            if (!string.IsNullOrEmpty(parentId))
+                action.Data["parent_id"] = parentId;
+
+            var json = JsonSerializer.Serialize(action);
+            var bytes = Encoding.UTF8.GetBytes(json);
+
+            // Serialise WebSocket sends — concurrent sends throw InvalidOperationException.
+            await _wsSendLock.WaitAsync();
+            try
+            {
+                await ws.SendAsync(
+                    new ArraySegment<byte>(bytes),
+                    WebSocketMessageType.Text,
+                    endOfMessage: true,
+                    CancellationToken.None);
+
+                _logger.LogDebug("Typing indicator sent via WebSocket (seq={Seq}, channel={ChannelId}).", seq, channelId);
+            }
+            finally
+            {
+                _wsSendLock.Release();
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to send typing indicator via WebSocket.");
         }
     }
 
@@ -133,10 +205,6 @@ public class MattermostListenerService : BackgroundService
                 return;
             }
 
-            // Simple prevention of endless bot loops:
-            // In a real app, you'd check `post.UserId` against your bot's own ID
-            // Here, we'll avoid processing anything generated via UI or obvious bot prefixes
-            // For now, let's just log and process it to ensure it answers
             _logger.LogInformation($"Received message in channel {post.ChannelId}: {post.Message}");
 
             // Spawning a background scope so we can use Scoped/Transient DI services
@@ -164,13 +232,16 @@ public class MattermostListenerService : BackgroundService
             // Determine the thread ID to stay in the thread of the chat
             var threadId = !string.IsNullOrEmpty(post.RootId) ? post.RootId : post.Id;
 
-            // Send "typing..." indicator every 5 seconds while the agent is processing
+            // Send "typing..." indicator every 5 seconds while the agent is processing.
+            // Typing indicators are sent via the authenticated WebSocket connection because
+            // the Mattermost REST endpoint POST /api/v4/users/me/typing has inconsistent
+            // support across server configurations and does not work reliably with bot tokens.
             using var typingCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             var typingTask = Task.Run(async () =>
             {
                 while (!typingCts.Token.IsCancellationRequested)
                 {
-                    await mattermostClient.SendTypingAsync(post.ChannelId, threadId);
+                    await SendTypingOverWebSocketAsync(post.ChannelId, threadId);
                     try { await Task.Delay(TimeSpan.FromSeconds(5), typingCts.Token); }
                     catch (OperationCanceledException) { break; }
                 }
