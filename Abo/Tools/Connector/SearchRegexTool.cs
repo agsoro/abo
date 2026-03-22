@@ -5,9 +5,9 @@ namespace Abo.Tools.Connector;
 
 public class SearchRegexTool : IAboTool
 {
-    private readonly IConnector _connector;
+    private readonly IWorkspaceConnector _connector;
 
-    public SearchRegexTool(IConnector connector)
+    public SearchRegexTool(IWorkspaceConnector connector)
     {
         _connector = connector;
     }

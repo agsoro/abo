@@ -6,16 +6,16 @@ namespace Abo.Tools.Connector;
 /// <summary>
 /// Connector-Tool das HTTP GET Requests an externe URLs sendet.
 /// Implementiert SSRF-Schutz, Response-Truncation (100 KB) und Timeout-Handling.
-/// Folgt dem Architekturmuster der bestehenden Connector-Tools (IAboTool + IConnector).
+/// Folgt dem Architekturmuster der bestehenden Connector-Tools (IAboTool + IWorkspaceConnector).
 /// </summary>
 public class HttpGetTool : IAboTool
 {
-    private readonly IConnector _connector;
+    private readonly IWorkspaceConnector _connector;
 
     /// <summary>Maximaler Timeout in Sekunden (wird intern auf diesen Wert gedeckelt).</summary>
     private const int MaxTimeoutSeconds = 120;
 
-    public HttpGetTool(IConnector connector)
+    public HttpGetTool(IWorkspaceConnector connector)
     {
         _connector = connector;
     }

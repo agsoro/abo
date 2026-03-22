@@ -5,9 +5,9 @@ namespace Abo.Tools.Connector;
 
 public class DeleteFileTool : IAboTool
 {
-    private readonly IConnector _connector;
+    private readonly IWorkspaceConnector _connector;
 
-    public DeleteFileTool(IConnector connector)
+    public DeleteFileTool(IWorkspaceConnector connector)
     {
         _connector = connector;
     }

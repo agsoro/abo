@@ -5,9 +5,9 @@ namespace Abo.Tools.Connector;
 
 public class ListDirTool : IAboTool
 {
-    private readonly IConnector _connector;
+    private readonly IWorkspaceConnector _connector;
 
-    public ListDirTool(IConnector connector)
+    public ListDirTool(IWorkspaceConnector connector)
     {
         _connector = connector;
     }

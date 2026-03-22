@@ -58,7 +58,10 @@ Secrets should **never** be stored in plain text in `appsettings.json` or checke
 
 ### Structuring Integrations
 
-Configuration should cleanly separate different services. Example structure for `appsettings.json` (or environment variables):
+Configuration is split into two layers: Global Secrets and Environment-Specific bindings.
+
+#### 1. Global Secrets (`appsettings.json` / Environment Variables)
+Stores the API keys and base URLs for external systems.
 
 ```json
 {
@@ -77,12 +80,16 @@ Configuration should cleanly separate different services. Example structure for 
     "Mattermost": {
       "BaseUrl": "https://work.xpecto.com/chat",
       "BotToken": "SECRET_IN_VAULT_OR_ENV"
+    },
+    "GitHub": {
+      "Token": "SECRET_IN_VAULT_OR_ENV",
+      "UserAgent": "Abo-Agent"
     }
   }
 }
 ```
 
-### All Integration Keys
+### All Integration Keys (Global)
 
 | Key | Description |
 |---|---|
@@ -90,6 +97,37 @@ Configuration should cleanly separate different services. Example structure for 
 | `Integrations:XpectoLive:ApiKey` | API key for XpectoLive (Secret!) |
 | `Integrations:Mattermost:BaseUrl` | Base URL of the Mattermost instance |
 | `Integrations:Mattermost:BotToken` | Bot token for the Mattermost bot (Secret!) |
+| `Integrations:GitHub:Token` | Personal Access Token for GitHub API (Secret!) |
+| `Integrations:GitHub:UserAgent` | User-Agent string required by GitHub API |
+
+---
+
+#### 2. Environment Configurations (`Data\Environments\environments.json`)
+Binds physical directories to specific issue trackers and wikis. This tells the SpecialistAgent where to push tickets and write documentation.
+
+```json
+[
+  {
+    "Name": "abo",
+    "Type": "local",
+    "Os": "win",
+    "Dir": "C:\\src\\agsoro\\abo",
+    "IssueTracker": {
+      "Type": "github",
+      "Owner": "agsoro",
+      "Repository": "abo"
+    },
+    "Wiki": {
+      "Type": "filesystem",
+      "RootPath": "\\Docs"
+    }
+  }
+]
+```
+
+- **Wiki Types**: 
+  - `filesystem`: Uses `RootPath` as a relative subpath appended to `Dir`.
+  - `xpectolive`: Uses `RootPath` as the XpectoLive Space ID.
 
 ---
 

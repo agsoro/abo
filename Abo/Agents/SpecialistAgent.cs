@@ -5,6 +5,8 @@ using Abo.Contracts.OpenAI;
 using Abo.Core.Connectors;
 using Abo.Tools;
 using Abo.Tools.Connector;
+using Abo.Integrations.GitHub;
+using Abo.Integrations.XpectoLive;
 
 namespace Abo.Agents;
 
@@ -14,10 +16,14 @@ public class SpecialistAgent : IAgent
     private readonly string _dataDir;
     private readonly string _roleTitle;
     private readonly string _rolePrompt;
+    private readonly string? _issueTrackerToken;
+    private readonly IXpectoLiveWikiClient _wikiClient;
 
     // State for the currently checked-out project
     private string? _currentProjectId;
-    private IConnector? _currentConnector;
+    private IWorkspaceConnector? _currentWorkspace;
+    private IIssueTrackerConnector? _currentIssueTracker;
+    private IWikiConnector? _currentWiki;
     private List<IAboTool> _connectorTools = new();
     private bool _isValidationTask;
 
@@ -26,11 +32,13 @@ public class SpecialistAgent : IAgent
     public bool RequiresCapableModel => true;
     public bool RequiresReviewModel => _isValidationTask;
 
-    public SpecialistAgent(IEnumerable<IAboTool> globalTools, string roleTitle, string rolePrompt)
+    public SpecialistAgent(IEnumerable<IAboTool> globalTools, string roleTitle, string rolePrompt, string? issueTrackerToken = null, IXpectoLiveWikiClient? wikiClient = null)
     {
         _globalTools = globalTools;
         _roleTitle = roleTitle;
         _rolePrompt = rolePrompt;
+        _issueTrackerToken = issueTrackerToken;
+        _wikiClient = wikiClient!;
         _dataDir = Path.Combine(AppContext.BaseDirectory, "Data");
     }
 
@@ -136,17 +144,23 @@ public class SpecialistAgent : IAgent
 
         // 3. Connector tool signatures (always exposed, but restricted functionally if not checked out)
         var dummyEnv = new ConnectorEnvironment { Dir = "C:\\" };
-        var dummyConn = new LocalWindowsConnector(dummyEnv);
-        definitions.Add(CreateDef(new ReadFileTool(dummyConn)));
-        definitions.Add(CreateDef(new WriteFileTool(dummyConn)));
-        definitions.Add(CreateDef(new DeleteFileTool(dummyConn)));
-        definitions.Add(CreateDef(new ListDirTool(dummyConn)));
-        definitions.Add(CreateDef(new MkDirTool(dummyConn)));
-        definitions.Add(CreateDef(new GitTool(dummyConn)));
-        definitions.Add(CreateDef(new DotnetTool(dummyConn)));
-        definitions.Add(CreateDef(new PythonTool(dummyConn)));
-        definitions.Add(CreateDef(new SearchRegexTool(dummyConn)));
-        definitions.Add(CreateDef(new HttpGetTool(dummyConn)));   // ABO-XXXX: http_get Tool
+        var dummyWorkspace = new LocalWorkspaceConnector(dummyEnv);
+        var dummyIssueConfig = new IssueTrackerConfig { Owner = "dummy", Repository = "dummy" };
+        var dummyIssue = new GitHubIssueTrackerConnector(dummyIssueConfig, null);
+        definitions.Add(CreateDef(new ReadFileTool(dummyWorkspace)));
+        definitions.Add(CreateDef(new WriteFileTool(dummyWorkspace)));
+        definitions.Add(CreateDef(new DeleteFileTool(dummyWorkspace)));
+        definitions.Add(CreateDef(new ListDirTool(dummyWorkspace)));
+        definitions.Add(CreateDef(new MkDirTool(dummyWorkspace)));
+        definitions.Add(CreateDef(new GitTool(dummyWorkspace)));
+        definitions.Add(CreateDef(new DotnetTool(dummyWorkspace)));
+        definitions.Add(CreateDef(new PythonTool(dummyWorkspace)));
+        definitions.Add(CreateDef(new SearchRegexTool(dummyWorkspace)));
+        definitions.Add(CreateDef(new HttpGetTool(dummyWorkspace)));   // ABO-XXXX: http_get Tool
+        definitions.Add(CreateDef(new ListIssuesTool(dummyIssue)));
+        definitions.Add(CreateDef(new GetIssueTool(dummyIssue)));
+        definitions.Add(CreateDef(new CreateIssueTool(dummyIssue)));
+        definitions.Add(CreateDef(new AddIssueCommentTool(dummyIssue)));
 
         return definitions;
     }
@@ -181,17 +195,18 @@ public class SpecialistAgent : IAgent
         var globalTool = _globalTools.FirstOrDefault(t => t.Name == name);
         if (globalTool != null) return await globalTool.ExecuteAsync(args);
 
-        // Handle Connector Tools (inkl. http_get – ABO-XXXX)
+        // Handle Connector Tools
         var connectorToolNames = new[]
         {
             "read_file", "write_file", "delete_file", "list_dir", "mkdir",
-            "git", "dotnet", "python", "search_regex", "http_get"
+            "git", "dotnet", "python", "search_regex", "http_get",
+            "list_issues", "get_issue", "create_issue", "add_issue_comment"
         };
         if (connectorToolNames.Contains(name))
         {
-            if (_currentConnector == null || string.IsNullOrEmpty(_currentProjectId))
+            if (_currentWorkspace == null || string.IsNullOrEmpty(_currentProjectId))
             {
-                return "Error: You must execute 'checkout_task' before using any file or system tools.";
+                return "Error: You must execute 'checkout_task' before using any file, system, or issue tracker tools.";
             }
 
             var tool = _connectorTools.FirstOrDefault(t => t.Name == name);
@@ -240,7 +255,30 @@ public class SpecialistAgent : IAgent
             if (targetEnv == null) return $"Error: Environment '{project.EnvironmentName}' not found in configuration.";
 
             _currentProjectId = projectId;
-            _currentConnector = new LocalWindowsConnector(targetEnv);
+            _currentWorkspace = new LocalWorkspaceConnector(targetEnv);
+            
+            if (targetEnv.IssueTracker != null)
+            {
+                if (targetEnv.IssueTracker.Type.Equals("github", StringComparison.OrdinalIgnoreCase))
+                {
+                    _currentIssueTracker = new GitHubIssueTrackerConnector(targetEnv.IssueTracker, _issueTrackerToken);
+                }
+            }
+
+            if (targetEnv.Wiki != null)
+            {
+                if (targetEnv.Wiki.Type.Equals("filesystem", StringComparison.OrdinalIgnoreCase))
+                {
+                    _currentWiki = new FileSystemWikiConnector(targetEnv);
+                }
+                else if (targetEnv.Wiki.Type.Equals("xpectolive", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (!string.IsNullOrWhiteSpace(targetEnv.Wiki.RootPath))
+                    {
+                        _currentWiki = new XpectoLiveWikiConnector(_wikiClient, targetEnv.Wiki.RootPath);
+                    }
+                }
+            }
 
             _isValidationTask = _roleTitle.Contains("review", StringComparison.OrdinalIgnoreCase) ||
                 _roleTitle.Contains("qa", StringComparison.OrdinalIgnoreCase) ||
@@ -248,16 +286,32 @@ public class SpecialistAgent : IAgent
                 _roleTitle.Contains("validation", StringComparison.OrdinalIgnoreCase);
 
             _connectorTools.Clear();
-            _connectorTools.Add(new ReadFileTool(_currentConnector));
-            _connectorTools.Add(new WriteFileTool(_currentConnector));
-            _connectorTools.Add(new DeleteFileTool(_currentConnector));
-            _connectorTools.Add(new ListDirTool(_currentConnector));
-            _connectorTools.Add(new MkDirTool(_currentConnector));
-            _connectorTools.Add(new GitTool(_currentConnector));
-            _connectorTools.Add(new DotnetTool(_currentConnector));
-            _connectorTools.Add(new PythonTool(_currentConnector));
-            _connectorTools.Add(new SearchRegexTool(_currentConnector));
-            _connectorTools.Add(new HttpGetTool(_currentConnector));  // ABO-XXXX: http_get Tool
+            _connectorTools.Add(new ReadFileTool(_currentWorkspace));
+            _connectorTools.Add(new WriteFileTool(_currentWorkspace));
+            _connectorTools.Add(new DeleteFileTool(_currentWorkspace));
+            _connectorTools.Add(new ListDirTool(_currentWorkspace));
+            _connectorTools.Add(new MkDirTool(_currentWorkspace));
+            _connectorTools.Add(new GitTool(_currentWorkspace));
+            _connectorTools.Add(new DotnetTool(_currentWorkspace));
+            _connectorTools.Add(new PythonTool(_currentWorkspace));
+            _connectorTools.Add(new SearchRegexTool(_currentWorkspace));
+            _connectorTools.Add(new HttpGetTool(_currentWorkspace));  // ABO-XXXX: http_get Tool
+            
+            if (_currentIssueTracker != null)
+            {
+                _connectorTools.Add(new ListIssuesTool(_currentIssueTracker));
+                _connectorTools.Add(new GetIssueTool(_currentIssueTracker));
+                _connectorTools.Add(new CreateIssueTool(_currentIssueTracker));
+                _connectorTools.Add(new AddIssueCommentTool(_currentIssueTracker));
+            }
+
+            if (_currentWiki != null)
+            {
+                _connectorTools.Add(new GetWikiPageTool(_currentWiki));
+                _connectorTools.Add(new CreateWikiPageTool(_currentWiki));
+                _connectorTools.Add(new UpdateWikiPageTool(_currentWiki));
+                _connectorTools.Add(new SearchWikiTool(_currentWiki));
+            }
 
             return $"Successfully checked out project '{projectId}'. You are now bound to environment '{targetEnv.Name}' located at '{targetEnv.Dir}'. Your relative paths will root here.";
         }
@@ -425,7 +479,8 @@ public class SpecialistAgent : IAgent
 
             var oldProj = _currentProjectId;
             _currentProjectId = null;
-            _currentConnector = null;
+            _currentWorkspace = null;
+            _currentIssueTracker = null;
             _connectorTools.Clear();
 
             if (reachedEndEvent)

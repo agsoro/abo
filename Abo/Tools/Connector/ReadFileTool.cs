@@ -5,9 +5,9 @@ namespace Abo.Tools.Connector;
 
 public class ReadFileTool : IAboTool
 {
-    private readonly IConnector _connector;
+    private readonly IWorkspaceConnector _connector;
 
-    public ReadFileTool(IConnector connector)
+    public ReadFileTool(IWorkspaceConnector connector)
     {
         _connector = connector;
     }

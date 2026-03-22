@@ -5,9 +5,9 @@ namespace Abo.Tools.Connector;
 
 public class WriteFileTool : IAboTool
 {
-    private readonly IConnector _connector;
+    private readonly IWorkspaceConnector _connector;
 
-    public WriteFileTool(IConnector connector)
+    public WriteFileTool(IWorkspaceConnector connector)
     {
         _connector = connector;
     }

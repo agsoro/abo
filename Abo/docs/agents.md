@@ -109,6 +109,15 @@ Agents in ABO are specialized roles with specific instructions, tools, and const
   - `dotnet` – Execute .NET CLI commands (without the word `dotnet`).
   - `python` – Execute Python commands (without the word `python`).
   - `search_regex` – Search for a regex pattern across files and filenames within a directory.
+  - `http_get` – Execute an HTTP GET request to external endpoints.
+  - `list_issues` – List open issues or features from the project's Issue Tracker.
+  - `get_issue` – Retrieve a specific issue by ID.
+  - `create_issue` – Create a new issue, feature, or bug.
+  - `add_issue_comment` – Add a comment to an existing issue.
+  - `get_wiki_page` – Retrieve the contents of a wiki page (local or external).
+  - `create_wiki_page` – Create a new wiki page.
+  - `update_wiki_page` – Update an existing wiki page.
+  - `search_wiki` – Search the configured wiki.
 - **Security**: All filesystem and shell operations are confined to the checked-out project environment's directory. Paths outside are not accessible.
 - **Workflow**:
   1. The agent is instantiated with a specific role and prompt by the `ManagerAgent`.

@@ -59,6 +59,7 @@ builder.Services.AddTransient<IAgent, ManagerAgent>(sp => sp.GetRequiredService<
 
 // Register Background Services
 builder.Services.AddHostedService<QuizService>();
+builder.Services.AddHostedService<EnvironmentValidationService>();
 
 var app = builder.Build();
 

@@ -231,3 +231,43 @@ These tools are **only available after a successful `checkout_task`**. All paths
   - **Timeout Cap**: Maximum timeout is capped at **120 seconds** to prevent agent-loop blocking.
 - **Implemented in**: `LocalWindowsConnector.HttpGetAsync` + `HttpGetSecurityHelper` (SSRF/header logic)
 - **Tests**: `Abo.Tests/HttpGetToolTests.cs` (98 tests total, covering all security scenarios)
+
+### `list_issues`
+- **Class**: `ListIssuesTool` (`/Tools/Connector/ListIssuesTool.cs`)
+- **Description**: Lists open issues or feature requests from the configured issue tracker (e.g., GitHub).
+- **Parameters**: `state` (optional), `labels` (optional array)
+
+### `get_issue`
+- **Class**: `GetIssueTool` (`/Tools/Connector/GetIssueTool.cs`)
+- **Description**: Retrieves the details of a specific issue by ID.
+- **Parameters**: `issueId`
+
+### `create_issue`
+- **Class**: `CreateIssueTool` (`/Tools/Connector/CreateIssueTool.cs`)
+- **Description**: Creates a new issue, feature request, or bug report. Maps `type` and `size` to issue tracker labels automatically.
+- **Parameters**: `title`, `body`, `type`, `size` (optional)
+
+### `add_issue_comment`
+- **Class**: `AddIssueCommentTool` (`/Tools/Connector/AddIssueCommentTool.cs`)
+- **Description**: Adds a comment to an existing issue (e.g., to link a completed task or commit).
+- **Parameters**: `issueId`, `body`
+
+### `get_wiki_page`
+- **Class**: `GetWikiPageTool` (`/Tools/Connector/GetWikiPageTool.cs`)
+- **Description**: Retrieves the contents of a wiki page (from local filesystem or external XpectoLive).
+- **Parameters**: `pathOrId` (relative path or Page ID)
+
+### `create_wiki_page`
+- **Class**: `CreateWikiPageTool` (`/Tools/Connector/CreateWikiPageTool.cs`)
+- **Description**: Creates a new wiki page.
+- **Parameters**: `title`, `content`, `parentPathOrId` (optional)
+
+### `update_wiki_page`
+- **Class**: `UpdateWikiPageTool` (`/Tools/Connector/UpdateWikiPageTool.cs`)
+- **Description**: Updates the contents of an existing wiki page.
+- **Parameters**: `pathOrId`, `content`
+
+### `search_wiki`
+- **Class**: `SearchWikiTool` (`/Tools/Connector/SearchWikiTool.cs`)
+- **Description**: Searches for content or titles in the configured wiki.
+- **Parameters**: `query`

@@ -4,7 +4,7 @@ using System.Text.RegularExpressions;
 
 namespace Abo.Core.Connectors;
 
-public class LocalWindowsConnector : IConnector
+public class LocalWorkspaceConnector : IWorkspaceConnector
 {
     private readonly ConnectorEnvironment _environment;
 
@@ -17,7 +17,7 @@ public class LocalWindowsConnector : IConnector
     /// <summary>Maximaler Timeout in Sekunden für HTTP-Requests.</summary>
     private const int MaxTimeoutSeconds = 120;
 
-    public LocalWindowsConnector(ConnectorEnvironment environment)
+    public LocalWorkspaceConnector(ConnectorEnvironment environment)
     {
         if (string.IsNullOrWhiteSpace(environment.Dir))
         {

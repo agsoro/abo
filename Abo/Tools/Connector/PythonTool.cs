@@ -5,9 +5,9 @@ namespace Abo.Tools.Connector;
 
 public class PythonTool : IAboTool
 {
-    private readonly IConnector _connector;
+    private readonly IWorkspaceConnector _connector;
 
-    public PythonTool(IConnector connector)
+    public PythonTool(IWorkspaceConnector connector)
     {
         _connector = connector;
     }

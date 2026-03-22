@@ -2,6 +2,7 @@ using System.Text.Json;
 using Abo.Contracts.OpenAI;
 using Abo.Core;
 using Abo.Tools;
+using Abo.Integrations.XpectoLive;
 
 namespace Abo.Agents;
 
@@ -9,18 +10,22 @@ public class ManagerAgent : IAgent
 {
     private readonly IEnumerable<IAboTool> _globalTools;
     private readonly Orchestrator _orchestrator;
+    private readonly IConfiguration _configuration;
     private readonly ILogger<ManagerAgent> _logger;
+    private readonly IXpectoLiveWikiClient _wikiClient;
 
     public string Name => "ManagerAgent";
     public string Description => "The Project Lead / Manager. Identifies open tasks from active projects and delegates them to specialized agents who do the actual work.";
     public bool RequiresCapableModel => false;
     public bool RequiresReviewModel => false;
 
-    public ManagerAgent(IEnumerable<IAboTool> globalTools, Orchestrator orchestrator, ILogger<ManagerAgent> logger)
+    public ManagerAgent(IEnumerable<IAboTool> globalTools, Orchestrator orchestrator, IConfiguration configuration, ILogger<ManagerAgent> logger, IXpectoLiveWikiClient wikiClient)
     {
         _globalTools = globalTools;
         _orchestrator = orchestrator;
+        _configuration = configuration;
         _logger = logger;
+        _wikiClient = wikiClient;
     }
 
     public string SystemPrompt =>
@@ -121,8 +126,10 @@ public class ManagerAgent : IAgent
             var role = roles?.FirstOrDefault(r => r.RoleId.Equals(roleId, StringComparison.OrdinalIgnoreCase));
             if (role == null) return $"Error: Role '{roleId}' not found.";
 
+            var issueTrackerToken = _configuration["Integrations:GitHub:Token"];
+
             // Instantiate SpecialistAgent
-            var specialist = new SpecialistAgent(_globalTools, role.Title, role.SystemPrompt);
+            var specialist = new SpecialistAgent(_globalTools, role.Title, role.SystemPrompt, issueTrackerToken, _wikiClient);
 
             _logger.LogInformation($"Manager delegating task to SpecialistAgent ({role.Title}) for project {projectId}.");
 

@@ -5,9 +5,9 @@ namespace Abo.Tools.Connector;
 
 public class DotnetTool : IAboTool
 {
-    private readonly IConnector _connector;
+    private readonly IWorkspaceConnector _connector;
 
-    public DotnetTool(IConnector connector)
+    public DotnetTool(IWorkspaceConnector connector)
     {
         _connector = connector;
     }
