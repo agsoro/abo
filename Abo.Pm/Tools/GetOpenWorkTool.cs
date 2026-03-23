@@ -1,5 +1,4 @@
 using System.Text.Json;
-using System.Xml.Linq;
 using Abo.Contracts.Models;
 using Abo.Core.Connectors;
 using Abo.Integrations.GitHub;
@@ -10,14 +9,11 @@ namespace Abo.Tools;
 
 public class GetOpenWorkTool : IAboTool
 {
-    private readonly string _processesDirectory;
     private readonly IConfiguration _config;
 
     public GetOpenWorkTool(IConfiguration config)
     {
         _config = config;
-        var dataDir = Path.Combine(AppContext.BaseDirectory, "Data");
-        _processesDirectory = Path.Combine(dataDir, "Processes");
     }
 
     public string Name => "get_open_work";
@@ -86,46 +82,12 @@ public class GetOpenWorkTool : IAboTool
                 var envName = ExtractLabelValue(issue.Labels, "env") ?? "Unknown";
                 var projRef = ExtractLabelValue(issue.Labels, "ref") ?? issue.Id;
 
-                var bpmnFile = Path.Combine(_processesDirectory, $"{typeId}.bpmn");
-                string nodeName = stepId;
-                string nodeType = "Unknown Type";
-                string status = "Unknown State";
-
-                // Resolve against BPMN if file exists
-                if (File.Exists(bpmnFile))
+                var stepInfo = Abo.Core.WorkflowEngine.GetStepInfo(stepId);
+                string nodeName = stepInfo?.StepName ?? stepId;
+                string status = stepInfo != null ? "Ready for work" : "Unknown State";
+                if (string.Equals(stepId, "done", StringComparison.OrdinalIgnoreCase) || string.Equals(stepId, "invalid", StringComparison.OrdinalIgnoreCase))
                 {
-                    try
-                    {
-                        var xml = await File.ReadAllTextAsync(bpmnFile);
-                        var xdoc = XDocument.Parse(xml);
-
-                        // Find node by ID across all elements in the process
-                        var node = xdoc.Descendants().FirstOrDefault(e => e.Attribute("id")?.Value == stepId);
-
-                        if (node != null)
-                        {
-                            nodeName = node.Attribute("name")?.Value ?? stepId;
-                            nodeType = node.Name.LocalName;
-
-                            status = nodeType switch
-                            {
-                                "userTask" => "Ready (Waiting on Human/Agent Action)",
-                                "serviceTask" => "Ready (Waiting on Service Execution)",
-                                "scriptTask" => "Ready (Waiting on Script Execution)",
-                                "task" => "Ready for work",
-                                "startEvent" => "Newly Initialized",
-                                "endEvent" => "Completed",
-                                "intermediateCatchEvent" => "Waiting for Event/Subprocess",
-                                "exclusiveGateway" => "Pending Decision",
-                                "parallelGateway" => "Pending Divergence/Convergence",
-                                _ => "State Undetermined"
-                            };
-                        }
-                    }
-                    catch
-                    {
-                        status = "Error Parsing Context";
-                    }
+                    status = "Completed";
                 }
 
                 output.AppendLine($"### Issue: {issue.Title} (Ref: `{projRef}` | Issue: `{issue.Id}`)");
@@ -134,7 +96,6 @@ public class GetOpenWorkTool : IAboTool
                 output.AppendLine($"- **Current Step**: {nodeName} (`{stepId}`)");
                 if (!string.IsNullOrWhiteSpace(role))
                     output.AppendLine($"- **Required Role**: `{role}`");
-                output.AppendLine($"- **BPMN Node Type**: `{nodeType}`");
                 output.AppendLine($"- **State**: {status}");
                 output.AppendLine($"- **Action**: Run `checkout_task {{\\\"issueId\\\": \\\"{issue.Id}\\\"}}` to pick up this work.");
                 output.AppendLine();

@@ -52,6 +52,10 @@ public class GetRolesTool : IAboTool
                 output.AppendLine($"## {role.Title} (`{role.RoleId}`)");
                 output.AppendLine("**System Prompt / Description:**");
                 output.AppendLine(role.SystemPrompt);
+                if (role.AllowedTools != null && role.AllowedTools.Any())
+                {
+                    output.AppendLine("**Allowed Tools:** " + string.Join(", ", role.AllowedTools));
+                }
                 output.AppendLine();
             }
 
@@ -68,5 +72,6 @@ public class GetRolesTool : IAboTool
         public string RoleId { get; set; } = string.Empty;
         public string Title { get; set; } = string.Empty;
         public string SystemPrompt { get; set; } = string.Empty;
+        public List<string> AllowedTools { get; set; } = new();
     }
 }

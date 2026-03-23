@@ -27,7 +27,8 @@ public class UpsertRoleTool : IAboTool
         {
             roleId = new { type = "string", description = "The unique system ID for the role (e.g., Role_QA_Agent, Role_Backend_Dev). MUST start with Role_" },
             title = new { type = "string", description = "A human-readable title for the role (e.g., QA Test Engineer)." },
-            systemPrompt = new { type = "string", description = "The complete, detailed AI system prompt that describes the exact behavior, rules, tools, and persona this role must follow." }
+            systemPrompt = new { type = "string", description = "The complete, detailed AI system prompt that describes the exact behavior, rules, tools, and persona this role must follow." },
+            allowedTools = new { type = "array", items = new { type = "string" }, description = "List of explicitly allowed connector tool names (e.g. ['read_file', 'write_file']). Leave empty or omit to allow all tools." }
         },
         required = new[] { "roleId", "title", "systemPrompt" },
         additionalProperties = false
@@ -71,6 +72,7 @@ public class UpsertRoleTool : IAboTool
             {
                 existingRole.Title = args.Title;
                 existingRole.SystemPrompt = args.SystemPrompt;
+                if (args.AllowedTools != null) existingRole.AllowedTools = args.AllowedTools;
                 await SaveRolesAsync(roles);
                 return $"Successfully updated existing role '{args.RoleId}'.";
             }
@@ -80,7 +82,8 @@ public class UpsertRoleTool : IAboTool
                 {
                     RoleId = args.RoleId,
                     Title = args.Title,
-                    SystemPrompt = args.SystemPrompt
+                    SystemPrompt = args.SystemPrompt,
+                    AllowedTools = args.AllowedTools ?? new()
                 });
                 await SaveRolesAsync(roles);
                 return $"Successfully created new role '{args.RoleId}'.";
@@ -103,6 +106,7 @@ public class UpsertRoleTool : IAboTool
         public string RoleId { get; set; } = string.Empty;
         public string Title { get; set; } = string.Empty;
         public string SystemPrompt { get; set; } = string.Empty;
+        public List<string>? AllowedTools { get; set; }
     }
 
     private class RoleDefinition
@@ -110,5 +114,6 @@ public class UpsertRoleTool : IAboTool
         public string RoleId { get; set; } = string.Empty;
         public string Title { get; set; } = string.Empty;
         public string SystemPrompt { get; set; } = string.Empty;
+        public List<string> AllowedTools { get; set; } = new();
     }
 }

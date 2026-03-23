@@ -4,6 +4,10 @@
     <ProjectReference Include="..\Abo.Core\Abo.Core.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Content Update="Data\Roles\**" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
   <PropertyGroup>
     <TargetFramework>net9.0</TargetFramework>
     <Nullable>enable</Nullable>

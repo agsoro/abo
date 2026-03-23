@@ -127,7 +127,7 @@ public class ManagerAgent : IAgent
             if (role == null) return $"Error: Role '{roleId}' not found.";
 
             // Instantiate SpecialistAgent
-            var specialist = new SpecialistAgent(_globalTools, role.Title, role.SystemPrompt, _configuration, _wikiClient);
+            var specialist = new SpecialistAgent(_globalTools, role.Title, role.SystemPrompt, role.AllowedTools, _configuration, _wikiClient);
 
             _logger.LogInformation($"Manager delegating task to SpecialistAgent ({role.Title}) for issue {issueId}.");
 
@@ -153,5 +153,6 @@ public class ManagerAgent : IAgent
         public string RoleId { get; set; } = string.Empty;
         public string Title { get; set; } = string.Empty;
         public string SystemPrompt { get; set; } = string.Empty;
+        public List<string> AllowedTools { get; set; } = new();
     }
 }

@@ -1,6 +1,5 @@
 using System.Text.Json;
 using System.Text.RegularExpressions;
-using System.Xml.Linq;
 using Abo.Contracts.Models;
 using Abo.Core.Connectors;
 using Abo.Integrations.GitHub;
@@ -11,14 +10,11 @@ namespace Abo.Tools;
 
 public class StartIssueTool : IAboTool
 {
-    private readonly string _processesDirectory;
     private readonly IConfiguration _config;
 
     public StartIssueTool(IConfiguration config)
     {
         _config = config;
-        var dataDir = Path.Combine(AppContext.BaseDirectory, "Data");
-        _processesDirectory = Path.Combine(dataDir, "Processes");
     }
 
     public string Name => "start_issue";
@@ -72,45 +68,14 @@ public class StartIssueTool : IAboTool
 
         if (targetEnv == null) return "Error: Failed to load target environment config.";
 
-        var processFile = Path.Combine(_processesDirectory, $"{args.TypeId}.bpmn");
-        if (!File.Exists(processFile))
-        {
-            return $"Error: The process type '{args.TypeId}' does not exist. Create the process first.";
-        }
-
         try
         {
-            // Parse XML to get Step details
-            var xdoc = XDocument.Load(processFile);
-            var stepNode = xdoc.Descendants().FirstOrDefault(e => e.Attribute("id")?.Value == args.InitialStepId);
-
-            if (stepNode == null)
+            var initialStepInfo = Abo.Core.WorkflowEngine.GetStepInfo(args.InitialStepId);
+            if (initialStepInfo == null)
             {
-                return $"Error: The initial step '{args.InitialStepId}' does not exist in the BPMN process.";
+                return $"Error: The initial step '{args.InitialStepId}' is not recognized by the WorkflowEngine.";
             }
-
-            var stepName = stepNode.Attribute("name")?.Value ?? args.InitialStepId;
-            var requiredRole = stepNode.Attributes().FirstOrDefault(a => a.Name.LocalName == "assignee")?.Value ?? string.Empty;
-
-            if (string.IsNullOrWhiteSpace(requiredRole))
-            {
-                var docs = stepNode.Descendants().FirstOrDefault(e => e.Name.LocalName == "documentation")?.Value;
-                if (!string.IsNullOrWhiteSpace(docs))
-                {
-                    var roleMatch = Regex.Match(docs, @"Role:\s*(Role_[^\s\r\n]+)");
-                    if (roleMatch.Success)
-                    {
-                        requiredRole = roleMatch.Groups[1].Value;
-                    }
-                }
-            }
-
-            var initialStepInfo = new ProcessStepInfo
-            {
-                StepId = args.InitialStepId,
-                StepName = stepName,
-                RequiredRole = requiredRole
-            };
+            var requiredRole = initialStepInfo.RequiredRole;
 
             // Setup Issue Tracker
             IIssueTrackerConnector? tracker = null;

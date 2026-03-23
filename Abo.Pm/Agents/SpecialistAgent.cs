@@ -17,6 +17,7 @@ public class SpecialistAgent : IAgent
     private readonly string _dataDir;
     private readonly string _roleTitle;
     private readonly string _rolePrompt;
+    private readonly List<string> _allowedTools;
     private readonly string? _issueTrackerToken;
     private readonly IXpectoLiveWikiClient _wikiClient;
     private readonly IConfiguration _config;
@@ -35,11 +36,12 @@ public class SpecialistAgent : IAgent
     public bool RequiresCapableModel => true;
     public bool RequiresReviewModel => _isValidationTask;
 
-    public SpecialistAgent(IEnumerable<IAboTool> globalTools, string roleTitle, string rolePrompt, IConfiguration config, IXpectoLiveWikiClient? wikiClient = null)
+    public SpecialistAgent(IEnumerable<IAboTool> globalTools, string roleTitle, string rolePrompt, List<string> allowedTools, IConfiguration config, IXpectoLiveWikiClient? wikiClient = null)
     {
         _globalTools = globalTools;
         _roleTitle = roleTitle;
         _rolePrompt = rolePrompt;
+        _allowedTools = allowedTools ?? new();
         _config = config;
         _issueTrackerToken = config["Integrations:GitHub:Token"];
         _wikiClient = wikiClient!;
@@ -151,20 +153,41 @@ public class SpecialistAgent : IAgent
         var dummyWorkspace = new LocalWorkspaceConnector(dummyEnv);
         var dummyIssueConfig = new IssueTrackerConfig { Owner = "dummy", Repository = "dummy" };
         var dummyIssue = new GitHubIssueTrackerConnector(dummyIssueConfig, null);
-        definitions.Add(CreateDef(new ReadFileTool(dummyWorkspace)));
-        definitions.Add(CreateDef(new WriteFileTool(dummyWorkspace)));
-        definitions.Add(CreateDef(new DeleteFileTool(dummyWorkspace)));
-        definitions.Add(CreateDef(new ListDirTool(dummyWorkspace)));
-        definitions.Add(CreateDef(new MkDirTool(dummyWorkspace)));
-        definitions.Add(CreateDef(new GitTool(dummyWorkspace)));
-        definitions.Add(CreateDef(new DotnetTool(dummyWorkspace)));
-        definitions.Add(CreateDef(new PythonTool(dummyWorkspace)));
-        definitions.Add(CreateDef(new SearchRegexTool(dummyWorkspace)));
-        definitions.Add(CreateDef(new HttpGetTool(dummyWorkspace)));
-        definitions.Add(CreateDef(new ListIssuesTool(dummyIssue)));
-        definitions.Add(CreateDef(new GetIssueTool(dummyIssue)));
-        definitions.Add(CreateDef(new CreateIssueTool(dummyIssue)));
-        definitions.Add(CreateDef(new AddIssueCommentTool(dummyIssue)));
+        
+        var connectorTools = new List<IAboTool>
+        {
+            new ReadFileTool(dummyWorkspace),
+            new WriteFileTool(dummyWorkspace),
+            new DeleteFileTool(dummyWorkspace),
+            new ListDirTool(dummyWorkspace),
+            new MkDirTool(dummyWorkspace),
+            new GitTool(dummyWorkspace),
+            new DotnetTool(dummyWorkspace),
+            new PythonTool(dummyWorkspace),
+            new SearchRegexTool(dummyWorkspace),
+            new HttpGetTool(dummyWorkspace),
+            new ListIssuesTool(dummyIssue),
+            new GetIssueTool(dummyIssue),
+            new CreateIssueTool(dummyIssue),
+            new AddIssueCommentTool(dummyIssue)
+        };
+
+        if (_wikiClient != null)
+        {
+            var dummyWiki = new XpectoLiveWikiConnector(_wikiClient, "dummy");
+            connectorTools.Add(new GetWikiPageTool(dummyWiki));
+            connectorTools.Add(new CreateWikiPageTool(dummyWiki));
+            connectorTools.Add(new UpdateWikiPageTool(dummyWiki));
+            connectorTools.Add(new SearchWikiTool(dummyWiki));
+        }
+
+        foreach (var tool in connectorTools)
+        {
+            if (_allowedTools == null || !_allowedTools.Any() || _allowedTools.Contains(tool.Name))
+            {
+                definitions.Add(CreateDef(tool));
+            }
+        }
 
         return definitions;
     }
@@ -199,7 +222,14 @@ public class SpecialistAgent : IAgent
             }
 
             var tool = _connectorTools.FirstOrDefault(t => t.Name == name);
-            if (tool != null) return await tool.ExecuteAsync(args);
+            if (tool != null)
+            {
+                if (_allowedTools != null && _allowedTools.Any() && !string.IsNullOrEmpty(name) && !_allowedTools.Contains(name))
+                {
+                    return $"Error: Tool '{name}' is restricted and cannot be run by your current role.";
+                }
+                return await tool.ExecuteAsync(args);
+            }
         }
 
         return $"Error: Unknown tool '{name}'";
@@ -328,50 +358,41 @@ public class SpecialistAgent : IAgent
                 };
             }
 
-            var typeId = _currentIssue.Labels.FirstOrDefault(l => l.StartsWith("type: ", StringComparison.OrdinalIgnoreCase))?.Substring(6).Trim();
             var currentStepId = _currentIssue.Labels.FirstOrDefault(l => l.StartsWith("step: ", StringComparison.OrdinalIgnoreCase))?.Substring(6).Trim();
 
-            if (nextStepInfo == null && !string.IsNullOrWhiteSpace(typeId) && !string.IsNullOrWhiteSpace(currentStepId))
+            if (nextStepInfo == null && !string.IsNullOrWhiteSpace(currentStepId))
             {
-                var bpmnFile = Path.Combine(_dataDir, "Processes", $"{typeId}.bpmn");
-                if (File.Exists(bpmnFile))
+                var transitions = Abo.Core.WorkflowEngine.GetTransitions(currentStepId);
+
+                if (transitions.Count > 1) 
                 {
-                    var xml = await File.ReadAllTextAsync(bpmnFile);
-                    var bpmnXdoc = XDocument.Parse(xml);
-                    var resolvedId = ResolveNextActionableStep(bpmnXdoc, currentStepId);
+                    var options = string.Join(", ", transitions.Select(t => $"'{t.NextStepId}' (Condition: {t.ConditionName})"));
+                    return $"Error: The current step leads to a decision gateway with multiple paths. You MUST provide the 'nextStep' object explicitly (including id, name, and role) so the engine knows which route to take. Valid nextStep.id options based on your decision are: {options}";
+                }
 
-                    if (resolvedId == "GATEWAY_REQUIRES_DECISION") return "Error: The current step leads to a decision gateway with multiple paths. You MUST provide the 'nextStep' object explicitly so the engine knows which route to take.";
-
-                    if (!string.IsNullOrWhiteSpace(resolvedId))
+                if (transitions.Count == 1)
+                {
+                    var resolvedId = transitions.First().NextStepId;
+                    var stepInfo = Abo.Core.WorkflowEngine.GetStepInfo(resolvedId);
+                    if (stepInfo != null)
                     {
-                        var targetNode = bpmnXdoc.Descendants().FirstOrDefault(e => e.Attribute("id")?.Value == resolvedId);
-                        var requiredRole = targetNode?.Attributes().FirstOrDefault(a => a.Name.LocalName == "assignee")?.Value ?? string.Empty;
-
-                        if (string.IsNullOrWhiteSpace(requiredRole))
-                        {
-                            var docs = targetNode?.Descendants().FirstOrDefault(e => e.Name.LocalName == "documentation")?.Value;
-                            if (!string.IsNullOrWhiteSpace(docs))
-                            {
-                                var roleMatch = System.Text.RegularExpressions.Regex.Match(docs, @"Role:\s*(Role_[^\s\r\n]+)");
-                                if (roleMatch.Success) requiredRole = roleMatch.Groups[1].Value;
-                            }
-                        }
-
-                        nextStepInfo = new ProcessStepInfo
-                        {
-                            StepId = resolvedId,
-                            StepName = targetNode?.Attribute("name")?.Value ?? resolvedId,
-                            RequiredRole = requiredRole
-                        };
+                        nextStepInfo = stepInfo;
+                        transitions.First().ApplyLabels?.Invoke(_currentIssue.Labels);
                     }
                 }
             }
+            else if (nextStepInfo != null && !string.IsNullOrWhiteSpace(currentStepId))
+            {
+                // The agent explicitly specified the next step. Find if it matches a valid transition to apply labels.
+                var transitions = Abo.Core.WorkflowEngine.GetTransitions(currentStepId);
+                var matchedTransition = transitions.FirstOrDefault(t => t.NextStepId.Equals(nextStepInfo.StepId, StringComparison.OrdinalIgnoreCase));
+                matchedTransition?.ApplyLabels?.Invoke(_currentIssue.Labels);
+            }
 
-            if (nextStepInfo == null) return "Error: Could not automatically determine the next step. You must supply 'nextStep' with id, name, and role based on the BPMN definition.";
+            if (nextStepInfo == null) return "Error: Could not automatically determine the next step. You must supply 'nextStep' with id, name, and role based on the appropriate workflow transition.";
 
-            bool reachedEndEvent = nextStepInfo.StepName.Contains("abgeschlossen", StringComparison.OrdinalIgnoreCase) ||
-                                   nextStepInfo.StepName.Contains("done", StringComparison.OrdinalIgnoreCase) ||
-                                   nextStepInfo.StepId.Contains("EndEvent", StringComparison.OrdinalIgnoreCase) ||
+            bool reachedEndEvent = string.Equals(nextStepInfo.StepId, "invalid", StringComparison.OrdinalIgnoreCase) ||
+                                   string.Equals(nextStepInfo.StepId, "done", StringComparison.OrdinalIgnoreCase) ||
                                    string.IsNullOrWhiteSpace(nextStepInfo.RequiredRole);
 
             if (!string.IsNullOrWhiteSpace(resultNotes))
@@ -398,7 +419,7 @@ public class SpecialistAgent : IAgent
             _currentIssue = null;
             _connectorTools.Clear();
 
-            if (reachedEndEvent) return $"Success. Task completed for issue '{oldProj}'. The issue has reached an endEvent and is now fully completed.";
+            if (reachedEndEvent) return $"Success. Task completed for issue '{oldProj}'. The issue has reached an end state and is now fully completed.";
 
             return $"Success. Task completed for issue '{oldProj}'. Advanced to next step: '{nextStepInfo?.StepId}'.";
         }
@@ -445,31 +466,5 @@ public class SpecialistAgent : IAgent
         catch (Exception ex) { return $"Error reading notes: {ex.Message}"; }
     }
 
-    private string? ResolveNextActionableStep(XDocument xdoc, string fromStepId, int maxHops = 10)
-    {
-        var current = fromStepId;
-        for (int i = 0; i < maxHops; i++)
-        {
-            var outgoingFlows = xdoc.Descendants().Where(e => e.Name.LocalName == "sequenceFlow" && e.Attribute("sourceRef")?.Value == current).ToList();
-            if (outgoingFlows.Count == 0) return null;
-            if (outgoingFlows.Count > 1) return "GATEWAY_REQUIRES_DECISION";
 
-            var targetRef = outgoingFlows.First().Attribute("targetRef")?.Value;
-            if (string.IsNullOrWhiteSpace(targetRef)) return null;
-
-            var targetNode = xdoc.Descendants().FirstOrDefault(e => e.Attribute("id")?.Value == targetRef);
-            if (targetNode == null) return null;
-
-            var nodeType = targetNode.Name.LocalName;
-            if (nodeType == "endEvent") return targetRef;
-            if (nodeType == "userTask" || nodeType == "serviceTask" || nodeType == "scriptTask" || nodeType == "task") return targetRef;
-            if (nodeType == "exclusiveGateway" || nodeType == "parallelGateway" || nodeType == "inclusiveGateway" || nodeType == "intermediateCatchEvent" || nodeType == "intermediateThrowEvent")
-            {
-                current = targetRef;
-                continue;
-            }
-            return targetRef;
-        }
-        return null;
-    }
 }
