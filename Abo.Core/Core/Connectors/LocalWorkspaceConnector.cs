@@ -17,6 +17,12 @@ public class LocalWorkspaceConnector : IWorkspaceConnector
     /// <summary>Maximaler Timeout in Sekunden für HTTP-Requests.</summary>
     private const int MaxTimeoutSeconds = 120;
 
+    /// <summary>Standard read size limit in bytes (50 KB).</summary>
+    public const int StandardReadLimitBytes = 50 * 1024;
+
+    /// <summary>Elevated read size limit in bytes for important files (250 KB).</summary>
+    public const int ImportantReadLimitBytes = 250 * 1024;
+
     public LocalWorkspaceConnector(ConnectorEnvironment environment)
     {
         if (string.IsNullOrWhiteSpace(environment.Dir))
@@ -44,16 +50,26 @@ public class LocalWorkspaceConnector : IWorkspaceConnector
         return combinedPath;
     }
 
-    public async Task<string> ReadFileAsync(string relativePath)
+    public async Task<string> ReadFileAsync(string relativePath, bool important = false)
     {
         var path = GetFullPath(relativePath);
         if (!File.Exists(path)) return $"Error: File '{relativePath}' not found.";
         try
         {
             var fileInfo = new FileInfo(path);
-            if (fileInfo.Length > 50 * 1024)
+            if (important)
             {
-                return $"Error: File '{relativePath}' exceeds the 50KB limit. Please ask the IT department for help.";
+                if (fileInfo.Length > ImportantReadLimitBytes)
+                {
+                    return $"Error: File '{relativePath}' exceeds the {ImportantReadLimitBytes / 1024}KB limit even for important files. Please ask the IT department for help.";
+                }
+            }
+            else
+            {
+                if (fileInfo.Length > StandardReadLimitBytes)
+                {
+                    return $"Error: File '{relativePath}' exceeds the {StandardReadLimitBytes / 1024}KB limit. If this file is critical, retry with important=true (costs more resources). Otherwise, please ask the IT department for help.";
+                }
             }
 
             return await File.ReadAllTextAsync(path);

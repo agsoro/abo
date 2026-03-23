@@ -2,7 +2,7 @@ namespace Abo.Core.Connectors;
 
 public interface IWorkspaceConnector
 {
-    Task<string> ReadFileAsync(string relativePath);
+    Task<string> ReadFileAsync(string relativePath, bool important = false);
     Task<string> WriteFileAsync(string relativePath, string content);
     Task<string> DeleteFileAsync(string relativePath);
     Task<string> ListDirAsync(string relativePath);
