@@ -294,9 +294,21 @@ public class SpecialistAgent : IAgent
             if (targetEnv.Wiki != null)
             {
                 if (targetEnv.Wiki.Type.Equals("filesystem", StringComparison.OrdinalIgnoreCase))
+                {
                     _currentWiki = new FileSystemWikiConnector(targetEnv);
+                }
                 else if (targetEnv.Wiki.Type.Equals("xpectolive", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrWhiteSpace(targetEnv.Wiki.RootPath))
+                {
                     _currentWiki = new XpectoLiveWikiConnector(_wikiClient, targetEnv.Wiki.RootPath);
+                }
+                else if (targetEnv.Wiki.Type.Equals("github", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrWhiteSpace(targetEnv.Wiki.RootPath))
+                {
+                    var parts = targetEnv.Wiki.RootPath.Split('/');
+                    if (parts.Length == 2 && !string.IsNullOrWhiteSpace(_issueTrackerToken))
+                    {
+                        _currentWiki = new GitHubWikiConnector(targetEnv, _issueTrackerToken, parts[0], parts[1]);
+                    }
+                }
             }
 
             _isValidationTask = _roleTitle.Contains("review", StringComparison.OrdinalIgnoreCase) ||

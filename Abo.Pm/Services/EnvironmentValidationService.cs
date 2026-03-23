@@ -87,6 +87,28 @@ public class EnvironmentValidationService : IHostedService
                     {
                         await CheckXpectoLiveAsync(env.Wiki.RootPath, cancellationToken);
                     }
+                    else if (env.Wiki.Type.Equals("github", StringComparison.OrdinalIgnoreCase))
+                    {
+                        try {
+                            var processInfo = new System.Diagnostics.ProcessStartInfo { FileName = "git", Arguments = "--version", RedirectStandardOutput = true, UseShellExecute = false, CreateNoWindow = true };
+                            using var process = System.Diagnostics.Process.Start(processInfo);
+                            process?.WaitForExit();
+                            _logger.LogInformation($"  [OK] Wiki (GitHub): 'git' CLI is available.");
+                        } catch {
+                            _logger.LogError($"  [ERROR] Wiki (GitHub): 'git' CLI is NOT installed or accessible.");
+                        }
+                        
+                        var parts = env.Wiki.RootPath.Split('/');
+                        if (parts.Length == 2)
+                        {
+                            var fakeConfig = new IssueTrackerConfig { Owner = parts[0], Repository = parts[1] };
+                            await CheckGitHubAsync(fakeConfig, cancellationToken);
+                        }
+                        else
+                        {
+                            _logger.LogError($"  [ERROR] Wiki (GitHub): RootPath must be in 'owner/repo' format.");
+                        }
+                    }
                 }
 
                 // 3. Issue Tracker Check
