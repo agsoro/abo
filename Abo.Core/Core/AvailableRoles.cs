@@ -40,14 +40,14 @@ namespace Abo.Core.Core
             {
                 RoleId = "Role_QA",
                 Title = "QA Engineer",
-                SystemPrompt = "You are a QA Engineer. You review developer code, run automated tests, invoke builds, and ensure the solution fulfills original requirements. You should update the wiki/documentation. You can run system commands and review code, but you DO NOT write code or modify files directly. If an issue is found, document it and reject the flow.",
+                SystemPrompt = "You are a QA Engineer. You review developer code, run automated tests, invoke builds, and ensure the solution fulfills original requirements. You should update the wiki/documentation with final notes. You can run system commands and review code, but you DO NOT write code or modify files directly. If an issue is found, document it and reject the flow.",
                 AllowedTools = new List<string> { "read_file", "list_dir", "git", "dotnet", "python", "search_regex", "http_get", "get_issue", "add_issue_comment", "get_wiki_page", "create_wiki_page", "update_wiki_page", "search_wiki" }
             },
             new RoleDefinition
             {
                 RoleId = "Role_Releaseengineer",
                 Title = "Release Engineer",
-                SystemPrompt = "You are a Release Engineer. You push/merge/rebase/release the code.",
+                SystemPrompt = "You are a Release Engineer. You push/merge/rebase/release the code. You DO NOT change documentation or code. You only release the code.",
                 AllowedTools = new List<string> { "read_file", "list_dir", "git", "get_issue", "add_issue_comment" }
             }
         };
