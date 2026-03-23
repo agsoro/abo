@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ABO - Agsoro Bot Orchestrator</title>
+    <style>
+        :root {
+            --bg-color: #0f172a;
+            --surface-color: #1e293b;
+            --text-color: #f8fafc;
+            --text-muted: #94a3b8;
+            --primary-color: #3b82f6;
+            --primary-hover: #2563eb;
+            --border-color: #334155;
+            --user-bg: #3b82f6;
+            --bot-bg: #475569;
+        }
+
+        body {
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            margin: 0;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+        }
+
+        header {
+            background-color: var(--surface-color);
+            padding: 1rem 2rem;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 0.75rem;
+        }
+
+        header h1 {
+            margin: 0;
+            font-size: 1.5rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .header-nav {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            flex-wrap: wrap;
+        }
+
+        .header-nav a {
+            color: var(--text-muted);
+            text-decoration: none;
+            font-size: 0.875rem;
+            padding: 0.35rem 0.75rem;
+            border-radius: 0.25rem;
+            border: 1px solid var(--border-color);
+            transition: all 0.2s;
+            white-space: nowrap;
+        }
+
+        .header-nav a:hover {
+            color: var(--text-color);
+            border-color: var(--primary-color);
+        }
+
+        .header-nav a.active {
+            color: var(--text-color);
+            border-color: var(--primary-color);
+            background-color: rgba(59, 130, 246, 0.1);
+        }
+
+        #status-badge {
+            padding: 0.25rem 0.75rem;
+            border-radius: 9999px;
+            font-size: 0.875rem;
+            font-weight: 500;
+            background-color: #dc2626;
+        }
+        #status-badge.healthy {
+            background-color: #16a34a;
+        }
+
+        main {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            max-width: 800px;
+            margin: 0 auto;
+            width: 100%;
+            padding: 2rem 1rem;
+            box-sizing: border-box;
+        }
+
+        #chat-container {
+            flex: 1;
+            background-color: var(--surface-color);
+            border: 1px solid var(--border-color);
+            border-radius: 0.5rem;
+            padding: 1rem;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+            margin-bottom: 1rem;
+        }
+
+        .message {
+            max-width: 80%;
+            padding: 0.75rem 1rem;
+            border-radius: 0.5rem;
+            line-height: 1.5;
+        }
+
+        /* Markdown Styles */
+        .message p { margin: 0 0 0.5rem 0; }
+        .message p:last-child { margin-bottom: 0; }
+        .message strong { color: #60a5fa; }
+
+        .message.user {
+            align-self: flex-end;
+            background-color: var(--user-bg);
+            border-bottom-right-radius: 0;
+        }
+
+        .message.bot {
+            align-self: flex-start;
+            background-color: var(--bot-bg);
+            border-bottom-left-radius: 0;
+        }
+        
+        .message.system {
+            align-self: center;
+            background-color: transparent;
+            color: var(--text-muted);
+            font-size: 0.875rem;
+            font-style: italic;
+        }
+
+        /* Poll Styles */
+        .poll-container {
+            margin-top: 0.75rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+        .poll-btn {
+            background-color: #334155;
+            border: 1px solid #475569;
+            color: white;
+            padding: 0.5rem 1rem;
+            border-radius: 0.375rem;
+            text-align: left;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-size: 0.9375rem;
+        }
+        .poll-btn:hover {
+            background-color: #475569;
+            border-color: var(--primary-color);
+        }
+
+        .input-area {
+            display: flex;
+            gap: 0.5rem;
+        }
+
+        input[type="text"] {
+            flex: 1;
+            padding: 0.75rem 1rem;
+            border-radius: 0.5rem;
+            border: 1px solid var(--border-color);
+            background-color: var(--surface-color);
+            color: var(--text-color);
+            font-size: 1rem;
+        }
+
+        input[type="text"]:focus {
+            outline: none;
+            border-color: var(--primary-color);
+        }
+
+        #send-btn {
+            padding: 0.75rem 1.5rem;
+            border-radius: 0.5rem;
+            border: none;
+            background-color: var(--primary-color);
+            color: white;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+
+        #send-btn:hover {
+            background-color: var(--primary-hover);
+        }
+
+        #send-btn:disabled {
+            background-color: var(--border-color);
+            cursor: not-allowed;
+            color: var(--text-muted);
+        }
+    </style>
+    <!-- Include Marked for Markdown rendering -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+</head>
+<body>
+    <header>
+        <h1>🤖 ABO <span style="font-size: 1rem; color: var(--text-muted); font-weight: normal;">Agsoro Bot Orchestrator</span></h1>
+        <nav class="header-nav">
+            <a href="/" class="active">💬 Chat</a>
+            <a href="/processes/">⚙️ Prozesse</a>
+            <a href="/agents/">🤖 Agents</a>
+            <a href="/open-work/">📋 Offene Arbeit</a>
+            <a href="/llm-traffic/">📊 LLM Traffic</a>
+            <a href="/llm-stats/">📈 LLM Stats</a>
+        </nav>
+        <div id="status-badge">Prüfe API Status...</div>
+    </header>
+
+    <main>
+        <div id="chat-container">
+            <div class="message system">System initialisiert. Gib eine Nachricht ein, um mit dem Agenten zu interagieren.</div>
+        </div>
+
+        <div class="input-area">
+            <input type="text" id="username-input" placeholder="Dein Name" style="flex: 0 0 150px;" autocomplete="on">
+            <input type="text" id="user-input" placeholder="Nachricht eingeben..." autocomplete="off">
+            <button id="send-btn">Senden</button>
+        </div>
+    </main>
+
+    <script>
+        const chatContainer = document.getElementById('chat-container');
+        const usernameInput = document.getElementById('username-input');
+        const userInput = document.getElementById('user-input');
+        const sendBtn = document.getElementById('send-btn');
+        const statusBadge = document.getElementById('status-badge');
+
+        async function checkStatus() {
+            try {
+                const res = await fetch('/api/status');
+                const data = await res.json();
+                if (data.status === 'Running') {
+                    if (data.hasApiKey) {
+                        statusBadge.textContent = `Online (${data.model})`;
+                        statusBadge.className = 'healthy';
+                    } else {
+                        statusBadge.textContent = `Warnung: API-Key fehlt`;
+                        statusBadge.className = '';
+                        addMessage('system', 'WARNUNG: OpenRouter API-Key ist nicht konfiguriert. Anfragen werden fehlschlagen.');
+                    }
+                }
+            } catch (err) {
+                statusBadge.textContent = 'Offline';
+            }
+        }
+
+        function addMessage(role, text) {
+            const msgDiv = document.createElement('div');
+            msgDiv.className = `message ${role}`;
+            
+            if (role === 'system') {
+                msgDiv.textContent = text;
+            } else {
+                msgDiv.innerHTML = marked.parse(text);
+                if (role === 'bot') {
+                    renderPollButtons(msgDiv, text);
+                }
+            }
+            
+            chatContainer.appendChild(msgDiv);
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+        }
+
+        function renderPollButtons(msgDiv, text) {
+            const pollLines = text.split('\n').filter(line => /^\**\d+\.\**\s+.+/.test(line));
+            
+            if (pollLines.length > 1) {
+                const pollContainer = document.createElement('div');
+                pollContainer.className = 'poll-container';
+                
+                pollLines.forEach((line, index) => {
+                    const label = line.replace(/^\**\d+\.\**\s+/, '').trim();
+                    const btn = document.createElement('button');
+                    btn.className = 'poll-btn';
+                    btn.textContent = `${index + 1}. ${label}`;
+                    btn.onclick = () => {
+                        userInput.value = `${index + 1}`;
+                        sendMessage();
+                        Array.from(pollContainer.children).forEach(b => b.disabled = true);
+                    };
+                    pollContainer.appendChild(btn);
+                });
+                
+                msgDiv.appendChild(pollContainer);
+            }
+        }
+
+        async function sendMessage() {
+            const text = userInput.value.trim();
+            if (!text) return;
+
+            userInput.value = '';
+            addMessage('user', text);
+            sendBtn.disabled = true;
+            userInput.disabled = true;
+
+            try {
+                const res = await fetch('/api/interact', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ message: text, userName: usernameInput.value || 'WebUser' })
+                });
+                
+                const data = await res.json();
+                
+                if (res.ok) {
+                    addMessage('bot', data.output);
+                } else {
+                    addMessage('system', `Fehler: ${data.detail || await res.text()}`);
+                }
+            } catch (err) {
+                addMessage('system', `Netzwerkfehler: ${err.message}`);
+            } finally {
+                sendBtn.disabled = false;
+                userInput.disabled = false;
+                userInput.focus();
+            }
+        }
+
+        sendBtn.addEventListener('click', sendMessage);
+        userInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') sendMessage();
+        });
+
+        checkStatus();
+    </script>
+</body>
+</html>

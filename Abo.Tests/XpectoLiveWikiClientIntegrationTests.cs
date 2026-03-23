@@ -16,7 +16,7 @@ public class XpectoLiveWikiClientIntegrationTests
     {
         // Setup configuration to read from appsettings.json
         var config = new ConfigurationBuilder()
-            .SetBasePath(Path.GetFullPath(@"..\..\..\..\Abo"))
+            .SetBasePath(Path.GetFullPath(@"..\..\..\..\Abo.Pm"))
             .AddJsonFile("appsettings.json", optional: false)
             .AddJsonFile("appsettings.Development.json", optional: true)
             .AddUserSecrets("2382c563-3cdf-48a5-a819-7cc76d5a465c")

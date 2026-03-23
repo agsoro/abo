@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ABO – Prozessbibliothek</title>
+
+    <!-- bpmn-js viewer -->
+    <link rel="stylesheet" href="https://unpkg.com/bpmn-js@17.0.2/dist/assets/bpmn-js.css">
+    <link rel="stylesheet" href="https://unpkg.com/bpmn-js@17.0.2/dist/assets/diagram-js.css">
+    <script src="https://unpkg.com/bpmn-js@17.0.2/dist/bpmn-viewer.development.js"></script>
+
+    <style>
+        :root {
+            --bg-color: #0f172a;
+            --surface-color: #1e293b;
+            --text-color: #f8fafc;
+            --text-muted: #94a3b8;
+            --primary-color: #3b82f6;
+            --primary-hover: #2563eb;
+            --border-color: #334155;
+            --tag-radius: 0.25rem;
+        }
+
+        * { box-sizing: border-box; }
+
+        body, html {
+            margin: 0;
+            padding: 0;
+            height: 100%;
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+        }
+
+        header {
+            background-color: var(--surface-color);
+            padding: 1rem 2rem;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 0.75rem;
+        }
+
+        header h1 {
+            margin: 0;
+            font-size: 1.5rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .header-nav {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            flex-wrap: wrap;
+        }
+
+        .header-nav a {
+            color: var(--text-muted);
+            text-decoration: none;
+            font-size: 0.875rem;
+            padding: 0.35rem 0.75rem;
+            border-radius: var(--tag-radius);
+            border: 1px solid var(--border-color);
+            transition: all 0.2s;
+            white-space: nowrap;
+        }
+
+        .header-nav a:hover {
+            color: var(--text-color);
+            border-color: var(--primary-color);
+        }
+
+        .header-nav a.active {
+            color: var(--text-color);
+            border-color: var(--primary-color);
+            background-color: rgba(59, 130, 246, 0.1);
+        }
+
+        .header-controls {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        #process-select {
+            padding: 0.4rem 0.75rem;
+            font-size: 0.875rem;
+            border-radius: var(--tag-radius);
+            border: 1px solid var(--border-color);
+            background-color: var(--surface-color);
+            color: var(--text-color);
+            min-width: 250px;
+        }
+
+        #process-select:focus {
+            outline: none;
+            border-color: var(--primary-color);
+        }
+
+        #canvas {
+            height: calc(100vh - 68px);
+            width: 100%;
+            background-color: #f8fafc;
+        }
+
+        .error-message {
+            color: #f87171;
+            padding: 2rem;
+            text-align: center;
+            font-weight: bold;
+            background-color: var(--bg-color);
+            height: calc(100vh - 68px);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>⚙️ Prozesse <span style="font-size: 1rem; color: var(--text-muted); font-weight: normal;">Prozessbibliothek (BPMN)</span></h1>
+        <nav class="header-nav">
+            <a href="/">💬 Chat</a>
+            <a href="/processes/" class="active">⚙️ Prozesse</a>
+            <a href="/agents/">🤖 Agents</a>
+            <a href="/open-work/">📋 Offene Arbeit</a>
+            <a href="/llm-traffic/">📊 LLM Traffic</a>
+            <a href="/llm-stats/">📈 LLM Stats</a>
+        </nav>
+        <div class="header-controls">
+            <select id="process-select">
+                <option value="">– Prozess auswählen –</option>
+            </select>
+        </div>
+    </header>
+
+    <div id="canvas"></div>
+
+    <script type="module">
+        import { layoutProcess } from 'https://cdn.skypack.dev/bpmn-auto-layout';
+
+        const viewer = new BpmnJS({
+            container: '#canvas'
+        });
+
+        const selectEl = document.getElementById('process-select');
+
+        // Load list of processes
+        async function loadProcesses() {
+            try {
+                const response = await fetch('/api/processes');
+                if (!response.ok) throw new Error('Prozessliste konnte nicht geladen werden.');
+                const processes = await response.json();
+
+                processes.forEach(proc => {
+                    const opt = document.createElement('option');
+                    opt.value = proc;
+                    opt.textContent = proc;
+                    selectEl.appendChild(opt);
+                });
+            } catch (err) {
+                console.error(err);
+                document.getElementById('canvas').innerHTML = `<div class="error-message">⚠️ Fehler beim Laden der Prozessliste: ${err.message}</div>`;
+            }
+        }
+
+        // Render selected BPMN
+        async function renderProcess(processId) {
+            if (!processId) {
+                viewer.clear();
+                return;
+            }
+
+            try {
+                const response = await fetch(`/api/processes/${processId}`);
+                if (!response.ok) throw new Error(`Prozess '${processId}' nicht gefunden.`);
+                const xml = await response.text();
+
+                let processedXml = xml;
+                try {
+                    processedXml = await layoutProcess(xml);
+                } catch (layoutErr) {
+                    console.warn('Auto-Layout fehlgeschlagen. Rohdaten werden verwendet.', layoutErr);
+                }
+
+                await viewer.importXML(processedXml);
+                viewer.get('canvas').zoom('fit-viewport');
+            } catch (err) {
+                console.error('Fehler beim Rendern des BPMN-Diagramms:', err);
+                document.getElementById('canvas').innerHTML = `<div class="error-message">⚠️ Fehler beim Laden des Diagramms: ${err.message}</div>`;
+            }
+        }
+
+        selectEl.addEventListener('change', (e) => {
+            renderProcess(e.target.value);
+        });
+
+        // Initialize
+        loadProcesses();
+    </script>
+</body>
+</html>
