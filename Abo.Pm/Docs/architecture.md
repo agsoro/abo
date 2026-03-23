@@ -8,7 +8,7 @@ The Agsoro Bot Orchestrator (ABO) is built on a **Controller-Worker** loop that 
 
 The core orchestration loop ensures that the AI never has direct, uncontrolled access to internal data. All actions are mediated by the C# orchestrator:
 
-1. **Intelligent Selection**: When a request comes in, the `AgentSupervisor` uses the LLM to analyze the intent and select the most appropriate specialized agent (e.g. `QuizAgent`, `HelloWorldAgent`, `PmoAgent`, or `SpecialistAgent`).
+1. **Intelligent Selection**: When a request comes in, the `AgentSupervisor` uses the LLM to analyze the intent and select the most appropriate specialized agent (e.g. `QuizAgent`, `HelloWorldAgent`, or `SpecialistAgent`).
 2. **Reasoning**: The selected agent provides its `SystemPrompt` and `ToolDefinitions`. The orchestrator sends a REST `POST` request to the AI endpoint. The model returns a "Tool Call" in JSON.
 3. **Local Execution**: The C# orchestrator parses the JSON tool call and invokes the corresponding internal C# method.
 4. **Synthesis**: The result is sent back to the AI model to generate a final, human-readable summary or action confirmation.
@@ -40,7 +40,7 @@ ABO implements a full BPMN-based issue management system:
   - `info.md` – Issue goals, context, and initial parameters.
   - `status.json` – Current BPMN step, status, and timestamps.
 - **`active_issues.json`** is the central list of all running issues (in `/Data/Issues/`).
-- The `PmoAgent` designs processes and roles; the `ManagerAgent` delegates work to `SpecialistAgent` instances that perform the actual work.
+- The `ManagerAgent` delegates work to `SpecialistAgent` instances that perform the actual work.
 - The current issue status is accessible via the REST endpoint `GET /api/issues/{id}/status`.
 
 ---
@@ -163,7 +163,7 @@ The `/Data/` directory contains all ABO runtime data. These files are written an
 
 | File | Description |
 |---|---|
-| `active_issues.json` | JSON array of all running issue IDs and their process type. Managed by `PmoAgent`. |
+| `active_issues.json` | JSON array of all running issue IDs and their process type. |
 | `{issueId}/status.json` | Contains `IssueId`, `CurrentStepId`, `Status`, and `LastUpdated`. Updated on every `complete_task`. |
 | `{issueId}/info.md` | Created when a issue is started; describes goal, context, and parameters. Immutable after creation. |
 | `{issueId}/notes.md` | Handover notes: each agent writes result context here for the next step. |

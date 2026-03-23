@@ -47,30 +47,6 @@ Agents in ABO are specialized roles with specific instructions, tools, and const
 
 ---
 
-### PmoAgent (Issue Management Office)
-- **Class**: `Abo.Agents.PmoAgent`
-- **Description**: The PMO Lead agent. Responsible for designing BPMN processes, instantiating issues, and managing roles.
-- **Requires Capable Model**: Yes (`RequiresCapableModel = true`)
-- **Tools**:
-  - `create_process` – Creates a new BPMN process definition.
-  - `update_process` – Updates an existing BPMN process definition.
-  - `start_issue` – Starts a new issue instance based on an existing process.
-  - `list_issues` – Lists all active issues and their current status.
-  - `get_open_work` – Shows open work items across all issues.
-  - `upsert_role` – Creates or updates an AI agent role with a system prompt.
-  - `get_roles` – Lists all defined roles.
-  - `get_system_time` – Returns the current system time.
-- **Approach**: Follows the PDCA cycle (Plan → Do → Check → Act). Designs processes, defines roles, and delegates execution work to the `ManagerAgent`.
-- **Rules**:
-  - Every node, gateway, and transition in the BPMN **must have a unique ID**.
-  - Always check `get_roles` before creating new roles.
-  - The PMO agent does **not** perform direct task work – it delegates to instantiated BPMN flows.
-  - Users can visualize processes in the Web UI at `/processes/index.html`.
-
----
-
----
-
 ### ManagerAgent
 - **Class**: `Abo.Agents.ManagerAgent`
 - **Description**: The Issue Lead / Manager. Identifies open tasks from active issues and delegates them to specialized agents who do the actual work.

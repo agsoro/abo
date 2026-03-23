@@ -37,9 +37,6 @@ builder.Services.AddTransient<IAboTool, GetEnvironmentsTool>();
 builder.Services.AddTransient<IAboTool, GetOpenWorkTool>();
 
 // Register Agents
-
-builder.Services.AddTransient<PmoAgent>();
-builder.Services.AddTransient<IAgent, PmoAgent>(sp => sp.GetRequiredService<PmoAgent>());
 builder.Services.AddTransient<ManagerAgent>();
 builder.Services.AddTransient<IAgent, ManagerAgent>(sp => sp.GetRequiredService<ManagerAgent>());
 

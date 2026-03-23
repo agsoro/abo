@@ -25,7 +25,7 @@ This approach deliberately avoids the complexity of the full MCP (Model Context 
 - **Class**: `GetSystemTimeTool`
 - **Description**: Returns the current UTC system time.
 - **Parameters**: none
-- **Used by**: HelloWorldAgent, QuizAgent, PmoAgent, EmployeeAgent
+- **Used by**: HelloWorldAgent, QuizAgent, EmployeeAgent
 
 ---
 

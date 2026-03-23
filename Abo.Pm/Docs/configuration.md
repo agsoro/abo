@@ -24,7 +24,7 @@ Configuration is handled via the standard .NET file `appsettings.json`. The AI b
 |---|---|---|---|
 | `ApiEndpoint` | `string` | ✅ | The base URL of the REST-compatible AI model endpoint (OpenAI-compatible). |
 | `ModelName` | `string` | ✅ | The default model name for most agents (e.g. `anthropic/claude-3-haiku`). |
-| `CapableModelName` | `string` | ⚠️ Recommended | A more powerful model for complex agents (`PmoAgent`, `EmployeeAgent`). If not set, `ModelName` is used as fallback. |
+| `CapableModelName` | `string` | ⚠️ Recommended | A more powerful model for complex agents (`ManagerAgent`, `EmployeeAgent`). If not set, `ModelName` is used as fallback. |
 | `DefaultLanguage` | `string` | ⚠️ Recommended | Default language for all agent responses (e.g. `de-de`, `en-us`). Used in system prompts. |
 | `TimeoutSeconds` | `int` | ✅ | Timeout in seconds for HTTP requests to the AI endpoint. |
 
@@ -32,7 +32,7 @@ Configuration is handled via the standard .NET file `appsettings.json`. The AI b
 
 1. Set `ApiEndpoint` to the desired REST-compatible AI model API endpoint.
 2. Set `ModelName` to the desired default model.
-3. Optional: Configure `CapableModelName` for more demanding agents (PMO, Employee).
+3. Optional: Configure `CapableModelName` for more demanding agents (Manager, Employee).
 4. Optional: Set `DefaultLanguage` to the desired output language (default: `de-de`).
 5. Ensure the ABO infrastructure has network access to the `ApiEndpoint`.
 

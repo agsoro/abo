@@ -24,7 +24,6 @@
   <ItemGroup>
     <ProjectReference Include="..\Abo.Pm\Abo.Pm.csproj" />
     <ProjectReference Include="..\Abo.Core\Abo.Core.csproj" />
-    <ProjectReference Include="..\Abo.Quiz\Abo.Quiz.csproj" />
   </ItemGroup>
 
 </Project>
