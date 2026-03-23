@@ -164,7 +164,9 @@ public class ManagerAgent : IAgent
             if (role == null) return $"Error: Role '{roleId}' not found.";
 
             // Instantiate SpecialistAgent
-            var specialist = new SpecialistAgent(_globalTools, role.Title, role.SystemPrompt, role.AllowedTools, _configuration, _wikiClient);
+            var specialist = new SpecialistAgent(_globalTools, role.Title, role.SystemPrompt, role.AllowedTools, _configuration, issueId, _wikiClient);
+            var initResult = await specialist.InitializeWorkspaceAsync();
+            if (initResult.StartsWith("Error")) return $"Task delegation failed during environment setup: {initResult}";
 
             _logger.LogInformation($"Manager delegating task to SpecialistAgent ({role.Title}) for issue {issueId}.");
 

@@ -36,14 +36,15 @@ public class SpecialistAgent : IAgent
     public bool RequiresCapableModel => true;
     public bool RequiresReviewModel => _isValidationTask;
 
-    public SpecialistAgent(IEnumerable<IAboTool> globalTools, string roleTitle, string rolePrompt, List<string> allowedTools, IConfiguration config, IXpectoLiveWikiClient? wikiClient = null)
+    public SpecialistAgent(IEnumerable<IAboTool> globalTools, string roleTitle, string systemPrompt, List<string> allowedTools, IConfiguration configuration, string issueId, IXpectoLiveWikiClient? wikiClient = null)
     {
         _globalTools = globalTools;
         _roleTitle = roleTitle;
-        _rolePrompt = rolePrompt;
-        _allowedTools = allowedTools ?? new();
-        _config = config;
-        _issueTrackerToken = config["Integrations:GitHub:Token"];
+        _rolePrompt = systemPrompt;
+        _allowedTools = allowedTools;
+        _config = configuration;
+        _currentIssueId = issueId;
+        _issueTrackerToken = configuration["Integrations:GitHub:Token"];
         _wikiClient = wikiClient!;
         _dataDir = Path.Combine(AppContext.BaseDirectory, "Data");
     }
@@ -72,16 +73,6 @@ public class SpecialistAgent : IAgent
         }
 
         // 2. Custom Agent lifecycle tools
-        definitions.Add(new ToolDefinition
-        {
-            Type = "function",
-            Function = new FunctionDefinition
-            {
-                Name = "checkout_task",
-                Description = "Checks out the next task from a issue by ID (Issue ID), binding your environment connector to it so you can use file/system tools.",
-                Parameters = new { type = "object", properties = new { issueId = new { type = "string" } }, required = new[] { "issueId" } }
-            }
-        });
 
         definitions.Add(new ToolDefinition
         {
@@ -117,63 +108,8 @@ public class SpecialistAgent : IAgent
                 Parameters = new { type = "object", properties = new { message = new { type = "string" } }, required = new[] { "message" } }
             }
         });
-
-        definitions.Add(new ToolDefinition
-        {
-            Type = "function",
-            Function = new FunctionDefinition
-            {
-                Name = "take_notes",
-                Description = "Stores temporary notes, remarks, or intermediate findings during your task. These are securely saved to the issue comments.",
-                Parameters = new { type = "object", properties = new { note = new { type = "string" } }, required = new[] { "note" } }
-            }
-        });
-
-        definitions.Add(new ToolDefinition
-        {
-            Type = "function",
-            Function = new FunctionDefinition
-            {
-                Name = "read_notes",
-                Description = "Reads all comments attached to the issue to find context and remarks left by previous agents.",
-                Parameters = new { type = "object", properties = new { }, required = Array.Empty<string>() }
-            }
-        });
-
-        // 3. Connector tool signatures (always exposed, but restricted functionally if not checked out)
-        var dummyEnv = new ConnectorEnvironment { Dir = "C:\\" };
-        var dummyWorkspace = new LocalWorkspaceConnector(dummyEnv);
-        var dummyIssueConfig = new IssueTrackerConfig { Owner = "dummy", Repository = "dummy" };
-        var dummyIssue = new GitHubIssueTrackerConnector(dummyIssueConfig, null);
-
-        var connectorTools = new List<IAboTool>
-        {
-            new ReadFileTool(dummyWorkspace),
-            new WriteFileTool(dummyWorkspace),
-            new DeleteFileTool(dummyWorkspace),
-            new ListDirTool(dummyWorkspace),
-            new MkDirTool(dummyWorkspace),
-            new GitTool(dummyWorkspace),
-            new DotnetTool(dummyWorkspace),
-            new PythonTool(dummyWorkspace),
-            new SearchRegexTool(dummyWorkspace),
-            new HttpGetTool(dummyWorkspace),
-            new ListIssuesTool(dummyIssue),
-            new GetIssueTool(dummyIssue),
-            new CreateIssueTool(dummyIssue),
-            new AddIssueCommentTool(dummyIssue)
-        };
-
-        if (_wikiClient != null)
-        {
-            var dummyWiki = new XpectoLiveWikiConnector(_wikiClient, "dummy");
-            connectorTools.Add(new GetWikiPageTool(dummyWiki));
-            connectorTools.Add(new CreateWikiPageTool(dummyWiki));
-            connectorTools.Add(new UpdateWikiPageTool(dummyWiki));
-            connectorTools.Add(new SearchWikiTool(dummyWiki));
-        }
-
-        foreach (var tool in connectorTools)
+        // 3. Connector tool signatures (now fully mounted before execution via InitializeWorkspaceAsync)
+        foreach (var tool in _connectorTools)
         {
             if (_allowedTools == null || !_allowedTools.Any() || _allowedTools.Contains(tool.Name))
             {
@@ -195,11 +131,8 @@ public class SpecialistAgent : IAgent
         var name = toolCall.Function?.Name;
         var args = toolCall.Function?.Arguments ?? "{}";
 
-        if (name == "checkout_task") return await HandleCheckoutTaskAsync(args);
         if (name == "complete_task") return await HandleCompleteTaskAsync(args);
         if (name == "request_ceo_help") return HandleRequestCeoHelp(args);
-        if (name == "take_notes") return await HandleTakeNotesAsync(args);
-        if (name == "read_notes") return await HandleReadNotesAsync(args);
 
         var globalTool = _globalTools.FirstOrDefault(t => t.Name == name);
         if (globalTool != null) return await globalTool.ExecuteAsync(args);
@@ -210,7 +143,7 @@ public class SpecialistAgent : IAgent
             // Specifically exclude checking if workspace is null if it's an issue/wiki tool that doesn't need it?
             if (_currentWorkspace == null || string.IsNullOrEmpty(_currentIssueId))
             {
-                return "Error: You must execute 'checkout_task' before using any file, system, or issue tracker tools.";
+                return "Error: Workspace not bound structurally. Internal system flow failure during execution boot.";
             }
 
             var tool = _connectorTools.FirstOrDefault(t => t.Name == name);
@@ -227,12 +160,12 @@ public class SpecialistAgent : IAgent
         return $"Error: Unknown tool '{name}'";
     }
 
-    private async Task<string> HandleCheckoutTaskAsync(string argsJson)
+    public async Task<string> InitializeWorkspaceAsync()
     {
         try
         {
-            var args = JsonSerializer.Deserialize<Dictionary<string, string>>(argsJson);
-            if (args == null || !args.TryGetValue("issueId", out var issueId)) return "Error: issueId required.";
+            var issueId = _currentIssueId;
+            if (string.IsNullOrEmpty(issueId)) return "Error: issueId was not provided.";
 
             var environmentsFile = Path.Combine(_dataDir, "Environments", "environments.json");
             var jsOptions = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
@@ -447,32 +380,6 @@ public class SpecialistAgent : IAgent
             return "CEO help requested, but no message provided.";
         }
         catch (Exception ex) { return $"Error parsing help message: {ex.Message}"; }
-    }
-
-    private async Task<string> HandleTakeNotesAsync(string argsJson)
-    {
-        if (string.IsNullOrEmpty(_currentIssueId) || _currentIssueTracker == null) return "Error: You must check out a task before taking notes.";
-
-        try
-        {
-            var args = JsonSerializer.Deserialize<Dictionary<string, string>>(argsJson);
-            if (args == null || !args.TryGetValue("note", out var note)) return "Error: 'note' is required.";
-
-            await _currentIssueTracker.AddIssueCommentAsync(_currentIssueId, $"### Intermediate Note\n{note}");
-            return "Note successfully saved to issue comments.";
-        }
-        catch (Exception ex) { return $"Error saving note: {ex.Message}"; }
-    }
-
-    private async Task<string> HandleReadNotesAsync(string argsJson)
-    {
-        if (string.IsNullOrEmpty(_currentIssueId) || _currentIssueTracker == null) return "Error: You must check out a task before reading notes.";
-        try
-        {
-            var issue = await _currentIssueTracker.GetIssueAsync(_currentIssueId);
-            return issue?.Body ?? "No notes/comments found.";
-        }
-        catch (Exception ex) { return $"Error reading notes: {ex.Message}"; }
     }
 
 
