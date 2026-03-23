@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ABO – LLM Traffic Viewer</title>
+    <title>ABO - LLM Traffic Viewer</title>
     <style>
         :root {
             --bg-color: #0f172a;
@@ -318,7 +318,7 @@
             display: block;
         }
 
-        /* ── Structured body ── */
+        /* -- Structured body -- */
 
         .structured-body { font-size: 0.875rem; }
 
@@ -615,14 +615,14 @@
 </head>
 <body>
     <header>
-        <h1>📊 LLM Traffic <span style="font-size: 1rem; color: var(--text-muted); font-weight: normal;">Viewer</span></h1>
+        <h1>&#128202; LLM Traffic <span style="font-size: 1rem; color: var(--text-muted); font-weight: normal;">Viewer</span></h1>
         <nav class="header-nav">
-            <a href="/">💬 Chat</a>
-            <a href="/processes/">⚙️ Prozesse</a>
-            <a href="/agents/">🤖 Agents</a>
-            <a href="/open-work/">📋 Offene Arbeit</a>
-            <a href="/llm-traffic/" class="active">📊 LLM Traffic</a>
-            <a href="/llm-stats/">📈 LLM Stats</a>
+            <a href="/">&#128172; Chat</a>
+            <a href="/processes/">&#9881;&#65039; Prozesse</a>
+            <a href="/agents/">&#129302; Agents</a>
+            <a href="/open-work/">&#128203; Offene Arbeit</a>
+            <a href="/llm-traffic/" class="active">&#128202; LLM Traffic</a>
+            <a href="/llm-stats/">&#128200; LLM Stats</a>
         </nav>
         <div id="status-indicator">
             <div id="status-dot"></div>
@@ -657,7 +657,7 @@
 
         <div id="entry-list" class="entry-list">
             <div class="empty-state">
-                <div class="icon">⏳</div>
+                <div class="icon">&#9203;</div>
                 <p>Loading data...</p>
             </div>
         </div>
@@ -669,7 +669,7 @@
     (function () {
         'use strict';
 
-        // ── DOM refs ──────────────────────────────────────────────────────────
+        // -- DOM refs --
         const entryListEl   = document.getElementById('entry-list');
         const entryCountEl  = document.getElementById('entry-count');
         const lastUpdatedEl = document.getElementById('last-updated');
@@ -682,7 +682,7 @@
         let allEntries  = [];
         let expandedIds = new Set();
 
-        // ── Helpers ───────────────────────────────────────────────────────────
+        // -- Helpers --
 
         function escapeHtml(str) {
             if (str == null) return '';
@@ -699,7 +699,7 @@
         }
 
         function formatTimestamp(ts) {
-            if (!ts) return '—';
+            if (!ts) return '-';
             try {
                 const d = new Date(ts);
                 return d.toLocaleString('en-GB', {
@@ -734,7 +734,7 @@
             return val;
         }
 
-        // ── Entry-level type detection ────────────────────────────────────────
+        // -- Entry-level type detection --
 
         function getDisplayType(entry) {
             const t = (entry.Type || '').toUpperCase();
@@ -746,7 +746,7 @@
             return t;
         }
 
-        // ── Header preview & meta-pills ───────────────────────────────────────
+        // -- Header preview & meta-pills --
 
         function buildHeaderMeta(entry) {
             const content = tryParseJson(entry.Content);
@@ -761,16 +761,16 @@
                 || null;
             if (model) {
                 const short = model.includes('/') ? model.split('/').pop() : model;
-                pills.push(`<span class="meta-pill model" title="${escapeHtml(model)}">${escapeHtml(short)}</span>`);
+                pills.push('<span class="meta-pill model" title="' + escapeHtml(model) + '">' + escapeHtml(short) + '</span>');
             }
 
             if (type === 'REQUEST' || type === 'SUMMARY_REQUEST') {
                 const msgs      = content.messages || [];
-                const toolCalls = msgs.filter(m => m.role === 'assistant' && m.tool_calls?.length > 0)
+                const toolCalls = msgs.filter(m => m.role === 'assistant' && m.tool_calls && m.tool_calls.length > 0)
                                       .reduce((acc, m) => acc + m.tool_calls.length, 0);
-                pills.push(`<span class="meta-pill msgs">${msgs.length} msgs</span>`);
+                pills.push('<span class="meta-pill msgs">' + msgs.length + ' msgs</span>');
                 if (toolCalls > 0) {
-                    pills.push(`<span class="meta-pill tools">${toolCalls} 🔧</span>`);
+                    pills.push('<span class="meta-pill tools">' + toolCalls + ' \uD83D\uDD27</span>');
                 }
 
                 // Preview: first user message
@@ -791,13 +791,13 @@
                     const cls = finishReason === 'stop' ? 'finish-stop'
                               : finishReason === 'tool_calls' ? 'finish-tool_calls'
                               : 'finish-length';
-                    pills.push(`<span class="meta-pill ${cls}">${escapeHtml(finishReason)}</span>`);
+                    pills.push('<span class="meta-pill ' + cls + '">' + escapeHtml(finishReason) + '</span>');
                 }
                 if (usage) {
-                    pills.push(`<span class="meta-pill msgs">↑${(usage.prompt_tokens||0).toLocaleString()} ↓${(usage.completion_tokens||0).toLocaleString()}</span>`);
+                    pills.push('<span class="meta-pill msgs">\u2191' + (usage.prompt_tokens||0).toLocaleString() + ' \u2193' + (usage.completion_tokens||0).toLocaleString() + '</span>');
                 }
                 if (cost != null) {
-                    pills.push(`<span class="meta-pill cost">${escapeHtml(formatCost(cost))}</span>`);
+                    pills.push('<span class="meta-pill cost">' + escapeHtml(formatCost(cost)) + '</span>');
                 }
 
                 // Preview: assistant content
@@ -807,7 +807,7 @@
                     preview = typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content);
                 } else if (msg?.tool_calls?.length) {
                     const names = msg.tool_calls.map(tc => tc.function?.name || '?').join(', ');
-                    preview = `⚙ tool_calls: ${names}`;
+                    preview = '\u2699 tool_calls: ' + names;
                 }
                 return { preview: preview.slice(0, 120), pillsHtml: pills.join('') };
             }
@@ -820,14 +820,13 @@
             return { preview: '', pillsHtml: pills.join('') };
         }
 
-        // ── Structured body renderer ──────────────────────────────────────────
+        // -- Structured body renderer --
 
         function renderStructuredBody(entry) {
             const type    = (entry.Type || '').toUpperCase();
             const content = tryParseJson(entry.Content);
 
             if (!content) {
-                // Fallback: plain error / unparseable
                 return renderFallback(entry.Content);
             }
 
@@ -846,21 +845,18 @@
             return renderFallback(entry.Content);
         }
 
-        // ── REQUEST renderer ──────────────────────────────────────────────────
+        // -- REQUEST renderer --
 
         function renderRequest(parsed, rawContent) {
             const parts = [];
 
-            // Metadata
             parts.push(renderMetaSection(parsed));
 
-            // Messages
             const messages = parsed.messages || [];
             if (messages.length > 0) {
                 parts.push(renderMessagesSection(messages));
             }
 
-            // Tools defined in request
             const tools = parsed.tools || [];
             if (tools.length > 0) {
                 parts.push(renderToolDefinitionsSection(tools));
@@ -870,49 +866,32 @@
             return parts.join('');
         }
 
-        // ── RESPONSE renderer ─────────────────────────────────────────────────
+        // -- RESPONSE renderer --
 
         function renderResponse(parsed, rawContent) {
             const parts = [];
 
-            // Metadata (model)
             parts.push(renderMetaSection(parsed));
 
-            // Choice / assistant message
             const choice = parsed.choices?.[0];
             if (choice) {
                 const finishReason = choice.finish_reason || '';
                 const msg = choice.message;
 
-                // Finish reason
                 if (finishReason) {
                     const cls = finishReason === 'stop' ? 'stop'
                               : finishReason === 'tool_calls' ? 'tool_calls'
                               : 'length';
-                    const sectionHtml = `
-                        <div class="section-block">
-                            <div class="section-header">📋 Response</div>
-                            <div class="section-content">
-                                <span class="finish-badge ${cls}">${escapeHtml(finishReason)}</span>
-                            </div>
-                        </div>`;
+                    const sectionHtml = '<div class="section-block"><div class="section-header">\uD83D\uDCCB Response</div><div class="section-content"><span class="finish-badge ' + cls + '">' + escapeHtml(finishReason) + '</span></div></div>';
                     parts.push(sectionHtml);
                 }
 
-                // Assistant message
                 if (msg) {
                     const fakeMessages = [msg];
-                    parts.push(`
-                        <div class="section-block">
-                            <div class="section-header">💬 Assistant Message</div>
-                            <div class="section-content">
-                                ${renderMessageRows(fakeMessages, {})}
-                            </div>
-                        </div>`);
+                    parts.push('<div class="section-block"><div class="section-header">\uD83D\uDCAC Assistant Message</div><div class="section-content">' + renderMessageRows(fakeMessages, {}) + '</div></div>');
                 }
             }
 
-            // Usage
             if (parsed.usage) {
                 parts.push(renderUsageSection(parsed.usage));
             }
@@ -921,30 +900,24 @@
             return parts.join('');
         }
 
-        // ── ERROR renderer ────────────────────────────────────────────────────
+        // -- ERROR renderer --
 
         function renderError(content, rawContent) {
             const parts = [];
-            parts.push(`
-                <div class="section-block error-body">
-                    <div class="section-header" style="color: #f87171;">❌ Error</div>
-                    <div class="section-content">
-                        <pre>${escapeHtml(typeof content === 'string' ? content : prettyJson(content))}</pre>
-                    </div>
-                </div>`);
+            parts.push('<div class="section-block error-body"><div class="section-header" style="color: #f87171;">\u274C Error</div><div class="section-content"><pre>' + escapeHtml(typeof content === 'string' ? content : prettyJson(content)) + '</pre></div></div>');
             parts.push(renderRawToggle(rawContent));
             return parts.join('');
         }
 
-        // ── Fallback renderer ─────────────────────────────────────────────────
+        // -- Fallback renderer --
 
         function renderFallback(rawContent) {
             const formatted = tryParseJson(rawContent);
             const display   = formatted ? prettyJson(formatted) : (rawContent || '(empty)');
-            return `<pre style="margin:0;font-family:'Consolas','Courier New',monospace;font-size:0.8rem;color:#e2e8f0;white-space:pre-wrap;word-break:break-word;max-height:600px;overflow-y:auto;background:rgba(0,0,0,0.3);padding:0.75rem;border-radius:0.25rem;border:1px solid var(--border-color);">${escapeHtml(display)}</pre>`;
+            return '<pre style="margin:0;font-family:\'Consolas\',\'Courier New\',monospace;font-size:0.8rem;color:#e2e8f0;white-space:pre-wrap;word-break:break-word;max-height:600px;overflow-y:auto;background:rgba(0,0,0,0.3);padding:0.75rem;border-radius:0.25rem;border:1px solid var(--border-color);">' + escapeHtml(display) + '</pre>';
         }
 
-        // ── Section renderers ─────────────────────────────────────────────────
+        // -- Section renderers --
 
         function renderMetaSection(parsed) {
             const model    = parsed.model || null;
@@ -953,34 +926,27 @@
 
             const items = [];
             if (model) {
-                items.push(`<div class="meta-item"><span class="meta-label">Model</span><span class="meta-value">${escapeHtml(model)}</span></div>`);
+                items.push('<div class="meta-item"><span class="meta-label">Model</span><span class="meta-value">' + escapeHtml(model) + '</span></div>');
             }
             if (messages.length > 0) {
-                items.push(`<div class="meta-item"><span class="meta-label">Messages</span><span class="meta-value">${messages.length}</span></div>`);
+                items.push('<div class="meta-item"><span class="meta-label">Messages</span><span class="meta-value">' + messages.length + '</span></div>');
             }
             if (tools.length > 0) {
-                items.push(`<div class="meta-item"><span class="meta-label">Tools available</span><span class="meta-value">${tools.length}</span></div>`);
+                items.push('<div class="meta-item"><span class="meta-label">Tools available</span><span class="meta-value">' + tools.length + '</span></div>');
             }
             if (parsed.max_tokens != null) {
-                items.push(`<div class="meta-item"><span class="meta-label">Max tokens</span><span class="meta-value">${parsed.max_tokens}</span></div>`);
+                items.push('<div class="meta-item"><span class="meta-label">Max tokens</span><span class="meta-value">' + parsed.max_tokens + '</span></div>');
             }
             if (parsed.temperature != null) {
-                items.push(`<div class="meta-item"><span class="meta-label">Temperature</span><span class="meta-value">${parsed.temperature}</span></div>`);
+                items.push('<div class="meta-item"><span class="meta-label">Temperature</span><span class="meta-value">' + parsed.temperature + '</span></div>');
             }
 
             if (items.length === 0) return '';
 
-            return `
-                <div class="section-block">
-                    <div class="section-header">📋 Metadata</div>
-                    <div class="section-content">
-                        <div class="meta-grid">${items.join('')}</div>
-                    </div>
-                </div>`;
+            return '<div class="section-block"><div class="section-header">\uD83D\uDCCB Metadata</div><div class="section-content"><div class="meta-grid">' + items.join('') + '</div></div></div>';
         }
 
         function renderMessagesSection(messages) {
-            // Build tool call id → name map for result linking
             const toolCallMap = {};
             for (const msg of messages) {
                 if (msg.role === 'assistant' && msg.tool_calls) {
@@ -994,13 +960,7 @@
 
             const rows = renderMessageRows(messages, toolCallMap);
 
-            return `
-                <div class="section-block">
-                    <div class="section-header">💬 Messages (${messages.length})</div>
-                    <div class="section-content" style="padding: 0 0.75rem;">
-                        ${rows}
-                    </div>
-                </div>`;
+            return '<div class="section-block"><div class="section-header">\uD83D\uDCAC Messages (' + messages.length + ')</div><div class="section-content" style="padding: 0 0.75rem;">' + rows + '</div></div>';
         }
 
         function renderMessageRows(messages, toolCallMap) {
@@ -1020,15 +980,10 @@
             } else if (role === 'assistant') {
                 contentHtml = renderAssistantContent(msg);
             } else {
-                // user or unknown
                 contentHtml = renderUserContent(msg.content);
             }
 
-            return `
-                <div class="msg-row">
-                    <span class="role-badge ${badgeClass}">${escapeHtml(msg.role || 'unknown')}</span>
-                    <div class="msg-content">${contentHtml}</div>
-                </div>`;
+            return '<div class="msg-row"><span class="role-badge ' + badgeClass + '">' + escapeHtml(msg.role || 'unknown') + '</span><div class="msg-content">' + contentHtml + '</div></div>';
         }
 
         function renderSystemContent(content) {
@@ -1037,18 +992,15 @@
             const id = 'sys_' + Math.random().toString(36).slice(2, 9);
 
             if (text.length <= PREVIEW_LEN) {
-                return `<span class="system-prompt-preview">${escapeHtml(text)}</span>`;
+                return '<span class="system-prompt-preview">' + escapeHtml(text) + '</span>';
             }
 
-            return `
-                <span class="system-prompt-preview" id="preview_${id}">${escapeHtml(text.slice(0, PREVIEW_LEN))}…</span>
-                <span class="system-prompt-full" id="full_${id}">${escapeHtml(text)}</span>
-                <button class="expand-msg-btn" onclick="toggleSystemPrompt('${id}', this)">▼ Show full system prompt</button>`;
+            return '<span class="system-prompt-preview" id="preview_' + id + '">' + escapeHtml(text.slice(0, PREVIEW_LEN)) + '...</span><span class="system-prompt-full" id="full_' + id + '">' + escapeHtml(text) + '</span><button class="expand-msg-btn" onclick="toggleSystemPrompt(\'' + id + '\', this)">\u25BC Show full system prompt</button>';
         }
 
         function renderUserContent(content) {
             const text = contentToString(content);
-            return `<span style="white-space:pre-wrap;">${escapeHtml(text)}</span>`;
+            return '<span style="white-space:pre-wrap;">' + escapeHtml(text) + '</span>';
         }
 
         function renderAssistantContent(msg) {
@@ -1056,16 +1008,16 @@
 
             if (msg.content) {
                 const text = contentToString(msg.content);
-                parts.push(`<span style="white-space:pre-wrap;">${escapeHtml(text)}</span>`);
+                parts.push('<span style="white-space:pre-wrap;">' + escapeHtml(text) + '</span>');
             }
 
             if (msg.tool_calls && msg.tool_calls.length > 0) {
                 const callBlocks = msg.tool_calls.map(tc => renderToolCallBlock(tc)).join('');
-                parts.push(`<div class="tool-calls-container">${callBlocks}</div>`);
+                parts.push('<div class="tool-calls-container">' + callBlocks + '</div>');
             }
 
             if (parts.length === 0) {
-                parts.push(`<span class="msg-content muted">(no content)</span>`);
+                parts.push('<span class="msg-content muted">(no content)</span>');
             }
 
             return parts.join('');
@@ -1079,16 +1031,7 @@
             let argsObj = parsePossibleStringJson(tc.function?.arguments || '{}');
             const argsDisplay = prettyJson(argsObj);
 
-            return `
-                <div class="tool-call-block" id="${id}">
-                    <div class="tool-call-header" onclick="toggleCollapsible('${id}', this)">
-                        <span>🔧</span>
-                        <span class="tool-call-name">${escapeHtml(name)}</span>
-                        <span class="toggle-icon">▼</span>
-                        <span class="tool-call-id-label">${escapeHtml(callId)}</span>
-                    </div>
-                    <pre class="tool-call-args">${escapeHtml(argsDisplay)}</pre>
-                </div>`;
+            return '<div class="tool-call-block" id="' + id + '"><div class="tool-call-header" onclick="toggleCollapsible(\'' + id + '\', this)"><span>\uD83D\uDD27</span><span class="tool-call-name">' + escapeHtml(name) + '</span><span class="toggle-icon">\u25BC</span><span class="tool-call-id-label">' + escapeHtml(callId) + '</span></div><pre class="tool-call-args">' + escapeHtml(argsDisplay) + '</pre></div>';
         }
 
         function renderToolResultContent(msg, toolCallMap) {
@@ -1098,18 +1041,10 @@
             const id       = 'tr_' + Math.random().toString(36).slice(2, 9);
 
             const headerLabel = toolName
-                ? `📤 Result of <span style="font-family:monospace;color:var(--role-tool-fg);">${escapeHtml(toolName)}</span>`
-                : `📤 Tool Result`;
+                ? '\uD83D\uDCE4 Result of <span style="font-family:monospace;color:var(--role-tool-fg);">' + escapeHtml(toolName) + '</span>'
+                : '\uD83D\uDCE4 Tool Result';
 
-            return `
-                <div class="tool-result-block" id="${id}">
-                    <div class="tool-result-header" onclick="toggleCollapsible('${id}', this)">
-                        ${headerLabel}
-                        <span class="toggle-icon">▼</span>
-                        <span class="tool-result-id">${escapeHtml(callId)}</span>
-                    </div>
-                    <div class="tool-result-content">${escapeHtml(text)}</div>
-                </div>`;
+            return '<div class="tool-result-block" id="' + id + '"><div class="tool-result-header" onclick="toggleCollapsible(\'' + id + '\', this)">' + headerLabel + '<span class="toggle-icon">\u25BC</span><span class="tool-result-id">' + escapeHtml(callId) + '</span></div><div class="tool-result-content">' + escapeHtml(text) + '</div></div>';
         }
 
         function renderToolDefinitionsSection(tools) {
@@ -1118,72 +1053,31 @@
                 const fn   = t.function || t;
                 const name = fn.name || '?';
                 const desc = fn.description || '';
-                return `<div style="padding:0.3rem 0;border-bottom:1px solid rgba(255,255,255,0.05);">
-                    <span style="font-family:monospace;color:var(--role-tool-fg);font-weight:600;">${escapeHtml(name)}</span>
-                    ${desc ? `<span style="color:var(--text-muted);font-size:0.78rem;margin-left:0.5rem;">${escapeHtml(desc)}</span>` : ''}
-                </div>`;
+                return '<div style="padding:0.3rem 0;border-bottom:1px solid rgba(255,255,255,0.05);"><span style="font-family:monospace;color:var(--role-tool-fg);font-weight:600;">' + escapeHtml(name) + '</span>' + (desc ? '<span style="color:var(--text-muted);font-size:0.78rem;margin-left:0.5rem;">' + escapeHtml(desc) + '</span>' : '') + '</div>';
             }).join('');
 
-            return `
-                <div class="section-block" id="${id}">
-                    <div class="section-header" style="cursor:pointer;" onclick="toggleSectionCollapse('${id}', this)">
-                        🛠 Tools Defined (${tools.length}) <span class="toggle-icon" style="margin-left:auto;">▼</span>
-                    </div>
-                    <div class="section-content" style="max-height:200px;overflow-y:auto;">
-                        ${rows}
-                    </div>
-                </div>`;
+            return '<div class="section-block" id="' + id + '"><div class="section-header" style="cursor:pointer;" onclick="toggleSectionCollapse(\'' + id + '\', this)">\uD83D\uDEE0 Tools Defined (' + tools.length + ') <span class="toggle-icon" style="margin-left:auto;">\u25BC</span></div><div class="section-content" style="max-height:200px;overflow-y:auto;">' + rows + '</div></div>';
         }
 
         function renderUsageSection(usage) {
-            const promptTokens     = usage.prompt_tokens     ?? 0;
-            const completionTokens = usage.completion_tokens ?? 0;
-            const totalTokens      = usage.total_tokens      ?? (promptTokens + completionTokens);
-            const cost             = usage.cost              ?? null;
+            const promptTokens     = usage.prompt_tokens     != null ? usage.prompt_tokens     : 0;
+            const completionTokens = usage.completion_tokens != null ? usage.completion_tokens : 0;
+            const totalTokens      = usage.total_tokens      != null ? usage.total_tokens      : (promptTokens + completionTokens);
+            const cost             = usage.cost              != null ? usage.cost              : null;
 
             const costDisplay = cost != null ? formatCost(cost) : null;
 
-            return `
-                <div class="section-block">
-                    <div class="section-header">📊 Token Usage</div>
-                    <div class="section-content">
-                        <div class="usage-grid">
-                            <div class="usage-stat">
-                                <span class="usage-label">Input</span>
-                                <span class="usage-value tokens-in">${promptTokens.toLocaleString()}</span>
-                            </div>
-                            <div class="usage-stat">
-                                <span class="usage-label">Output</span>
-                                <span class="usage-value tokens-out">${completionTokens.toLocaleString()}</span>
-                            </div>
-                            <div class="usage-stat">
-                                <span class="usage-label">Total</span>
-                                <span class="usage-value tokens-total">${totalTokens.toLocaleString()}</span>
-                            </div>
-                            ${costDisplay ? `
-                            <div class="usage-stat">
-                                <span class="usage-label">Cost</span>
-                                <span class="usage-value cost">${escapeHtml(costDisplay)}</span>
-                            </div>` : ''}
-                        </div>
-                    </div>
-                </div>`;
+            return '<div class="section-block"><div class="section-header">\uD83D\uDCCA Token Usage</div><div class="section-content"><div class="usage-grid"><div class="usage-stat"><span class="usage-label">Input</span><span class="usage-value tokens-in">' + promptTokens.toLocaleString() + '</span></div><div class="usage-stat"><span class="usage-label">Output</span><span class="usage-value tokens-out">' + completionTokens.toLocaleString() + '</span></div><div class="usage-stat"><span class="usage-label">Total</span><span class="usage-value tokens-total">' + totalTokens.toLocaleString() + '</span></div>' + (costDisplay ? '<div class="usage-stat"><span class="usage-label">Cost</span><span class="usage-value cost">' + escapeHtml(costDisplay) + '</span></div>' : '') + '</div></div></div>';
         }
 
         function renderRawToggle(rawContent) {
             const id = 'raw_' + Math.random().toString(36).slice(2, 9);
             const formatted = tryParseJson(rawContent);
             const display   = formatted ? prettyJson(formatted) : (rawContent || '(empty)');
-            return `
-                <div class="raw-toggle-area">
-                    <button class="raw-toggle-btn" onclick="toggleRawJson('${id}', this)">📋 Show Raw JSON</button>
-                    <div class="raw-json-container" id="${id}">
-                        <pre>${escapeHtml(display)}</pre>
-                    </div>
-                </div>`;
+            return '<div class="raw-toggle-area"><button class="raw-toggle-btn" onclick="toggleRawJson(\'' + id + '\', this)">\uD83D\uDCCB Show Raw JSON</button><div class="raw-json-container" id="' + id + '"><pre>' + escapeHtml(display) + '</pre></div></div>';
         }
 
-        // ── Content helpers ───────────────────────────────────────────────────
+        // -- Content helpers --
 
         function contentToString(content) {
             if (content == null) return '';
@@ -1198,7 +1092,7 @@
             return JSON.stringify(content);
         }
 
-        // ── Interactive callbacks (global scope) ──────────────────────────────
+        // -- Interactive callbacks (global scope) --
 
         window.toggleSystemPrompt = function (id, btn) {
             const preview = document.getElementById('preview_' + id);
@@ -1207,10 +1101,10 @@
             const isExpanded = full.style.display === 'block';
             preview.style.display = isExpanded ? 'inline' : 'none';
             full.style.display    = isExpanded ? 'none'   : 'block';
-            btn.textContent = isExpanded ? '▼ Show full system prompt' : '▲ Hide system prompt';
+            btn.textContent = isExpanded ? '\u25BC Show full system prompt' : '\u25B2 Hide system prompt';
         };
 
-        window.toggleCollapsible = function (id, headerEl) {
+        window.toggleCollapsible = function (id) {
             const block = document.getElementById(id);
             if (!block) return;
             block.classList.toggle('collapsed');
@@ -1232,10 +1126,83 @@
             if (!container) return;
             const isVisible = container.style.display === 'block';
             container.style.display = isVisible ? 'none' : 'block';
-            btn.textContent = isVisible ? '📋 Show Raw JSON' : '📋 Hide Raw JSON';
+            btn.textContent = isVisible ? '\uD83D\uDCCB Show Raw JSON' : '\uD83D\uDCCB Hide Raw JSON';
         };
 
-        // ── Filtering ─────────────────────────────────────────────────────────
+        // -----------------------------------------------------------------------
+        // Smart incremental DOM update
+        //
+        // Instead of tearing down and rebuilding the entire list on every poll,
+        // we reconcile the existing cards with the new filtered set:
+        //   - Cards that are already in the DOM and unchanged are left in place.
+        //   - New cards are inserted.
+        //   - Cards that have disappeared from the filtered set are removed.
+        //
+        // This means the user's scroll position, expanded/collapsed state, and
+        // any focus inside a card are all preserved automatically across updates.
+        // -----------------------------------------------------------------------
+
+        // Map from entry key -> { card (DOM node), entry (data), bodyRendered }
+        const cardRegistry = new Map();
+
+        function buildCard(entry) {
+            const key         = getEntryKey(entry);
+            const isExpanded  = expandedIds.has(key);
+            const rawType     = (entry.Type || 'UNKNOWN').toUpperCase();
+            const displayType = getDisplayType(entry);
+            const isSummary   = rawType.startsWith('SUMMARY');
+
+            const { preview, pillsHtml } = buildHeaderMeta(entry);
+
+            const summaryBadge = isSummary
+                ? '<span class="meta-pill" style="color:#fbbf24;border-color:rgba(251,191,36,0.5)">SUMMARY</span>'
+                : '';
+
+            const card = document.createElement('div');
+            card.className = 'entry-card' + (isExpanded ? ' expanded' : '');
+            card.dataset.key = key;
+
+            card.innerHTML =
+                '<div class="entry-header">' +
+                    '<span class="type-badge ' + displayType + '">' + displayType + '</span>' +
+                    '<span class="entry-timestamp">' + formatTimestamp(entry.Timestamp) + '</span>' +
+                    '<span class="entry-session" title="' + escapeHtml(entry.SessionId || '') + '">' + escapeHtml(entry.SessionId || '-') + '</span>' +
+                    '<div class="header-meta-badges">' + summaryBadge + pillsHtml + '</div>' +
+                    '<span class="entry-preview" title="' + escapeHtml(preview) + '">' + escapeHtml(preview) + '</span>' +
+                    '<span class="expand-icon">\u25BC</span>' +
+                '</div>' +
+                '<div class="entry-body"></div>';
+
+            const header      = card.querySelector('.entry-header');
+            const bodyEl      = card.querySelector('.entry-body');
+            let   bodyRendered = false;
+
+            function ensureBodyRendered() {
+                if (!bodyRendered) {
+                    bodyEl.innerHTML = '<div class="structured-body">' + renderStructuredBody(entry) + '</div>';
+                    bodyRendered = true;
+                }
+            }
+
+            header.addEventListener('click', () => {
+                card.classList.toggle('expanded');
+                if (card.classList.contains('expanded')) {
+                    expandedIds.add(key);
+                    ensureBodyRendered();
+                } else {
+                    expandedIds.delete(key);
+                }
+            });
+
+            if (isExpanded) {
+                ensureBodyRendered();
+            }
+
+            cardRegistry.set(key, { card, entry, bodyRendered: () => bodyRendered });
+            return card;
+        }
+
+        // -- Filtering --
 
         function applyFilters() {
             const typeFilter    = filterType.value;
@@ -1248,92 +1215,65 @@
             });
         }
 
-        // ── Rendering ─────────────────────────────────────────────────────────
+        // -- Rendering (incremental reconciliation) --
 
         function renderEntries() {
             const filtered = applyFilters();
-            entryCountEl.textContent = `${filtered.length} entr${filtered.length !== 1 ? 'ies' : 'y'}`;
+            entryCountEl.textContent = filtered.length + ' entr' + (filtered.length !== 1 ? 'ies' : 'y');
 
             if (filtered.length === 0) {
-                entryListEl.innerHTML = `
-                    <div class="empty-state">
-                        <div class="icon">🔍</div>
-                        <p>No entries found.</p>
-                    </div>`;
+                entryListEl.innerHTML =
+                    '<div class="empty-state"><div class="icon">\uD83D\uDD0D</div><p>No entries found.</p></div>';
+                cardRegistry.clear();
                 return;
             }
 
-            const fragment = document.createDocumentFragment();
+            // Build a set of keys that should currently be visible
+            const desiredKeys = new Set(filtered.map(getEntryKey));
 
-            filtered.forEach(entry => {
-                const key        = getEntryKey(entry);
-                const isExpanded = expandedIds.has(key);
-
-                const card = document.createElement('div');
-                card.className = `entry-card${isExpanded ? ' expanded' : ''}`;
-
-                const rawType     = (entry.Type || 'UNKNOWN').toUpperCase();
-                const displayType = getDisplayType(entry);
-                const isSummary   = rawType.startsWith('SUMMARY');
-
-                const { preview, pillsHtml } = buildHeaderMeta(entry);
-
-                // Extra summary badge in addition to type badge
-                const summaryBadge = isSummary
-                    ? `<span class="meta-pill" style="color:#fbbf24;border-color:rgba(251,191,36,0.5)">SUMMARY</span>`
-                    : '';
-
-                // Build body HTML lazily when first expanded
-                card.innerHTML = `
-                    <div class="entry-header">
-                        <span class="type-badge ${displayType}">${displayType}</span>
-                        <span class="entry-timestamp">${formatTimestamp(entry.Timestamp)}</span>
-                        <span class="entry-session" title="${escapeHtml(entry.SessionId || '')}">${escapeHtml(entry.SessionId || '—')}</span>
-                        <div class="header-meta-badges">
-                            ${summaryBadge}
-                            ${pillsHtml}
-                        </div>
-                        <span class="entry-preview" title="${escapeHtml(preview)}">${escapeHtml(preview)}</span>
-                        <span class="expand-icon">▼</span>
-                    </div>
-                    <div class="entry-body"></div>`;
-
-                const header  = card.querySelector('.entry-header');
-                const bodyEl  = card.querySelector('.entry-body');
-                let   bodyRendered = false;
-
-                header.addEventListener('click', () => {
-                    card.classList.toggle('expanded');
-                    if (card.classList.contains('expanded')) {
-                        expandedIds.add(key);
-                        if (!bodyRendered) {
-                            bodyEl.innerHTML = `<div class="structured-body">${renderStructuredBody(entry)}</div>`;
-                            bodyRendered = true;
-                        }
-                    } else {
-                        expandedIds.delete(key);
+            // Remove cards no longer in the filtered set
+            for (const [key, rec] of cardRegistry.entries()) {
+                if (!desiredKeys.has(key)) {
+                    if (rec.card.parentNode === entryListEl) {
+                        entryListEl.removeChild(rec.card);
                     }
-                });
+                    cardRegistry.delete(key);
+                }
+            }
 
-                // If already expanded when (re-)rendered, pre-render body
-                if (isExpanded) {
-                    bodyEl.innerHTML = `<div class="structured-body">${renderStructuredBody(entry)}</div>`;
-                    bodyRendered = true;
+            // Insert / reorder cards to match the desired order.
+            // We walk through filtered entries in order and ensure each card is
+            // in the correct position without touching cards that are already there.
+            let referenceNode = null; // the node that should come *after* the current card
+
+            for (let i = filtered.length - 1; i >= 0; i--) {
+                const entry = filtered[i];
+                const key   = getEntryKey(entry);
+
+                let rec = cardRegistry.get(key);
+                if (!rec) {
+                    // New card - create it
+                    const card = buildCard(entry);
+                    rec = cardRegistry.get(key); // buildCard sets it
+                    entryListEl.insertBefore(card, referenceNode);
+                } else {
+                    // Card already exists - check if it needs repositioning
+                    const nextSibling = rec.card.nextSibling;
+                    if (nextSibling !== referenceNode) {
+                        entryListEl.insertBefore(rec.card, referenceNode);
+                    }
                 }
 
-                fragment.appendChild(card);
-            });
-
-            entryListEl.innerHTML = '';
-            entryListEl.appendChild(fragment);
+                referenceNode = rec.card;
+            }
         }
 
-        // ── Data fetching ─────────────────────────────────────────────────────
+        // -- Data fetching --
 
         async function fetchData() {
             const limit = parseInt(limitInput.value, 10) || 100;
             try {
-                const res = await fetch(`/api/llm-traffic?limit=${limit}`);
+                const res = await fetch('/api/llm-traffic?limit=' + limit);
                 if (!res.ok) throw new Error('HTTP ' + res.status);
                 allEntries = await res.json();
 
