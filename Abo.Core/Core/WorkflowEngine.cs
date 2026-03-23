@@ -34,7 +34,7 @@ public static class WorkflowEngine
             "planned" => new ProcessStepInfo { StepId = "planned", StepName = "Solution Planning", RequiredRole = "Role_Architect" },
             "work" => new ProcessStepInfo { StepId = "work", StepName = "Implementation", RequiredRole = "Role_Developer" },
             "review" => new ProcessStepInfo { StepId = "review", StepName = "QA Review", RequiredRole = "Role_QA" },
-            "check" => new ProcessStepInfo { StepId = "check", StepName = "Release Documentation", RequiredRole = "Role_Productmanager" },
+            "check" => new ProcessStepInfo { StepId = "check", StepName = "Release Documentation", RequiredRole = "Role_Releaseengineer" },
             "done" => new ProcessStepInfo { StepId = "done", StepName = "Completed", RequiredRole = "" },
             "invalid" => new ProcessStepInfo { StepId = "invalid", StepName = "Rejected or Duplicate", RequiredRole = "" },
             "waiting customer" => new ProcessStepInfo { StepId = "waiting customer", StepName = "Waiting for Customer Input", RequiredRole = "" },
