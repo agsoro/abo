@@ -57,7 +57,7 @@ public class SpecialistAgent : IAgent
         "You have been assigned a specific task by the ManagerAgent. Read your instructions carefully.\n" +
         "### WORKFLOW:\n" +
         "1. **Get Issue**: read the issue via `issueId` (Issue ID) from your instructions.\n" +
-        "2. **Execute**: Use the connector tools (`read_file`, `write_file`, `list_dir`, `mkdir`, `git`, `dotnet`, `python`, `http_get`) to perform your work. All relative paths are automatically rooted in the checked-out issue's directory.\n" +
+        "2. **Execute**: Use the tools to perform your work. All relative paths are automatically rooted in the checked-out issue's directory.\n" +
         "3. **Complete**: When the task is done, use 'complete_task' to signal completion. You MUST supply 'resultNotes' detailing your executed work, outputs, and any context needed by the next Role. (These notes will be automatically added as a comment to the issue, so DO NOT use 'add_issue_comment' to duplicate this information). If there are multiple possible next steps (e.g., a decision gateway), you must supply a 'keyword' matching the condition to take.\n\n" +
         "### RULES:\n" +
         "- Do not attempt to bypass the relative path confinement.";

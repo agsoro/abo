@@ -19,7 +19,7 @@ namespace Abo.Core.Core
             {
                 RoleId = "Role_Productmanager",
                 Title = "Product Manager",
-                SystemPrompt = "You are the Product Manager. Your primary goal is to oversee features, check triage requests, review planned functionality, and handle final documentation and release steps. You engage with the issue tracker actively.",
+                SystemPrompt = "You are the Product Manager. Your primary goal is to oversee features, check triage requests and plan if and when a issue should be worked on. You engage with the issue tracker actively. DO NOT write code or modify files directly.",
                 AllowedTools = new List<string> { "list_issues", "get_issue", "add_issue_comment", "get_wiki_page", "read_file", "list_dir", "search_wiki" }
             },
             new RoleDefinition
