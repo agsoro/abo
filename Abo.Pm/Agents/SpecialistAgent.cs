@@ -54,11 +54,10 @@ public class SpecialistAgent : IAgent
         "### INSTRUCTIONS FOR YOUR TASK:\n" +
         "You have been assigned a specific task by the ManagerAgent. Read your instructions carefully.\n" +
         "### WORKFLOW:\n" +
-        "1. **Checkout Issue**: You MUST use `checkout_task` providing the `issueId` (Issue ID) from your instructions. This securely binds your file/shell tools (the Connector) to that issue's specific environment. DO NOT guess paths.\n" +
+        "1. **Get Issue**: read the issue via `issueId` (Issue ID) from your instructions.\n" +
         "2. **Execute**: Use the connector tools (`read_file`, `write_file`, `list_dir`, `mkdir`, `git`, `dotnet`, `python`, `http_get`) to perform your work. All relative paths are automatically rooted in the checked-out issue's directory.\n" +
         "3. **Complete**: When the task is done, use 'complete_task' to signal completion. You MUST supply 'resultNotes' detailing your executed work, outputs, and any context needed by the next Role. If there are multiple possible next steps (e.g., a decision gateway), you must supply a 'keyword' matching the condition to take.\n\n" +
         "### RULES:\n" +
-        "- You cannot use file/system tools until you have checked out a issue.\n" +
         "- Do not attempt to bypass the relative path confinement.";
 
     public List<ToolDefinition> GetToolDefinitions()
@@ -146,7 +145,7 @@ public class SpecialistAgent : IAgent
         var dummyWorkspace = new LocalWorkspaceConnector(dummyEnv);
         var dummyIssueConfig = new IssueTrackerConfig { Owner = "dummy", Repository = "dummy" };
         var dummyIssue = new GitHubIssueTrackerConnector(dummyIssueConfig, null);
-        
+
         var connectorTools = new List<IAboTool>
         {
             new ReadFileTool(dummyWorkspace),
@@ -283,7 +282,7 @@ public class SpecialistAgent : IAgent
             _currentIssue = targetIssue;
             _currentIssueTracker = matchingTracker;
             _currentWorkspace = new LocalWorkspaceConnector(targetEnv);
-            
+
             if (targetEnv.Wiki != null)
             {
                 if (targetEnv.Wiki.Type.Equals("filesystem", StringComparison.OrdinalIgnoreCase))
@@ -320,7 +319,7 @@ public class SpecialistAgent : IAgent
             _connectorTools.Add(new PythonTool(_currentWorkspace));
             _connectorTools.Add(new SearchRegexTool(_currentWorkspace));
             _connectorTools.Add(new HttpGetTool(_currentWorkspace));
-            
+
             _connectorTools.Add(new ListIssuesTool(_currentIssueTracker));
             _connectorTools.Add(new GetIssueTool(_currentIssueTracker));
             _connectorTools.Add(new CreateIssueTool(_currentIssueTracker));
@@ -366,17 +365,17 @@ public class SpecialistAgent : IAgent
             {
                 var transitions = Abo.Core.WorkflowEngine.GetTransitions(currentStepId);
 
-                if (transitions.Count > 1) 
+                if (transitions.Count > 1)
                 {
-                    if (string.IsNullOrWhiteSpace(keyword)) 
+                    if (string.IsNullOrWhiteSpace(keyword))
                     {
                         var options = string.Join(", ", transitions.Select(t => $"'{t.ConditionName}'"));
                         return $"Error: The current step leads to a decision gateway with multiple paths. You MUST provide the 'keyword' parameter matching one of these condition names to proceed: {options}";
                     }
 
                     var matchedTransition = transitions.FirstOrDefault(t => t.ConditionName.Contains(keyword, StringComparison.OrdinalIgnoreCase) || keyword.Contains(t.ConditionName, StringComparison.OrdinalIgnoreCase));
-                    
-                    if (matchedTransition == null) 
+
+                    if (matchedTransition == null)
                     {
                         var options = string.Join(", ", transitions.Select(t => $"'{t.ConditionName}'"));
                         return $"Error: The provided keyword '{keyword}' did not match any routing conditions. Valid expected condition matches are: {options}";
