@@ -20,20 +20,27 @@ public class GetIssueTool : IAboTool
         type = "object",
         properties = new
         {
-            issueId = new { type = "string", description = "The ID or number of the issue to retrieve." }
+            issueId = new { type = "string", description = "The ID or number of the issue to retrieve." },
+            includeDetails = new { type = "boolean", description = "Whether to include full details (including comments) or just a brief summary." }
         },
-        required = new[] { "issueId" },
+        required = new[] { "issueId", "includeDetails" },
         additionalProperties = false
     };
+
+    private class GetIssueArgs
+    {
+        public string issueId { get; set; } = string.Empty;
+        public bool includeDetails { get; set; }
+    }
 
     public async Task<string> ExecuteAsync(string argumentsJson)
     {
         try
         {
-            var args = JsonSerializer.Deserialize<Dictionary<string, string>>(argumentsJson);
-            if (args != null && args.TryGetValue("issueId", out var issueId))
+            var args = JsonSerializer.Deserialize<GetIssueArgs>(argumentsJson, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+            if (args != null && !string.IsNullOrWhiteSpace(args.issueId))
             {
-                var issue = await _connector.GetIssueAsync(issueId);
+                var issue = await _connector.GetIssueAsync(args.issueId, args.includeDetails);
                 return issue != null ? JsonSerializer.Serialize(issue, new JsonSerializerOptions { WriteIndented = true }) : "Issue not found.";
             }
             return "Error: issueId parameter is required.";

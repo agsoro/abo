@@ -109,13 +109,38 @@ public class GitHubIssueTrackerConnector : IIssueTrackerConnector
         return records;
     }
 
-    public async Task<IssueRecord?> GetIssueAsync(string issueId)
+    public async Task<IssueRecord?> GetIssueAsync(string issueId, bool includeDetails = false)
     {
         using var req = CreateGitHubRequest(HttpMethod.Get, $"issues/{Uri.EscapeDataString(issueId)}");
         var json = await SendGitHubRequestAsync(req);
         var ghIssue = JsonSerializer.Deserialize<GitHubIssue>(json, _jsonOptions);
         var record = ghIssue?.ToRecord(_environmentName);
-        if (record != null) await EnrichIssuesWithProjectFieldsAsync(new List<IssueRecord> { record });
+        if (record != null) 
+        {
+            await EnrichIssuesWithProjectFieldsAsync(new List<IssueRecord> { record });
+            
+            if (includeDetails)
+            {
+                using var commentsReq = CreateGitHubRequest(HttpMethod.Get, $"issues/{Uri.EscapeDataString(issueId)}/comments");
+                try
+                {
+                    var commentsJson = await SendGitHubRequestAsync(commentsReq);
+                    using var commentsDoc = JsonDocument.Parse(commentsJson);
+                    foreach(var c in commentsDoc.RootElement.EnumerateArray())
+                    {
+                        if (c.TryGetProperty("body", out var bodyEl))
+                        {
+                            var bodyText = bodyEl.GetString();
+                            if (!string.IsNullOrWhiteSpace(bodyText))
+                            {
+                                record.Comments.Add(bodyText);
+                            }
+                        }
+                    }
+                }
+                catch { /* Ignore comment fetch failure */ }
+            }
+        }
         return record;
     }
 

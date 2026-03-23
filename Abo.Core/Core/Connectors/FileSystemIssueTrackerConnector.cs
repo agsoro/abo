@@ -66,10 +66,15 @@ public class FileSystemIssueTrackerConnector : IIssueTrackerConnector
         return query;
     }
 
-    public async Task<IssueRecord?> GetIssueAsync(string issueId)
+    public async Task<IssueRecord?> GetIssueAsync(string issueId, bool includeDetails = false)
     {
         var records = await LoadRecordsAsync();
-        return records.FirstOrDefault(r => r.Id == issueId);
+        var issue = records.FirstOrDefault(r => r.Id == issueId);
+        if (issue != null && !includeDetails)
+        {
+            issue.Comments.Clear();
+        }
+        return issue;
     }
 
     public async Task<IssueRecord> CreateIssueAsync(string title, string body, string type, string size, string[]? additionalLabels = null, string? project = null, string? stepId = null)
@@ -150,7 +155,7 @@ public class FileSystemIssueTrackerConnector : IIssueTrackerConnector
         if (issue == null) throw new Exception($"Issue {issueId} not found.");
 
         var timestamp = DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss UTC");
-        issue.Body += $"\n\n### Comment ({timestamp})\n{body}\n---";
+        issue.Comments.Add($"### Comment ({timestamp})\n{body}");
 
         await SaveRecordsAsync(records);
         return "Comment added.";

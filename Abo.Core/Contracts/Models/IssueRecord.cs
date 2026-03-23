@@ -10,4 +10,5 @@ public class IssueRecord
     public string Project { get; set; } = string.Empty;
     public string StepId { get; set; } = string.Empty;
     public List<string> Labels { get; set; } = new();
+    public List<string> Comments { get; set; } = new();
 }
