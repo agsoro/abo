@@ -91,11 +91,24 @@ public class GetOpenWorkTool : IAboTool
                 }
 
                 output.AppendLine($"### Issue: {issue.Title} (Ref: `{projRef}` | Issue: `{issue.Id}`)");
+                if (!string.IsNullOrWhiteSpace(issue.Project))
+                    output.AppendLine($"- **Project**: `{issue.Project}`");
                 output.AppendLine($"- **Environment**: `{envName}`");
                 output.AppendLine($"- **Issue Status**: `{issue.State}`");
                 output.AppendLine($"- **Current Step**: {nodeName} (`{stepId}`)");
-                if (!string.IsNullOrWhiteSpace(role))
-                    output.AppendLine($"- **Required Role**: `{role}`");
+                
+                var roleToShow = stepInfo?.RequiredRole;
+                if (string.IsNullOrWhiteSpace(roleToShow)) roleToShow = role;
+                
+                if (!string.IsNullOrWhiteSpace(roleToShow))
+                    output.AppendLine($"- **Required Role**: `{roleToShow}`");
+                
+                var transitions = Abo.Core.WorkflowEngine.GetTransitions(stepId);
+                if (transitions.Any())
+                {
+                    var stepsDesc = string.Join(", ", transitions.Select(t => $"{t.ConditionName} -> {t.NextStepId}"));
+                    output.AppendLine($"- **Next Steps**: {stepsDesc}");
+                }
                 output.AppendLine($"- **State**: {status}");
                 output.AppendLine($"- **Action**: Run `checkout_task {{\\\"issueId\\\": \\\"{issue.Id}\\\"}}` to pick up this work.");
                 output.AppendLine();

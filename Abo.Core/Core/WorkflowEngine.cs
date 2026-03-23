@@ -8,7 +8,7 @@ public class WorkflowTransition
 {
     public string ConditionName { get; set; } = string.Empty;
     public string NextStepId { get; set; } = string.Empty;
-    public Action<List<string>>? ApplyLabels { get; set; }
+    public Action<IssueRecord>? ApplyState { get; set; }
 }
 
 public static class WorkflowEngine
@@ -35,10 +35,10 @@ public static class WorkflowEngine
         {
             "requested" => new List<WorkflowTransition>
             {
-                new WorkflowTransition { ConditionName = "Reject or Duplicate?", NextStepId = "invalid", ApplyLabels = labels => RemoveAndAddRelease(labels, null) },
-                new WorkflowTransition { ConditionName = "Must-have?", NextStepId = "planned", ApplyLabels = labels => RemoveAndAddRelease(labels, "release-current") },
-                new WorkflowTransition { ConditionName = "Should-have?", NextStepId = "planned", ApplyLabels = labels => RemoveAndAddRelease(labels, "release-next") },
-                new WorkflowTransition { ConditionName = "Other / Default", NextStepId = "planned", ApplyLabels = labels => RemoveAndAddRelease(labels, "planned") }
+                new WorkflowTransition { ConditionName = "Reject or Duplicate?", NextStepId = "invalid", ApplyState = issue => SetProject(issue, null) },
+                new WorkflowTransition { ConditionName = "Must-have?", NextStepId = "planned", ApplyState = issue => SetProject(issue, "release-current") },
+                new WorkflowTransition { ConditionName = "Should-have?", NextStepId = "planned", ApplyState = issue => SetProject(issue, "release-next") },
+                new WorkflowTransition { ConditionName = "Other / Default", NextStepId = "planned", ApplyState = issue => SetProject(issue, "planned") }
             },
             "planned" => new List<WorkflowTransition>
             {
@@ -68,12 +68,8 @@ public static class WorkflowEngine
         };
     }
 
-    private static void RemoveAndAddRelease(List<string> labels, string? newValue)
+    private static void SetProject(IssueRecord issue, string? newValue)
     {
-        labels.RemoveAll(l => l.StartsWith("release:", StringComparison.OrdinalIgnoreCase));
-        if (!string.IsNullOrWhiteSpace(newValue))
-        {
-            labels.Add($"release: {newValue}");
-        }
+        issue.Project = newValue ?? string.Empty;
     }
 }

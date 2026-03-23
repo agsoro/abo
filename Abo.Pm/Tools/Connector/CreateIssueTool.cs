@@ -23,7 +23,8 @@ public class CreateIssueTool : IAboTool
             title = new { type = "string", description = "The title of the issue." },
             body = new { type = "string", description = "The detailed body description of the issue. Use markdown as appropriate." },
             type = new { type = "string", description = "The type of the issue, e.g. 'bug', 'feature'." },
-            size = new { type = "string", description = "Optional relative size estimate, e.g. 'S', 'M', 'L'." }
+            size = new { type = "string", description = "Optional relative size estimate, e.g. 'S', 'M', 'L'." },
+            project = new { type = "string", description = "Optional project name to attach the issue to." }
         },
         required = new[] { "title", "body", "type" },
         additionalProperties = false
@@ -37,7 +38,8 @@ public class CreateIssueTool : IAboTool
             if (args != null && args.TryGetValue("title", out var title) && args.TryGetValue("body", out var body) && args.TryGetValue("type", out var type))
             {
                 args.TryGetValue("size", out var size);
-                var issue = await _connector.CreateIssueAsync(title, body, type, size ?? string.Empty);
+                args.TryGetValue("project", out var project);
+                var issue = await _connector.CreateIssueAsync(title, body, type, size ?? string.Empty, null, project);
                 return JsonSerializer.Serialize(issue, new JsonSerializerOptions { WriteIndented = true });
             }
             return "Error: title, body, and type parameters are required.";

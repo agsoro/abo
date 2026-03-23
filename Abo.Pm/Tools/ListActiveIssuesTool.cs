@@ -98,11 +98,24 @@ public class ListActiveIssuesTool : IAboTool
         var role = ExtractLabelValue(issue.Labels, "role") ?? "Unknown";
         var envName = ExtractLabelValue(issue.Labels, "env") ?? "Unknown";
         var projRef = ExtractLabelValue(issue.Labels, "ref") ?? issue.Id;
+        var project = issue.Project;
+
+        var stepInfo = Abo.Core.WorkflowEngine.GetStepInfo(stepId);
+        var roleToShow = stepInfo?.RequiredRole;
+        if (string.IsNullOrWhiteSpace(roleToShow)) roleToShow = role;
+
+        var transitions = Abo.Core.WorkflowEngine.GetTransitions(stepId);
+        var nextSteps = transitions.Any() 
+            ? string.Join(", ", transitions.Select(t => $"{t.ConditionName} -> {t.NextStepId}"))
+            : "None";
 
         output.AppendLine($"{indent}- **[Ref: {projRef} | Issue: {issue.Id}] {issue.Title}**");
+        if (!string.IsNullOrWhiteSpace(project))
+            output.AppendLine($"{indent}  - Project: `{project}`");
         output.AppendLine($"{indent}  - Type: `{typeId}`");
         output.AppendLine($"{indent}  - Step: `{stepId}`");
-        output.AppendLine($"{indent}  - Role: `{role}`");
+        output.AppendLine($"{indent}  - Role: `{roleToShow}`");
+        output.AppendLine($"{indent}  - Next Steps: `{nextSteps}`");
         output.AppendLine($"{indent}  - Status: `{issue.State}`");
         output.AppendLine($"{indent}  - Environment: `{envName}`");
 

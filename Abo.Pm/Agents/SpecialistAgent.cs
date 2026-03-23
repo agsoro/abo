@@ -389,7 +389,7 @@ public class SpecialistAgent : IAgent
                     if (stepInfo != null)
                     {
                         nextStepInfo = stepInfo;
-                        transitions.First().ApplyLabels?.Invoke(_currentIssue.Labels);
+                        transitions.First().ApplyState?.Invoke(_currentIssue);
                     }
                 }
             }
@@ -398,7 +398,7 @@ public class SpecialistAgent : IAgent
                 // The agent explicitly specified the next step. Find if it matches a valid transition to apply labels.
                 var transitions = Abo.Core.WorkflowEngine.GetTransitions(currentStepId);
                 var matchedTransition = transitions.FirstOrDefault(t => t.NextStepId.Equals(nextStepInfo.StepId, StringComparison.OrdinalIgnoreCase));
-                matchedTransition?.ApplyLabels?.Invoke(_currentIssue.Labels);
+                matchedTransition?.ApplyState?.Invoke(_currentIssue);
             }
 
             if (nextStepInfo == null) return "Error: Could not automatically determine the next step. You must supply 'nextStep' with id, name, and role based on the appropriate workflow transition.";

@@ -66,4 +66,5 @@ public class IssueTrackerConfig
     public string Owner { get; set; } = string.Empty;
     public string Repository { get; set; } = string.Empty;
     public string BaseUrl { get; set; } = string.Empty;
+    public Dictionary<string, string> ProjectTitles { get; set; } = new();
 }
