@@ -70,7 +70,7 @@ public static class WorkflowEngine
             },
             "check" => new List<WorkflowTransition>
             {
-                new WorkflowTransition { ConditionName = "Documentation and Release steps finished", NextStepId = "done" }
+                new WorkflowTransition { ConditionName = "Release steps finished", NextStepId = "done" }
             },
             _ => new List<WorkflowTransition>()
         };
