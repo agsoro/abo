@@ -160,12 +160,7 @@ public class ManagerAgent : IAgent
 
             var roleId = stepInfo.RequiredRole;
 
-            var rolesFile = Path.Combine(AppContext.BaseDirectory, "Data", "Roles", "roles.json");
-            if (!File.Exists(rolesFile)) return "Error: No roles defined in the system.";
-
-            var rolesJson = await File.ReadAllTextAsync(rolesFile);
-            var jsOptions = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
-            var roles = JsonSerializer.Deserialize<List<RoleDefinition>>(rolesJson, jsOptions);
+            var roles = Abo.Core.Core.AvailableRoles.AllRoles;
 
             var role = roles?.FirstOrDefault(r => r.RoleId.Equals(roleId, StringComparison.OrdinalIgnoreCase));
             if (role == null) return $"Error: Role '{roleId}' not found.";
@@ -191,12 +186,5 @@ public class ManagerAgent : IAgent
             return $"Error delegating task: {ex.Message}";
         }
     }
-
-    private class RoleDefinition
-    {
-        public string RoleId { get; set; } = string.Empty;
-        public string Title { get; set; } = string.Empty;
-        public string SystemPrompt { get; set; } = string.Empty;
-        public List<string> AllowedTools { get; set; } = new();
-    }
 }
+

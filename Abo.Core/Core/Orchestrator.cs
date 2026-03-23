@@ -66,7 +66,7 @@ public class Orchestrator
             request.Tools = null;
         }
 
-        int maxLoops = 40;
+        int maxLoops = 60;
         int currentLoop = 0;
         string? lastQuestionOutput = null;
         string? accumulatedContent = null;
@@ -98,7 +98,7 @@ public class Orchestrator
                 request.Model = currentModelName;
 
                 // Auto summarize if request.Messages is getting long
-                if (request.Messages.Count > 40)
+                if (request.Messages.Count > 80)
                 {
                     int keepTailCount = 4;
                     int splitIndex = request.Messages.Count - keepTailCount;
