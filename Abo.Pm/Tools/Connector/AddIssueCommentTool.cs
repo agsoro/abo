@@ -13,7 +13,7 @@ public class AddIssueCommentTool : IAboTool
     }
 
     public string Name => "add_issue_comment";
-    public string Description => "Adds a comment to an existing issue in the configured issue tracker (e.g. to link a completed task or commit ID).";
+    public string Description => "Adds a comment to an existing issue in the configured issue tracker. ONLY use this if strictly necessary. Do NOT duplicate content—your 'resultNotes' from 'complete_task' are automatically added as a comment to the issue.";
 
     public object ParametersSchema => new
     {

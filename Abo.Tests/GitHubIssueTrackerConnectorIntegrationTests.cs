@@ -153,7 +153,7 @@ public class GitHubIssueTrackerConnectorIntegrationTests
             
             var verify2 = await _connector.GetIssueAsync(currentIssue.Id);
             Assert.NotNull(verify2);
-            Assert.Equal("release-current", verify2.Project);
+            Assert.Equal("planned", verify2.Project);
             Assert.Equal("work", verify2.StepId);
 
             // Step 3: work -> review
@@ -166,7 +166,7 @@ public class GitHubIssueTrackerConnectorIntegrationTests
             
             var verify3 = await _connector.GetIssueAsync(currentIssue.Id);
             Assert.NotNull(verify3);
-            Assert.Equal("release-current", verify3.Project);
+            Assert.Equal("planned", verify3.Project);
             Assert.Equal("review", verify3.StepId);
 
             // Step 4: review -> check
@@ -179,7 +179,7 @@ public class GitHubIssueTrackerConnectorIntegrationTests
             
             var verify4 = await _connector.GetIssueAsync(currentIssue.Id);
             Assert.NotNull(verify4);
-            Assert.Equal("release-current", verify4.Project);
+            Assert.Equal("planned", verify4.Project);
             Assert.Equal("check", verify4.StepId);
 
             // Step 5: check -> done (AND explicitly close the issue RESTfully)
@@ -193,14 +193,16 @@ public class GitHubIssueTrackerConnectorIntegrationTests
             // Verify final closed state natively via REST
             var finalIssue = await _connector.GetIssueAsync(currentIssue.Id);
             Assert.NotNull(finalIssue);
-            Assert.Equal("release-current", finalIssue.Project);
+            Assert.Equal("planned", finalIssue.Project);
             Assert.Equal("done", finalIssue.StepId);
             Assert.True(finalIssue.State.Equals("closed", StringComparison.OrdinalIgnoreCase), $"Issue should be closed, but was {finalIssue.State}");
         }
         finally
         {
-            // The Issue is deliberately left intact without executing DeleteIssueAsync
-            // allowing the user to view the full progression natively bound in their live GitHub columns!
+            if (currentIssue != null && !string.IsNullOrWhiteSpace(currentIssue.Id))
+            {
+                await _connector.DeleteIssueAsync(currentIssue.Id);
+            }
         }
     }
 }
