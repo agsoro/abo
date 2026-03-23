@@ -8,5 +8,6 @@ public class IssueRecord
     public string Body { get; set; } = string.Empty;
     public string State { get; set; } = "open";
     public string Project { get; set; } = string.Empty;
+    public string StepId { get; set; } = string.Empty;
     public List<string> Labels { get; set; } = new();
 }

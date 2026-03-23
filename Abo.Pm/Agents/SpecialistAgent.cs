@@ -358,7 +358,7 @@ public class SpecialistAgent : IAgent
                 keyword = keywordElement.GetString();
             }
 
-            var currentStepId = _currentIssue.Labels.FirstOrDefault(l => l.StartsWith("step: ", StringComparison.OrdinalIgnoreCase))?.Substring(6).Trim();
+            var currentStepId = Abo.Core.WorkflowEngine.ResolveStepIdFallback(_currentIssue);
 
             ProcessStepInfo? nextStepInfo = null;
 
@@ -412,11 +412,10 @@ public class SpecialistAgent : IAgent
                 await _currentIssueTracker.AddIssueCommentAsync(_currentIssueId, resultNotes);
             }
 
-            var updatedLabels = _currentIssue.Labels.Where(l => !l.StartsWith("step: ") && !l.StartsWith("role: ") && !l.StartsWith("env: ")).ToList();
+            var updatedLabels = _currentIssue.Labels.Where(l => !l.StartsWith("role: ") && !l.StartsWith("env: ")).ToList();
             if (!reachedEndEvent)
             {
-                updatedLabels.Add($"step: {nextStepInfo.StepId}");
-                await _currentIssueTracker.UpdateIssueAsync(_currentIssueId, state: "open", labels: updatedLabels.ToArray(), project: _currentIssue.Project);
+                await _currentIssueTracker.UpdateIssueAsync(_currentIssueId, state: "open", labels: updatedLabels.ToArray(), project: _currentIssue.Project, stepId: nextStepInfo.StepId);
             }
             else
             {

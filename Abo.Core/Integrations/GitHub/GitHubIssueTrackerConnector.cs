@@ -59,7 +59,7 @@ public class GitHubIssueTrackerConnector : IIssueTrackerConnector
         return content;
     }
 
-    private async Task<string> SendGraphQLRequestAsync(object payload)
+    private async Task<string> SendGraphQLRequestAsync(object payload, bool throwGraphQLErrors = false)
     {
         if (string.IsNullOrWhiteSpace(_issueTrackerToken))
             throw new Exception("Error: GitHub token is missing from global configuration (Integrations:GitHub:Token).");
@@ -77,6 +77,15 @@ public class GitHubIssueTrackerConnector : IIssueTrackerConnector
         {
             throw new Exception($"GitHub GraphQL API Error ({(int)response.StatusCode}): {response.ReasonPhrase}\n{content}");
         }
+
+        if (throwGraphQLErrors && content.Contains("\"errors\":")) {
+            using var doc = JsonDocument.Parse(content);
+            if (doc.RootElement.TryGetProperty("errors", out var errors) && errors.ValueKind == JsonValueKind.Array && errors.GetArrayLength() > 0) {
+                var firstError = errors[0].TryGetProperty("message", out var msg) ? msg.GetString() : "Unknown GraphQL Error";
+                throw new Exception($"GraphQL Mapping Error: {firstError}");
+            }
+        }
+
         return content;
     }
 
@@ -104,7 +113,7 @@ public class GitHubIssueTrackerConnector : IIssueTrackerConnector
         return record;
     }
 
-    public async Task<IssueRecord> CreateIssueAsync(string title, string body, string type, string size, string[]? additionalLabels = null, string? project = null)
+    public async Task<IssueRecord> CreateIssueAsync(string title, string body, string type, string size, string[]? additionalLabels = null, string? project = null, string? stepId = null)
     {
         var labelsList = new List<string>();
         if (!string.IsNullOrWhiteSpace(type)) labelsList.Add($"type: {type}");
@@ -112,7 +121,7 @@ public class GitHubIssueTrackerConnector : IIssueTrackerConnector
         if (additionalLabels != null) labelsList.AddRange(additionalLabels);
         if (!string.IsNullOrWhiteSpace(project)) labelsList.Add($"project: {project}");
 
-        var restLabels = labelsList.Where(l => !l.StartsWith("step: ", StringComparison.OrdinalIgnoreCase) && !l.StartsWith("project: ", StringComparison.OrdinalIgnoreCase)).ToList();
+        var restLabels = labelsList.Where(l => !l.StartsWith("project: ", StringComparison.OrdinalIgnoreCase)).ToList();
 
         var reqObj = new
         {
@@ -128,17 +137,13 @@ public class GitHubIssueTrackerConnector : IIssueTrackerConnector
         
         if (!string.IsNullOrWhiteSpace(record.NodeId)) {
             record.Project = project ?? string.Empty;
-            var stepLabel = labelsList.FirstOrDefault(l => l.StartsWith("step: ", StringComparison.OrdinalIgnoreCase));
-            if (stepLabel != null) {
-                record.Labels.RemoveAll(l => l.StartsWith("step: ", StringComparison.OrdinalIgnoreCase));
-                record.Labels.Add(stepLabel);
-            }
+            record.StepId = stepId ?? string.Empty;
             await SyncProjectV2Async(record);
         }
         return record;
     }
 
-    public async Task<IssueRecord> UpdateIssueAsync(string issueId, string? title = null, string? body = null, string? state = null, string[]? labels = null, string? project = null)
+    public async Task<IssueRecord> UpdateIssueAsync(string issueId, string? title = null, string? body = null, string? state = null, string[]? labels = null, string? project = null, string? stepId = null)
     {
         var reqObj = new Dictionary<string, object>();
         if (title != null) reqObj["title"] = title;
@@ -167,8 +172,8 @@ public class GitHubIssueTrackerConnector : IIssueTrackerConnector
                 // We keep the project string for GraphQL Sync, but do NOT push it to GitHub labels.
             }
             
-            // Strip step and project labels from REST payload
-            var restLabels = updatedLabels.Where(l => !l.StartsWith("step: ", StringComparison.OrdinalIgnoreCase) && !l.StartsWith("project: ", StringComparison.OrdinalIgnoreCase)).ToList();
+            // Strip project labels from REST payload
+            var restLabels = updatedLabels.Where(l => !l.StartsWith("project: ", StringComparison.OrdinalIgnoreCase)).ToList();
             reqObj["labels"] = restLabels.ToArray();
         }
 
@@ -183,16 +188,22 @@ public class GitHubIssueTrackerConnector : IIssueTrackerConnector
                 record.Project = project;
             }
             
-            if (updatedLabels != null) {
-                var stepLabel = updatedLabels.FirstOrDefault(l => l.StartsWith("step: ", StringComparison.OrdinalIgnoreCase));
-                if (stepLabel != null) {
-                    record.Labels.RemoveAll(l => l.StartsWith("step: ", StringComparison.OrdinalIgnoreCase));
-                    record.Labels.Add(stepLabel);
-                }
+            if (stepId != null) {
+                record.StepId = stepId;
             }
             await SyncProjectV2Async(record);
         }
         return record;
+    }
+
+    public async Task<bool> DeleteIssueAsync(string issueId)
+    {
+        var record = await GetIssueAsync(issueId);
+        if (record == null || string.IsNullOrWhiteSpace(record.NodeId)) return false;
+
+        var mut = @"mutation($issueId: ID!) { deleteIssue(input: {issueId: $issueId}) { clientMutationId } }";
+        var res = await SendGraphQLRequestAsync(new { query = mut, variables = new { issueId = record.NodeId } });
+        return res.Contains("deleteIssue");
     }
 
     public async Task<string> AddIssueCommentAsync(string issueId, string body)
@@ -250,7 +261,6 @@ query($owner: String!) {
             var id = pNode.GetProperty("id").GetString();
             if (string.IsNullOrWhiteSpace(title) || string.IsNullOrWhiteSpace(id)) continue;
 
-            _projectNodeIds[title] = id;
             var statusDict = new Dictionary<string, (string, string)>(StringComparer.OrdinalIgnoreCase);
 
             if (pNode.TryGetProperty("fields", out var fields)) {
@@ -267,7 +277,17 @@ query($owner: String!) {
                     }
                 }
             }
-            _projectStatuses[title] = statusDict;
+            
+            // Protect against Duplicate GitHub Titles by scoring native column count layouts statically
+            if (_projectStatuses.TryGetValue(title, out var existingDict)) {
+                if (statusDict.Count > existingDict.Count) {
+                    _projectNodeIds[title] = id;
+                    _projectStatuses[title] = statusDict;
+                }
+            } else {
+                _projectNodeIds[title] = id;
+                _projectStatuses[title] = statusDict;
+            }
         }
     }
 
@@ -338,8 +358,7 @@ query($owner: String!) {
                                     if (fv.TryGetProperty("name", out var optName)) {
                                         var statusStr = optName.GetString();
                                         if (!string.IsNullOrWhiteSpace(statusStr)) {
-                                            issue.Labels.RemoveAll(l => l.StartsWith("step: ", StringComparison.OrdinalIgnoreCase));
-                                            issue.Labels.Add($"step: {statusStr}");
+                                            issue.StepId = statusStr;
                                         }
                                     }
                                 }
@@ -395,18 +414,20 @@ query($nodeId: ID!) {
 
         if (targetItemNodeId == null && !string.IsNullOrWhiteSpace(targetGithubTitle) && _projectNodeIds.TryGetValue(targetGithubTitle, out var targetProjectId)) {
             var addMut = @"mutation($projectId: ID!, $contentId: ID!) { addProjectV2ItemById(input: {projectId: $projectId, contentId: $contentId}) { item { id } } }";
-            var addJson = await SendGraphQLRequestAsync(new { query = addMut, variables = new { projectId = targetProjectId, contentId = issue.NodeId } });
+            var addJson = await SendGraphQLRequestAsync(new { query = addMut, variables = new { projectId = targetProjectId, contentId = issue.NodeId } }, throwGraphQLErrors: true);
             var addDoc = JsonDocument.Parse(addJson);
-            if (addDoc.RootElement.TryGetProperty("data", out var addData) && addData.TryGetProperty("addProjectV2ItemById", out var added)) {
-                targetItemNodeId = added.GetProperty("item").GetProperty("id").GetString();
+            if (addDoc.RootElement.TryGetProperty("data", out var addData) && addData.TryGetProperty("addProjectV2ItemById", out var added) && added.ValueKind != JsonValueKind.Null) {
+                if (added.TryGetProperty("item", out var addedItem) && addedItem.ValueKind != JsonValueKind.Null) {
+                    targetItemNodeId = addedItem.GetProperty("id").GetString();
+                }
             }
         }
 
-        var stepId = issue.Labels.FirstOrDefault(l => l.StartsWith("step: ", StringComparison.OrdinalIgnoreCase))?.Substring(6).Trim();
+        var stepId = issue.StepId;
         if (targetItemNodeId != null && !string.IsNullOrWhiteSpace(targetGithubTitle) && !string.IsNullOrWhiteSpace(stepId)) {
             if (_projectStatuses.TryGetValue(targetGithubTitle, out var statusOptions) && statusOptions.TryGetValue(stepId, out var statusIds)) {
                 var updateMut = @"mutation($projectId: ID!, $itemId: ID!, $fieldId: ID!, $optionId: String!) { updateProjectV2ItemFieldValue(input: {projectId: $projectId, itemId: $itemId, fieldId: $fieldId, value: { singleSelectOptionId: $optionId }}) { projectV2Item { id } } }";
-                await SendGraphQLRequestAsync(new { query = updateMut, variables = new { projectId = _projectNodeIds[targetGithubTitle], itemId = targetItemNodeId, fieldId = statusIds.fieldId, optionId = statusIds.optionId } });
+                await SendGraphQLRequestAsync(new { query = updateMut, variables = new { projectId = _projectNodeIds[targetGithubTitle], itemId = targetItemNodeId, fieldId = statusIds.fieldId, optionId = statusIds.optionId } }, throwGraphQLErrors: true);
             }
         }
     }

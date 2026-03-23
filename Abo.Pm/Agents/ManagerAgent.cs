@@ -33,7 +33,7 @@ public class ManagerAgent : IAgent
         "### WORKFLOW:\n" +
         "1. **Find Work**: Use `get_open_work` to see all active issues, their current step, and status. Find a issue that has work to do.\n" +
         "2. **Determine Role**: Look at the current step of the issue. Use the explicit `RequiredRole` emitted by `get_open_work`.\n" +
-        "3. **Delegate Task**: Once you know the issue and the required role, use `delegate_task` to assign the work to a SpecialistAgent. You must provide the `issueId`, the `roleId`, and detailed `instructions` on what they should do.\n" +
+        "3. **Delegate Task**: Once you know the issue and the required role, use `delegate_task` to assign the work to a SpecialistAgent. You must provide the `issueId` and detailed `instructions` on what they should do.\n" +
         "4. **Completion**: The `delegate_task` tool will synchronously execute the specialist. Calling this tool will terminate your current manager assignment, since you have successfully handed the work off.\n\n" +
         "### RULES:\n" +
         "- You must use `delegate_task` to get the actual work done.\n" +
@@ -62,10 +62,9 @@ public class ManagerAgent : IAgent
                     properties = new
                     {
                         issueId = new { type = "string", description = "The ID of the issue the specialist should work on." },
-                        roleId = new { type = "string", description = "The ID of the role the specialist should adopt." },
                         instructions = new { type = "string", description = "Detailed instructions for the specialist." }
                     },
-                    required = new[] { "issueId", "roleId", "instructions" }
+                    required = new[] { "issueId", "instructions" }
                 }
             }
         });
@@ -110,11 +109,56 @@ public class ManagerAgent : IAgent
             var args = JsonSerializer.Deserialize<Dictionary<string, string>>(argsJson);
             if (args == null ||
                 !args.TryGetValue("issueId", out var issueId) ||
-                !args.TryGetValue("roleId", out var roleId) ||
                 !args.TryGetValue("instructions", out var instructions))
             {
-                return "Error: issueId, roleId, and instructions are required.";
+                return "Error: issueId and instructions are required.";
             }
+
+            var environmentsFile = Path.Combine(AppContext.BaseDirectory, "Data", "Environments", "environments.json");
+            var envs = new List<Abo.Core.Connectors.ConnectorEnvironment>();
+            if (File.Exists(environmentsFile))
+            {
+                var envJson = await File.ReadAllTextAsync(environmentsFile);
+                var jsOpt = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+                envs = JsonSerializer.Deserialize<List<Abo.Core.Connectors.ConnectorEnvironment>>(envJson, jsOpt) ?? new();
+            }
+
+            Abo.Contracts.Models.IssueRecord? targetIssue = null;
+            foreach (var env in envs.Where(e => e.IssueTracker != null))
+            {
+                Abo.Core.Connectors.IIssueTrackerConnector? tracker = null;
+                if (env.IssueTracker!.Type.Equals("github", StringComparison.OrdinalIgnoreCase))
+                {
+                    tracker = new Abo.Integrations.GitHub.GitHubIssueTrackerConnector(env.IssueTracker, _configuration["Integrations:GitHub:Token"], env.Name);
+                }
+                else if (env.IssueTracker.Type.Equals("filesystem", StringComparison.OrdinalIgnoreCase))
+                {
+                    tracker = new Abo.Core.Connectors.FileSystemIssueTrackerConnector(env.Name);
+                }
+
+                if (tracker != null)
+                {
+                    try
+                    {
+                        var issue = await tracker.GetIssueAsync(issueId);
+                        if (issue != null)
+                        {
+                            targetIssue = issue;
+                            break;
+                        }
+                    }
+                    catch { /* Ignore */ }
+                }
+            }
+
+            if (targetIssue == null) return $"Error: Issue '{issueId}' not found.";
+
+            var stepId = Abo.Core.WorkflowEngine.ResolveStepIdFallback(targetIssue);
+            
+            var stepInfo = Abo.Core.WorkflowEngine.GetStepInfo(stepId);
+            if (stepInfo == null || string.IsNullOrWhiteSpace(stepInfo.RequiredRole)) return $"Error: Could not determine RequiredRole for step '{stepId}'.";
+
+            var roleId = stepInfo.RequiredRole;
 
             var rolesFile = Path.Combine(AppContext.BaseDirectory, "Data", "Roles", "roles.json");
             if (!File.Exists(rolesFile)) return "Error: No roles defined in the system.";

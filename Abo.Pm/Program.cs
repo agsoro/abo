@@ -108,9 +108,9 @@ app.MapGet("/api/issues", async (IConfiguration config) =>
         Title = issue.Title,
         TypeId = issue.Labels.FirstOrDefault(l => l.StartsWith("type: ", StringComparison.OrdinalIgnoreCase))?.Substring(6).Trim() ?? "",
         CurrentStep = new {
-            StepId = issue.Labels.FirstOrDefault(l => l.StartsWith("step: ", StringComparison.OrdinalIgnoreCase))?.Substring(6).Trim() ?? "",
-            StepName = "",
-            RequiredRole = issue.Labels.FirstOrDefault(l => l.StartsWith("role: ", StringComparison.OrdinalIgnoreCase))?.Substring(6).Trim() ?? ""
+            StepId = Abo.Core.WorkflowEngine.ResolveStepIdFallback(issue),
+            StepName = Abo.Core.WorkflowEngine.GetStepInfo(Abo.Core.WorkflowEngine.ResolveStepIdFallback(issue))?.StepName ?? "",
+            RequiredRole = Abo.Core.WorkflowEngine.GetStepInfo(Abo.Core.WorkflowEngine.ResolveStepIdFallback(issue))?.RequiredRole ?? ""
         },
         EnvironmentName = issue.Labels.FirstOrDefault(l => l.StartsWith("env: ", StringComparison.OrdinalIgnoreCase))?.Substring(5).Trim() ?? "",
         Status = issue.State,
@@ -150,9 +150,9 @@ app.MapGet("/api/open-work", async (IConfiguration config) =>
         Title = issue.Title,
         TypeId = issue.Labels.FirstOrDefault(l => l.StartsWith("type: ", StringComparison.OrdinalIgnoreCase))?.Substring(6).Trim() ?? "",
         CurrentStep = new {
-            StepId = issue.Labels.FirstOrDefault(l => l.StartsWith("step: ", StringComparison.OrdinalIgnoreCase))?.Substring(6).Trim() ?? "",
-            StepName = "",
-            RequiredRole = issue.Labels.FirstOrDefault(l => l.StartsWith("role: ", StringComparison.OrdinalIgnoreCase))?.Substring(6).Trim() ?? ""
+            StepId = Abo.Core.WorkflowEngine.ResolveStepIdFallback(issue),
+            StepName = Abo.Core.WorkflowEngine.GetStepInfo(Abo.Core.WorkflowEngine.ResolveStepIdFallback(issue))?.StepName ?? "",
+            RequiredRole = Abo.Core.WorkflowEngine.GetStepInfo(Abo.Core.WorkflowEngine.ResolveStepIdFallback(issue))?.RequiredRole ?? ""
         },
         EnvironmentName = issue.Labels.FirstOrDefault(l => l.StartsWith("env: ", StringComparison.OrdinalIgnoreCase))?.Substring(5).Trim() ?? "",
         Status = issue.State,
@@ -304,8 +304,8 @@ app.Lifetime.ApplicationStarted.Register(() =>
                     foreach (var group in byProject) {
                         sb.AppendLine($"\n*{group.Key}*:");
                         foreach (var issue in group) {
-                            var step = issue.Labels.FirstOrDefault(l => l.StartsWith("step: ", StringComparison.OrdinalIgnoreCase))?.Substring(6) ?? "Unknown";
-                            var role = issue.Labels.FirstOrDefault(l => l.StartsWith("role: ", StringComparison.OrdinalIgnoreCase))?.Substring(6) ?? "Any";
+                            var step = Abo.Core.WorkflowEngine.ResolveStepIdFallback(issue);
+                            var role = Abo.Core.WorkflowEngine.GetStepInfo(step)?.RequiredRole ?? "Any";
                             sb.AppendLine($"- [{issue.Id}] {issue.Title} (Status: {step}, Role: {role})");
                         }
                     }

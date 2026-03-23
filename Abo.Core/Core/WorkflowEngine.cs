@@ -13,18 +13,31 @@ public class WorkflowTransition
 
 public static class WorkflowEngine
 {
+    public static string ResolveStepIdFallback(IssueRecord issue)
+    {
+        var stepId = issue.StepId ?? string.Empty;
+
+        // If the step is recognized natively, accept it immediately
+        if (!string.IsNullOrWhiteSpace(stepId) && GetStepInfo(stepId) != null) return stepId;
+
+        // If the step is blank OR unrecognized (e.g. 'Open', 'Todo') but within the 'requested' project, force it
+        if (string.Equals(issue.Project, "requested", StringComparison.OrdinalIgnoreCase)) return "open";
+
+        return stepId;
+    }
+
     public static ProcessStepInfo? GetStepInfo(string stepId)
     {
         return stepId.ToLower() switch
         {
-            "requested" => new ProcessStepInfo { StepId = "requested", StepName = "Triage Request", RequiredRole = "Role_Productmanager" },
-            "invalid" => new ProcessStepInfo { StepId = "invalid", StepName = "Rejected or Duplicate", RequiredRole = "" },
+            "open" => new ProcessStepInfo { StepId = "open", StepName = "Triage Request", RequiredRole = "Role_Productmanager" },
             "planned" => new ProcessStepInfo { StepId = "planned", StepName = "Solution Planning", RequiredRole = "Role_Architect" },
             "work" => new ProcessStepInfo { StepId = "work", StepName = "Implementation", RequiredRole = "Role_Developer" },
             "review" => new ProcessStepInfo { StepId = "review", StepName = "QA Review", RequiredRole = "Role_QA" },
             "check" => new ProcessStepInfo { StepId = "check", StepName = "Release Documentation", RequiredRole = "Role_Productmanager" },
-            "waiting customer" => new ProcessStepInfo { StepId = "waiting customer", StepName = "Waiting for Customer Input", RequiredRole = "Role_Productmanager" },
             "done" => new ProcessStepInfo { StepId = "done", StepName = "Completed", RequiredRole = "" },
+            "invalid" => new ProcessStepInfo { StepId = "invalid", StepName = "Rejected or Duplicate", RequiredRole = "" },
+            "waiting customer" => new ProcessStepInfo { StepId = "waiting customer", StepName = "Waiting for Customer Input", RequiredRole = "" },
             _ => null
         };
     }
@@ -33,9 +46,9 @@ public static class WorkflowEngine
     {
         return stepId.ToLower() switch
         {
-            "requested" => new List<WorkflowTransition>
+            "open" => new List<WorkflowTransition>
             {
-                new WorkflowTransition { ConditionName = "Reject or Duplicate?", NextStepId = "invalid", ApplyState = issue => SetProject(issue, null) },
+                new WorkflowTransition { ConditionName = "Reject or Duplicate?", NextStepId = "invalid", ApplyState = issue => SetProject(issue, "requested") },
                 new WorkflowTransition { ConditionName = "Must-have?", NextStepId = "planned", ApplyState = issue => SetProject(issue, "release-current") },
                 new WorkflowTransition { ConditionName = "Should-have?", NextStepId = "planned", ApplyState = issue => SetProject(issue, "release-next") },
                 new WorkflowTransition { ConditionName = "Other / Default", NextStepId = "planned", ApplyState = issue => SetProject(issue, "planned") }
@@ -58,11 +71,6 @@ public static class WorkflowEngine
             "check" => new List<WorkflowTransition>
             {
                 new WorkflowTransition { ConditionName = "Documentation and Release steps finished", NextStepId = "done" }
-            },
-            "waiting customer" => new List<WorkflowTransition>
-            {
-                new WorkflowTransition { ConditionName = "Feedback received, return to Planning", NextStepId = "planned" },
-                new WorkflowTransition { ConditionName = "Feedback received, return to Work", NextStepId = "work" }
             },
             _ => new List<WorkflowTransition>()
         };

@@ -17,7 +17,7 @@ public class GetOpenWorkTool : IAboTool
     }
 
     public string Name => "get_open_work";
-    public string Description => "Analyzes all active issues/issues and extracts actionable tasks. Returns a structured list of open work, revealing the expected role and state based on the BPMN flow.";
+    public string Description => "Returns a structured list of open work.";
 
     public object ParametersSchema => new
     {
@@ -33,7 +33,7 @@ public class GetOpenWorkTool : IAboTool
             var environmentsFile = Path.Combine(AppContext.BaseDirectory, "Data", "Environments", "environments.json");
             var jsOptions = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
             var envs = new List<ConnectorEnvironment>();
-            
+
             if (File.Exists(environmentsFile))
             {
                 var envJson = await File.ReadAllTextAsync(environmentsFile);
@@ -77,7 +77,7 @@ public class GetOpenWorkTool : IAboTool
             foreach (var issue in activeIssues)
             {
                 var typeId = ExtractLabelValue(issue.Labels, "type") ?? "Unknown";
-                var stepId = ExtractLabelValue(issue.Labels, "step") ?? "Unknown";
+                var stepId = Abo.Core.WorkflowEngine.ResolveStepIdFallback(issue);
                 var envName = ExtractLabelValue(issue.Labels, "env") ?? "Unknown";
                 var projRef = ExtractLabelValue(issue.Labels, "ref") ?? issue.Id;
 
@@ -95,12 +95,12 @@ public class GetOpenWorkTool : IAboTool
                 output.AppendLine($"- **Environment**: `{envName}`");
                 output.AppendLine($"- **Issue Status**: `{issue.State}`");
                 output.AppendLine($"- **Current Step**: {nodeName} (`{stepId}`)");
-                
+
                 var roleToShow = stepInfo?.RequiredRole ?? "Unknown";
-                
+
                 if (!string.IsNullOrWhiteSpace(roleToShow))
                     output.AppendLine($"- **Required Role**: `{roleToShow}`");
-                
+
                 var transitions = Abo.Core.WorkflowEngine.GetTransitions(stepId);
                 if (transitions.Any())
                 {

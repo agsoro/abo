@@ -28,14 +28,6 @@ public class FileSystemIssueTrackerConnector : IIssueTrackerConnector
                 foreach(var r in recs) {
                     r.Labels.RemoveAll(l => l.StartsWith("env: ", StringComparison.OrdinalIgnoreCase));
                     r.Labels.Add($"env: {_environmentName}");
-                    var projLabel = r.Labels.FirstOrDefault(l => l.StartsWith("project: ", StringComparison.OrdinalIgnoreCase));
-                    r.Project = projLabel != null ? projLabel.Substring(9).Trim() : string.Empty;
-                }
-            }
-            else {
-                foreach(var r in recs) {
-                    var projLabel = r.Labels.FirstOrDefault(l => l.StartsWith("project: ", StringComparison.OrdinalIgnoreCase));
-                    r.Project = projLabel != null ? projLabel.Substring(9).Trim() : string.Empty;
                 }
             }
             return recs;
@@ -80,7 +72,7 @@ public class FileSystemIssueTrackerConnector : IIssueTrackerConnector
         return records.FirstOrDefault(r => r.Id == issueId);
     }
 
-    public async Task<IssueRecord> CreateIssueAsync(string title, string body, string type, string size, string[]? additionalLabels = null, string? project = null)
+    public async Task<IssueRecord> CreateIssueAsync(string title, string body, string type, string size, string[]? additionalLabels = null, string? project = null, string? stepId = null)
     {
         var records = await LoadRecordsAsync();
         
@@ -103,6 +95,8 @@ public class FileSystemIssueTrackerConnector : IIssueTrackerConnector
             Title = title,
             Body = body,
             State = "open",
+            Project = project ?? string.Empty,
+            StepId = stepId ?? string.Empty,
             Labels = labels
         };
 
@@ -111,7 +105,7 @@ public class FileSystemIssueTrackerConnector : IIssueTrackerConnector
         return issue;
     }
 
-    public async Task<IssueRecord> UpdateIssueAsync(string issueId, string? title = null, string? body = null, string? state = null, string[]? labels = null, string? project = null)
+    public async Task<IssueRecord> UpdateIssueAsync(string issueId, string? title = null, string? body = null, string? state = null, string[]? labels = null, string? project = null, string? stepId = null)
     {
         var records = await LoadRecordsAsync();
         var issue = records.FirstOrDefault(r => r.Id == issueId);
@@ -121,6 +115,7 @@ public class FileSystemIssueTrackerConnector : IIssueTrackerConnector
         if (body != null) issue.Body = body;
         if (state != null) issue.State = state;
         if (labels != null) issue.Labels = labels.ToList();
+        if (stepId != null) issue.StepId = stepId;
 
         if (project != null)
         {
@@ -134,6 +129,18 @@ public class FileSystemIssueTrackerConnector : IIssueTrackerConnector
 
         await SaveRecordsAsync(records);
         return issue;
+    }
+
+    public async Task<bool> DeleteIssueAsync(string issueId)
+    {
+        var records = await LoadRecordsAsync();
+        var removed = records.RemoveAll(r => r.Id == issueId);
+        if (removed > 0)
+        {
+            await SaveRecordsAsync(records);
+            return true;
+        }
+        return false;
     }
 
     public async Task<string> AddIssueCommentAsync(string issueId, string body)

@@ -94,7 +94,7 @@ public class ListActiveIssuesTool : IAboTool
         var indent = new string(' ', indentLevel * 4);
         
         var typeId = ExtractLabelValue(issue.Labels, "type") ?? "Unknown";
-        var stepId = ExtractLabelValue(issue.Labels, "step") ?? "Unknown";
+        var stepId = Abo.Core.WorkflowEngine.ResolveStepIdFallback(issue);
         var envName = ExtractLabelValue(issue.Labels, "env") ?? "Unknown";
         var projRef = ExtractLabelValue(issue.Labels, "ref") ?? issue.Id;
         var project = issue.Project;
