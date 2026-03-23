@@ -274,6 +274,29 @@ app.MapPost("/api/interact", async ([FromBody] InteractRequest req, Orchestrator
     return Results.Ok(new { Output = response });
 });
 
+app.Lifetime.ApplicationStarted.Register(() =>
+{
+    Task.Run(async () =>
+    {
+        try
+        {
+            using var scope = app.Services.CreateScope();
+            var mattermostClient = scope.ServiceProvider.GetRequiredService<MattermostClient>();
+            var options = scope.ServiceProvider.GetRequiredService<Microsoft.Extensions.Options.IOptions<MattermostOptions>>().Value;
+
+            if (!string.IsNullOrEmpty(options.CeoUserName))
+            {
+                await mattermostClient.SendDirectMessageAsync(options.CeoUserName, "Hello CEO! ABO has successfully started.");
+            }
+        }
+        catch (Exception ex)
+        {
+            var logger = app.Services.GetRequiredService<ILogger<Program>>();
+            logger.LogError(ex, "Failed to send startup greeting to CEO.");
+        }
+    });
+});
+
 app.Run();
 
 public class InteractRequest

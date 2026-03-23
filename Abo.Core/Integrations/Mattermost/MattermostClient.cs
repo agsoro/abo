@@ -149,4 +149,128 @@ public class MattermostClient
         
         return "UnknownUser";
     }
+
+    /// <summary>
+    /// Fetches the user ID for a given username.
+    /// </summary>
+    public async Task<string?> GetUserIdByUsernameAsync(string username)
+    {
+        if (string.IsNullOrEmpty(_options.BotToken) || string.IsNullOrEmpty(_options.BaseUrl))
+            return null;
+
+        try
+        {
+            var response = await _httpClient.GetAsync($"users/username/{username}");
+            if (response.IsSuccessStatusCode)
+            {
+                var content = await response.Content.ReadAsStringAsync();
+                var user = JsonSerializer.Deserialize<JsonElement>(content);
+                if (user.TryGetProperty("id", out var idProp))
+                {
+                    return idProp.GetString();
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, $"Failed to fetch user ID for username {username}");
+        }
+        
+        return null;
+    }
+
+    /// <summary>
+    /// Fetches the current bot's user ID.
+    /// </summary>
+    public async Task<string?> GetMeAsync()
+    {
+        if (string.IsNullOrEmpty(_options.BotToken) || string.IsNullOrEmpty(_options.BaseUrl))
+            return null;
+
+        try
+        {
+            var response = await _httpClient.GetAsync("users/me");
+            if (response.IsSuccessStatusCode)
+            {
+                var content = await response.Content.ReadAsStringAsync();
+                var user = JsonSerializer.Deserialize<JsonElement>(content);
+                if (user.TryGetProperty("id", out var idProp))
+                {
+                    return idProp.GetString();
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to fetch bot user ID (/users/me)");
+        }
+        
+        return null;
+    }
+
+    /// <summary>
+    /// Gets or creates a direct message channel between the bot and the specified user.
+    /// </summary>
+    public async Task<string?> GetDirectChannelAsync(string botUserId, string targetUserId)
+    {
+        if (string.IsNullOrEmpty(_options.BotToken) || string.IsNullOrEmpty(_options.BaseUrl))
+            return null;
+
+        try
+        {
+            var payload = new[] { botUserId, targetUserId };
+            var content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
+            var response = await _httpClient.PostAsync("channels/direct", content);
+
+            if (response.IsSuccessStatusCode)
+            {
+                var responseContent = await response.Content.ReadAsStringAsync();
+                var channel = JsonSerializer.Deserialize<JsonElement>(responseContent);
+                if (channel.TryGetProperty("id", out var idProp))
+                {
+                    return idProp.GetString();
+                }
+            }
+            else
+            {
+                var error = await response.Content.ReadAsStringAsync();
+                _logger.LogError($"Mattermost API error getting direct channel: {response.StatusCode} - {error}");
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to get direct channel.");
+        }
+        
+        return null;
+    }
+
+    /// <summary>
+    /// Sends a direct message to a user by resolving their username.
+    /// </summary>
+    public async Task<bool> SendDirectMessageAsync(string username, string message)
+    {
+        var targetUserId = await GetUserIdByUsernameAsync(username);
+        if (string.IsNullOrEmpty(targetUserId))
+        {
+            _logger.LogWarning($"Could not resolve Mattermost username '{username}' to send direct message.");
+            return false;
+        }
+
+        var botUserId = await GetMeAsync();
+        if (string.IsNullOrEmpty(botUserId))
+        {
+            _logger.LogWarning("Could not resolve Mattermost Bot User ID to send direct message.");
+            return false;
+        }
+
+        var channelId = await GetDirectChannelAsync(botUserId, targetUserId);
+        if (string.IsNullOrEmpty(channelId))
+        {
+            _logger.LogWarning($"Could not create or retrieve direct message channel for bot and user '{username}'.");
+            return false;
+        }
+
+        return await SendMessageAsync(channelId, message);
+    }
 }
