@@ -267,6 +267,18 @@ These tools are **only available after a successful `checkout_task`**. All paths
 - **Description**: Updates the contents of an existing wiki page.
 - **Parameters**: `pathOrId`, `content`
 
+### `move_wiki_page`
+- **Class**: `MoveWikiPageTool` (`/Tools/Connector/MoveWikiPageTool.cs`)
+- **Description**: Moves (and optionally renames) an existing wiki page to a new parent location.
+- **Parameters**:
+  - `pathOrId` (string, **required**) – For filesystem wiki: relative markdown file path of the page to move. For XpectoLive wiki: the Page ID.
+  - `newPathOrParentId` (string, **required**) – For filesystem wiki: relative path of the target parent directory. For XpectoLive wiki: the target parent Page ID. Use an empty string to move to the root.
+  - `newTitle` (string, optional) – New title for the page. For filesystem wiki, this also determines the new filename slug.
+- **Behavior by connector**:
+  - **FileSystemWikiConnector**: Uses `File.Move` to relocate the `.md` file; creates the target directory if it does not exist; optionally slugifies `newTitle` as the new filename.
+  - **GitHubWikiConnector**: Same as filesystem, then commits and pushes the change: `"Move wiki page: {source} -> {dest}"`.
+  - **XpectoLiveWikiConnector**: Delegates to `_client.MovePageAsync` with `TargetSpaceId = _spaceId`; if `newTitle` is provided, additionally calls `UpdatePageDraftAsync` + `PublishPageDraftAsync` to rename the page.
+
 ### `search_wiki`
 - **Class**: `SearchWikiTool` (`/Tools/Connector/SearchWikiTool.cs`)
 - **Description**: Searches for content or titles in the configured wiki.

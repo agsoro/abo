@@ -134,7 +134,7 @@ public class SpecialistAgent : IAgent
         var globalTool = _globalTools.FirstOrDefault(t => t.Name == name);
         if (globalTool != null) return await globalTool.ExecuteAsync(args);
 
-        var connectorToolNames = new[] { "read_file", "write_file", "delete_file", "list_dir", "mkdir", "git", "dotnet", "python", "search_regex", "http_get", "list_issues", "get_issue", "create_issue", "add_issue_comment", "get_wiki_page", "create_wiki_page", "update_wiki_page", "search_wiki" };
+        var connectorToolNames = new[] { "read_file", "write_file", "delete_file", "list_dir", "mkdir", "git", "dotnet", "python", "search_regex", "http_get", "list_issues", "get_issue", "create_issue", "add_issue_comment", "get_wiki_page", "create_wiki_page", "update_wiki_page", "move_wiki_page", "search_wiki" };
         if (connectorToolNames.Contains(name))
         {
             // Specifically exclude checking if workspace is null if it's an issue/wiki tool that doesn't need it?
@@ -260,6 +260,7 @@ public class SpecialistAgent : IAgent
                 _connectorTools.Add(new GetWikiPageTool(_currentWiki));
                 _connectorTools.Add(new CreateWikiPageTool(_currentWiki));
                 _connectorTools.Add(new UpdateWikiPageTool(_currentWiki));
+                _connectorTools.Add(new MoveWikiPageTool(_currentWiki));
                 _connectorTools.Add(new SearchWikiTool(_currentWiki));
             }
 

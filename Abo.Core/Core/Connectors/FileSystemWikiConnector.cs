@@ -128,4 +128,50 @@ public class FileSystemWikiConnector : IWikiConnector
             return $"Error searching wiki pages: {ex.Message}";
         }
     }
+
+    public Task<string> MovePageAsync(string pathOrId, string newPathOrParentId, string? newTitle = null)
+    {
+        try
+        {
+            var sourcePath = GetFullPath(EnsureMdExtension(pathOrId));
+            if (!File.Exists(sourcePath)) return Task.FromResult($"Error: Wiki page '{pathOrId}' does not exist.");
+
+            // Determine the target directory
+            var targetDir = string.IsNullOrWhiteSpace(newPathOrParentId)
+                ? _wikiRoot
+                : GetFullPath(newPathOrParentId);
+
+            if (!Directory.Exists(targetDir))
+            {
+                Directory.CreateDirectory(targetDir);
+            }
+
+            // Determine the target filename
+            string targetFileName;
+            if (!string.IsNullOrWhiteSpace(newTitle))
+            {
+                var slug = Regex.Replace(newTitle.ToLowerInvariant(), @"[^a-z0-9]+", "-").Trim('-');
+                targetFileName = EnsureMdExtension(slug);
+            }
+            else
+            {
+                targetFileName = Path.GetFileName(sourcePath);
+            }
+
+            var destPath = Path.Combine(targetDir, targetFileName);
+
+            if (File.Exists(destPath) && !string.Equals(sourcePath, destPath, StringComparison.OrdinalIgnoreCase))
+            {
+                return Task.FromResult($"Error: A wiki page already exists at the destination: {Path.GetRelativePath(_wikiRoot, destPath)}");
+            }
+
+            File.Move(sourcePath, destPath, overwrite: false);
+            var relDest = Path.GetRelativePath(_wikiRoot, destPath);
+            return Task.FromResult($"Successfully moved wiki page to: {relDest}");
+        }
+        catch (Exception ex)
+        {
+            return Task.FromResult($"Error moving wiki page: {ex.Message}");
+        }
+    }
 }

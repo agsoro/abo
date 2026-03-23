@@ -186,4 +186,54 @@ public class GitHubWikiConnector : IWikiConnector
             return $"Error searching wiki pages: {ex.Message}";
         }
     }
+
+    public async Task<string> MovePageAsync(string pathOrId, string newPathOrParentId, string? newTitle = null)
+    {
+        try
+        {
+            await SyncWikiAsync();
+
+            var sourcePath = GetFullPath(EnsureMdExtension(pathOrId));
+            if (!File.Exists(sourcePath)) return $"Error: Wiki page '{pathOrId}' does not exist.";
+
+            // Determine the target directory
+            var targetDir = string.IsNullOrWhiteSpace(newPathOrParentId)
+                ? _cloneDir
+                : GetFullPath(newPathOrParentId);
+
+            if (!Directory.Exists(targetDir))
+            {
+                Directory.CreateDirectory(targetDir);
+            }
+
+            // Determine the target filename
+            string targetFileName;
+            if (!string.IsNullOrWhiteSpace(newTitle))
+            {
+                var slug = Regex.Replace(newTitle.ToLowerInvariant(), @"[^a-z0-9]+", "-").Trim('-');
+                targetFileName = EnsureMdExtension(slug);
+            }
+            else
+            {
+                targetFileName = Path.GetFileName(sourcePath);
+            }
+
+            var destPath = Path.Combine(targetDir, targetFileName);
+
+            if (File.Exists(destPath) && !string.Equals(sourcePath, destPath, StringComparison.OrdinalIgnoreCase))
+            {
+                return $"Error: A wiki page already exists at the destination: {Path.GetRelativePath(_cloneDir, destPath)}";
+            }
+
+            File.Move(sourcePath, destPath, overwrite: false);
+            var relDest = Path.GetRelativePath(_cloneDir, destPath);
+            await CommitAndPushAsync($"Move wiki page: {pathOrId} -> {relDest}");
+
+            return $"Successfully moved wiki page to: {relDest}";
+        }
+        catch (Exception ex)
+        {
+            return $"Error moving wiki page: {ex.Message}";
+        }
+    }
 }

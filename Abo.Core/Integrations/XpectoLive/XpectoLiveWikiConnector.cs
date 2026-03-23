@@ -68,4 +68,26 @@ public class XpectoLiveWikiConnector : IWikiConnector
         }
         catch (Exception ex) { return $"Error searching wiki pages: {ex.Message}"; }
     }
+
+    public async Task<string> MovePageAsync(string pathOrId, string newPathOrParentId, string? newTitle = null)
+    {
+        try
+        {
+            await _client.MovePageAsync(_spaceId, pathOrId, new MovePageRequest
+            {
+                TargetSpaceId = _spaceId,
+                TargetParentId = string.IsNullOrWhiteSpace(newPathOrParentId) ? null : newPathOrParentId
+            });
+
+            if (!string.IsNullOrWhiteSpace(newTitle))
+            {
+                await _client.UpdatePageDraftAsync(_spaceId, pathOrId, new ContentUpdate { Title = newTitle });
+                await _client.PublishPageDraftAsync(_spaceId, pathOrId);
+            }
+
+            return $"Successfully moved wiki page '{pathOrId}' to parent '{newPathOrParentId}'" +
+                   (string.IsNullOrWhiteSpace(newTitle) ? "." : $" and renamed to '{newTitle}'.");
+        }
+        catch (Exception ex) { return $"Error moving wiki page: {ex.Message}"; }
+    }
 }
