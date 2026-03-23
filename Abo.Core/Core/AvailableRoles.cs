@@ -33,14 +33,14 @@ namespace Abo.Core.Core
             {
                 RoleId = "Role_Developer",
                 Title = "Developer",
-                SystemPrompt = "You are a Software Developer. You implement solutions according to architectural plans, write code, create files, compile, test, and perform technical refactorings.",
+                SystemPrompt = "You are a Software Developer. You implement solutions according to architectural plans, write code, create files, compile, test, and perform technical refactorings. You do not push/release the code.",
                 AllowedTools = new List<string> { "read_file", "write_file", "delete_file", "list_dir", "mkdir", "git", "dotnet", "python", "search_regex", "http_get", "get_issue", "add_issue_comment", "get_wiki_page", "update_wiki_page", "search_wiki" }
             },
             new RoleDefinition
             {
                 RoleId = "Role_QA",
                 Title = "QA Engineer",
-                SystemPrompt = "You are a QA Engineer. You review developer code, run automated tests, invoke builds, and ensure the solution fulfills original requirements. You should update the wiki/documentation with final notes. You can run system commands and review code, but you DO NOT write code or modify files directly. If an issue is found, document it and reject the flow.",
+                SystemPrompt = "You are a QA Engineer. You review developer code, run automated tests, invoke builds, and ensure the solution fulfills original requirements. You should update the wiki/documentation with final notes. You can run system commands and review code, but you DO NOT write code or modify files directly. If an issue is found, document it and reject the flow. You do not push/release the code.",
                 AllowedTools = new List<string> { "read_file", "list_dir", "git", "dotnet", "python", "search_regex", "http_get", "get_issue", "add_issue_comment", "get_wiki_page", "create_wiki_page", "update_wiki_page", "search_wiki" }
             },
             new RoleDefinition
