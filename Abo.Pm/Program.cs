@@ -41,7 +41,7 @@ builder.Services.AddTransient<ManagerAgent>();
 builder.Services.AddTransient<IAgent, ManagerAgent>(sp => sp.GetRequiredService<ManagerAgent>());
 
 // Register Background Services
-
+builder.Services.AddSingleton<StartupStatusService>();
 builder.Services.AddHostedService<EnvironmentValidationService>();
 
 var app = builder.Build();
@@ -286,7 +286,36 @@ app.Lifetime.ApplicationStarted.Register(() =>
 
             if (!string.IsNullOrEmpty(options.CeoUserName))
             {
-                await mattermostClient.SendDirectMessageAsync(options.CeoUserName, "Hello CEO! ABO has successfully started.");
+                var startupStatus = scope.ServiceProvider.GetRequiredService<StartupStatusService>();
+                var config = scope.ServiceProvider.GetRequiredService<IConfiguration>();
+                
+                var sb = new System.Text.StringBuilder();
+                sb.AppendLine("Hello CEO! ABO has successfully started.");
+                
+                if (startupStatus.Errors.Any()) {
+                    sb.AppendLine("\n**⚠ Startup Configuration Errors:**");
+                    foreach (var err in startupStatus.Errors) {
+                        sb.AppendLine($"- {err}");
+                    }
+                }
+                
+                sb.AppendLine("\n**📊 Open Work & Projects:**");
+                var issues = await GetAllIssuesAsync(config);
+                if (issues.Any()) {
+                    var byProject = issues.GroupBy(i => string.IsNullOrWhiteSpace(i.Project) ? "Unassigned" : i.Project);
+                    foreach (var group in byProject) {
+                        sb.AppendLine($"\n*{group.Key}*:");
+                        foreach (var issue in group) {
+                            var step = issue.Labels.FirstOrDefault(l => l.StartsWith("step: ", StringComparison.OrdinalIgnoreCase))?.Substring(6) ?? "Unknown";
+                            var role = issue.Labels.FirstOrDefault(l => l.StartsWith("role: ", StringComparison.OrdinalIgnoreCase))?.Substring(6) ?? "Any";
+                            sb.AppendLine($"- [{issue.Id}] {issue.Title} (Status: {step}, Role: {role})");
+                        }
+                    }
+                } else {
+                    sb.AppendLine("- No open issues found.");
+                }
+
+                await mattermostClient.SendDirectMessageAsync(options.CeoUserName, sb.ToString());
             }
         }
         catch (Exception ex)

@@ -15,17 +15,20 @@ public class EnvironmentValidationService : IHostedService
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly IConfiguration _configuration;
     private readonly IServiceProvider _serviceProvider;
+    private readonly StartupStatusService _startupStatus;
 
     public EnvironmentValidationService(
         ILogger<EnvironmentValidationService> logger, 
         IHttpClientFactory httpClientFactory,
         IConfiguration configuration,
-        IServiceProvider serviceProvider)
+        IServiceProvider serviceProvider,
+        StartupStatusService startupStatus)
     {
         _logger = logger;
         _httpClientFactory = httpClientFactory;
         _configuration = configuration;
         _serviceProvider = serviceProvider;
+        _startupStatus = startupStatus;
     }
 
     public async Task StartAsync(CancellationToken cancellationToken)
@@ -64,7 +67,9 @@ public class EnvironmentValidationService : IHostedService
                     }
                     else
                     {
-                        _logger.LogError($"  [ERROR] Directory: '{env.Dir}' NOT FOUND or INACCESSIBLE.");
+                        var err = $"Directory: '{env.Dir}' NOT FOUND or INACCESSIBLE.";
+                        _logger.LogError($"  [ERROR] {err}");
+                        _startupStatus.AddError(err);
                     }
                 }
                 else
@@ -81,7 +86,11 @@ public class EnvironmentValidationService : IHostedService
                         if (Directory.Exists(fullPath))
                             _logger.LogInformation($"  [OK] Wiki (Filesystem): '{fullPath}' is accessible.");
                         else
-                            _logger.LogError($"  [ERROR] Wiki (Filesystem): '{fullPath}' NOT FOUND.");
+                        {
+                            var err = $"Wiki (Filesystem): '{fullPath}' NOT FOUND.";
+                            _logger.LogError($"  [ERROR] {err}");
+                            _startupStatus.AddError(err);
+                        }
                     }
                     else if (env.Wiki.Type.Equals("xpectolive", StringComparison.OrdinalIgnoreCase))
                     {
@@ -95,7 +104,9 @@ public class EnvironmentValidationService : IHostedService
                             process?.WaitForExit();
                             _logger.LogInformation($"  [OK] Wiki (GitHub): 'git' CLI is available.");
                         } catch {
-                            _logger.LogError($"  [ERROR] Wiki (GitHub): 'git' CLI is NOT installed or accessible.");
+                            var err = $"Wiki (GitHub): 'git' CLI is NOT installed or accessible.";
+                            _logger.LogError($"  [ERROR] {err}");
+                            _startupStatus.AddError(err);
                         }
                         
                         var parts = env.Wiki.RootPath.Split('/');
@@ -106,7 +117,9 @@ public class EnvironmentValidationService : IHostedService
                         }
                         else
                         {
-                            _logger.LogError($"  [ERROR] Wiki (GitHub): RootPath must be in 'owner/repo' format.");
+                            var err = $"Wiki (GitHub): RootPath must be in 'owner/repo' format.";
+                            _logger.LogError($"  [ERROR] {err}");
+                            _startupStatus.AddError(err);
                         }
                     }
                 }
@@ -150,7 +163,9 @@ public class EnvironmentValidationService : IHostedService
         }
         catch (Exception ex)
         {
-            _logger.LogError($"  [ERROR] Wiki (XpectoLive): Failed to reach Space '{spaceId}'. Message: {ex.Message}");
+            var err = $"Wiki (XpectoLive): Failed to reach Space '{spaceId}'. Message: {ex.Message}";
+            _logger.LogError($"  [ERROR] {err}");
+            _startupStatus.AddError(err);
         }
     }
 
@@ -180,16 +195,78 @@ public class EnvironmentValidationService : IHostedService
             }
             else if (response.StatusCode == System.Net.HttpStatusCode.NotFound || response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
             {
-                 _logger.LogError($"  [ERROR] IssueTracker (GitHub): Repo '{issueTracker.Owner}/{issueTracker.Repository}' is {(response.StatusCode == System.Net.HttpStatusCode.Unauthorized ? "UNAUTHORIZED" : "NOT FOUND")}.");
+                 var err = $"IssueTracker (GitHub): Repo '{issueTracker.Owner}/{issueTracker.Repository}' is {(response.StatusCode == System.Net.HttpStatusCode.Unauthorized ? "UNAUTHORIZED" : "NOT FOUND")}.";
+                 _logger.LogError($"  [ERROR] {err}");
+                 _startupStatus.AddError(err);
             }
             else
             {
-                 _logger.LogWarning($"  [WARN] IssueTracker (GitHub): Unexpected status {(int)response.StatusCode} for '{issueTracker.Owner}/{issueTracker.Repository}'.");
+                 var err = $"IssueTracker (GitHub): Unexpected status {(int)response.StatusCode} for '{issueTracker.Owner}/{issueTracker.Repository}'.";
+                 _logger.LogWarning($"  [WARN] {err}");
+                 _startupStatus.AddError(err);
+            }
+
+            if (issueTracker.ProjectTitles != null && issueTracker.ProjectTitles.Any())
+            {
+                try
+                {
+                    var graphqlUrl = "https://api.github.com/graphql";
+                    var query = @"query($owner: String!) { organization(login: $owner) { projectsV2(first: 20) { nodes { title } } } }";
+                    var payload = new { query, variables = new { owner = issueTracker.Owner } };
+                    var jsonPayload = JsonSerializer.Serialize(payload, new JsonSerializerOptions { DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull });
+                    var req = new HttpRequestMessage(HttpMethod.Post, graphqlUrl) { Content = new StringContent(jsonPayload, System.Text.Encoding.UTF8, "application/json") };
+                    var gqlResponse = await client.SendAsync(req, cancellationToken);
+                    var gqlJson = await gqlResponse.Content.ReadAsStringAsync();
+                    
+                    if (gqlResponse.IsSuccessStatusCode)
+                    {
+                        var doc = JsonDocument.Parse(gqlJson);
+                        JsonElement? orgNode = null;
+                        if (doc.RootElement.TryGetProperty("data", out var data) && data.TryGetProperty("organization", out var org) && org.ValueKind != JsonValueKind.Null) {
+                            orgNode = org;
+                        } else {
+                            var userQuery = query.Replace("organization(login: $owner)", "user(login: $owner)");
+                            var uPayload = new { query = userQuery, variables = new { owner = issueTracker.Owner } };
+                            var uJsonPayload = JsonSerializer.Serialize(uPayload, new JsonSerializerOptions { DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull });
+                            var uReq = new HttpRequestMessage(HttpMethod.Post, graphqlUrl) { Content = new StringContent(uJsonPayload, System.Text.Encoding.UTF8, "application/json") };
+                            var uResp = await client.SendAsync(uReq, cancellationToken);
+                            var uJson = await uResp.Content.ReadAsStringAsync();
+                            var uDoc = JsonDocument.Parse(uJson);
+                            if (uDoc.RootElement.TryGetProperty("data", out var uData) && uData.TryGetProperty("user", out var usr) && usr.ValueKind != JsonValueKind.Null) {
+                                orgNode = usr;
+                            }
+                        }
+
+                        if (orgNode != null && orgNode.Value.TryGetProperty("projectsV2", out var pV2)) {
+                            var existingTitles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                            foreach(var pNode in pV2.GetProperty("nodes").EnumerateArray()) {
+                                var pTitle = pNode.GetProperty("title").GetString();
+                                if (pTitle != null) existingTitles.Add(pTitle);
+                            }
+
+                            foreach(var expected in issueTracker.ProjectTitles.Values) {
+                                if (!existingTitles.Contains(expected)) {
+                                    var errMsg = $"IssueTracker (GitHub): Expected Project '{expected}' was NOT FOUND.";
+                                    _logger.LogError($"  [ERROR] {errMsg}");
+                                    _startupStatus.AddError(errMsg);
+                                } else {
+                                    _logger.LogInformation($"  [OK] IssueTracker (GitHub): Project '{expected}' natively verified.");
+                                }
+                            }
+                        }
+                    }
+                } catch {
+                    var err = $"IssueTracker (GitHub): Error executing GraphQL project verification.";
+                    _logger.LogError($"  [ERROR] {err}");
+                    _startupStatus.AddError(err);
+                }
             }
         }
         catch (Exception ex)
         {
-            _logger.LogError($"  [ERROR] IssueTracker (GitHub): Failed to reach repo '{issueTracker.Owner}/{issueTracker.Repository}'. Message: {ex.Message}");
+            var err = $"IssueTracker (GitHub): Failed to reach repo '{issueTracker.Owner}/{issueTracker.Repository}'. Message: {ex.Message}";
+            _logger.LogError($"  [ERROR] {err}");
+            _startupStatus.AddError(err);
         }
     }
 
