@@ -29,11 +29,11 @@ public class ManagerAgent : IAgent
     }
 
     public string SystemPrompt =>
-        "You are the ManagerAgent (Project Lead). Your goal is to oversee running projects and assign tasks to the correct specialists.\n\n" +
+        "You are the ManagerAgent (Project Lead). Your goal is to oversee running issues and assign tasks to the correct specialists.\n\n" +
         "### WORKFLOW:\n" +
-        "1. **Find Work**: Use `get_open_work` to see all active projects, their current step, and status. Find a project that has work to do.\n" +
-        "2. **Determine Role**: Look at the current step of the project. Pay attention to the explicit `RequiredRole` emitted by `get_open_work`. Do NOT guess the role or use `get_roles` unless the required role is entirely missing or unmappable.\n" +
-        "3. **Delegate Task**: Once you know the project and the required role, use `delegate_task` to assign the work to a SpecialistAgent. You must provide the `projectId`, the `roleId`, and detailed `instructions` on what they should do.\n" +
+        "1. **Find Work**: Use `get_open_work` to see all active issues, their current step, and status. Find a issue that has work to do.\n" +
+        "2. **Determine Role**: Look at the current step of the issue. Pay attention to the explicit `RequiredRole` emitted by `get_open_work`. Do NOT guess the role or use `get_roles` unless the required role is entirely missing or unmappable.\n" +
+        "3. **Delegate Task**: Once you know the issue and the required role, use `delegate_task` to assign the work to a SpecialistAgent. You must provide the `issueId`, the `roleId`, and detailed `instructions` on what they should do.\n" +
         "4. **Completion**: The `delegate_task` tool will synchronously execute the specialist. Calling this tool will terminate your current manager assignment, since you have successfully handed the work off.\n\n" +
         "### RULES:\n" +
         "- You must use `delegate_task` to get the actual work done.\n" +
@@ -43,7 +43,7 @@ public class ManagerAgent : IAgent
     {
         var definitions = new List<ToolDefinition>();
 
-        var allowedGlobalTools = new[] { "list_projects", "get_open_work", "get_roles" };
+        var allowedGlobalTools = new[] { "list_issues", "get_open_work", "get_roles" };
         foreach (var tool in _globalTools.Where(t => allowedGlobalTools.Contains(t.Name)))
         {
             definitions.Add(CreateDef(tool));
@@ -61,11 +61,11 @@ public class ManagerAgent : IAgent
                     type = "object",
                     properties = new
                     {
-                        projectId = new { type = "string", description = "The ID of the project the specialist should work on." },
+                        issueId = new { type = "string", description = "The ID of the issue the specialist should work on." },
                         roleId = new { type = "string", description = "The ID of the role the specialist should adopt." },
                         instructions = new { type = "string", description = "Detailed instructions for the specialist." }
                     },
-                    required = new[] { "projectId", "roleId", "instructions" }
+                    required = new[] { "issueId", "roleId", "instructions" }
                 }
             }
         });
@@ -109,11 +109,11 @@ public class ManagerAgent : IAgent
         {
             var args = JsonSerializer.Deserialize<Dictionary<string, string>>(argsJson);
             if (args == null ||
-                !args.TryGetValue("projectId", out var projectId) ||
+                !args.TryGetValue("issueId", out var issueId) ||
                 !args.TryGetValue("roleId", out var roleId) ||
                 !args.TryGetValue("instructions", out var instructions))
             {
-                return "Error: projectId, roleId, and instructions are required.";
+                return "Error: issueId, roleId, and instructions are required.";
             }
 
             var rolesFile = Path.Combine(AppContext.BaseDirectory, "Data", "Roles", "roles.json");
@@ -129,9 +129,9 @@ public class ManagerAgent : IAgent
             // Instantiate SpecialistAgent
             var specialist = new SpecialistAgent(_globalTools, role.Title, role.SystemPrompt, _configuration, _wikiClient);
 
-            _logger.LogInformation($"Manager delegating task to SpecialistAgent ({role.Title}) for project {projectId}.");
+            _logger.LogInformation($"Manager delegating task to SpecialistAgent ({role.Title}) for issue {issueId}.");
 
-            var combinedInstructions = $"Project ID: {projectId}\nTask Instructions:\n{instructions}";
+            var combinedInstructions = $"Issue ID: {issueId}\nTask Instructions:\n{instructions}";
 
             // We need a unique session ID for the sub-agent
             var subSessionId = $"sub-{Guid.NewGuid():N}";

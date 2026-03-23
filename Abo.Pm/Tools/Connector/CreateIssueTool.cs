@@ -13,7 +13,7 @@ public class CreateIssueTool : IAboTool
     }
 
     public string Name => "create_issue";
-    public string Description => "Creates a new issue, feature request, or bug report in the project's configured issue tracker.";
+    public string Description => "Creates a new issue, feature request, or bug report in the configured issue tracker.";
 
     public object ParametersSchema => new
     {

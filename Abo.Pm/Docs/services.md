@@ -156,20 +156,20 @@ The ABO application exposes a minimal REST API defined in `Program.cs` using ASP
 
 ---
 
-### `GET /api/projects/{id}/status`
-- **Description**: Returns the current status of a running project (contents of `Data/Projects/{id}/status.json`).
-- **Parameters**: `id` – The project ID (e.g. `1001`).
-- **Response (200)**: JSON object with project status fields:
+### `GET /api/issues/{id}/status`
+- **Description**: Returns the current status of a running issue (contents of `Data/Issues/{id}/status.json`).
+- **Parameters**: `id` – The issue ID (e.g. `1001`).
+- **Response (200)**: JSON object with issue status fields:
   ```json
   {
-    "ProjectId": "1001",
+    "IssueId": "1001",
     "CurrentStepId": "Task_WriteDoc",
     "Status": "Active",
     "LastUpdated": "2025-01-15T10:30:00Z"
   }
   ```
 - **Response (400)**: If `id` contains invalid characters.
-- **Response (404)**: If no project with this ID exists.
+- **Response (404)**: If no issue with this ID exists.
 
 ---
 

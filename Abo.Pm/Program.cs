@@ -29,8 +29,8 @@ builder.Services.AddHostedService<MattermostListenerService>();
 builder.Services.AddTransient<IAboTool, GetSystemTimeTool>();
 
 
-builder.Services.AddTransient<IAboTool, StartProjectTool>();
-builder.Services.AddTransient<IAboTool, ListProjectsTool>();
+builder.Services.AddTransient<IAboTool, StartIssueTool>();
+builder.Services.AddTransient<IAboTool, ListActiveIssuesTool>();
 builder.Services.AddTransient<IAboTool, UpsertRoleTool>();
 builder.Services.AddTransient<IAboTool, GetRolesTool>();
 builder.Services.AddTransient<IAboTool, GetEnvironmentsTool>();
@@ -103,8 +103,8 @@ async Task<List<Abo.Contracts.Models.IssueRecord>> GetAllIssuesAsync(IConfigurat
     return activeIssues;
 }
 
-// API: Projects – list all active projects
-app.MapGet("/api/projects", async (IConfiguration config) =>
+// API: Issues – list all active issues
+app.MapGet("/api/issues", async (IConfiguration config) =>
 {
     var issues = await GetAllIssuesAsync(config);
     var mapped = issues.Select(issue => new
@@ -125,12 +125,12 @@ app.MapGet("/api/projects", async (IConfiguration config) =>
     return Results.Ok(mapped);
 });
 
-// API: Projects – fetch the status of a specific project by ID
-app.MapGet("/api/projects/{id}/status", async (string id, IConfiguration config) =>
+// API: Issues – fetch the status of a specific issue by ID
+app.MapGet("/api/issues/{id}/status", async (string id, IConfiguration config) =>
 {
     var issues = await GetAllIssuesAsync(config);
     var issue = issues.FirstOrDefault(i => i.Id == id);
-    if (issue == null) return Results.NotFound($"No status found for project '{id}'.");
+    if (issue == null) return Results.NotFound($"No status found for issue '{id}'.");
     
     return Results.Ok(new {
         Status = issue.State,
@@ -145,13 +145,13 @@ app.MapGet("/api/sessions", (SessionService sessionService) =>
     return Results.Ok(sessions);
 });
 
-// API: Open Work – list all projects with their current step and open tasks
+// API: Open Work – list all issues with their current step and open tasks
 app.MapGet("/api/open-work", async (IConfiguration config) =>
 {
     var issues = await GetAllIssuesAsync(config);
     var mapped = issues.Where(i => i.State != "closed").Select(issue => new
     {
-        ProjectId = issue.Id,
+        IssueId = issue.Id,
         Title = issue.Title,
         TypeId = issue.Labels.FirstOrDefault(l => l.StartsWith("type: ", StringComparison.OrdinalIgnoreCase))?.Substring(6).Trim() ?? "",
         CurrentStep = new {

@@ -92,19 +92,19 @@ This approach deliberately avoids the complexity of the full MCP (Model Context 
 - **Description**: Checks whether a BPMN XML string is well-formed and parseable. Should be used **before saving** via `create_process` or `update_process`.
 - **Parameters**: `bpmnXml`
 
-### `start_project`
-- **Class**: `StartProjectTool`
-- **Description**: Starts a new project instance based on an existing BPMN process. Creates the project directory, `info.md`, `status.json`, and registers the project in `active_projects.json`.
-- **Parameters**: `projectId`, `title`, `typeId`, `info`, `initialStepId`, `environmentName`, `parentId` (optional)
+### `start_issue`
+- **Class**: `StartIssueTool`
+- **Description**: Starts a new issue instance based on an existing BPMN process. Creates the issue directory, `info.md`, `status.json`, and registers the issue in `active_issues.json`.
+- **Parameters**: `issueId`, `title`, `typeId`, `info`, `initialStepId`, `environmentName`, `parentId` (optional)
 
-### `list_projects`
-- **Class**: `ListProjectsTool`
-- **Description**: Lists all active projects with hierarchy, type, current BPMN step, and status link.
+### `list_issues`
+- **Class**: `ListIssuesTool`
+- **Description**: Lists all active issues with hierarchy, type, current BPMN step, and status link.
 - **Parameters**: none
 
 ### `get_open_work`
 - **Class**: `GetOpenWorkTool`
-- **Description**: Analyzes all active projects and extracts structured, actionable tasks. Shows expected role and state based on the BPMN flow.
+- **Description**: Analyzes all active issues and extracts structured, actionable tasks. Shows expected role and state based on the BPMN flow.
 - **Parameters**: none
 
 ### `upsert_role`
@@ -119,22 +119,22 @@ This approach deliberately avoids the complexity of the full MCP (Model Context 
 
 ### `get_environments`
 - **Class**: `GetEnvironmentsTool`
-- **Description**: Lists all configured environments available for projects (e.g. local directories with name, type, and path).
+- **Description**: Lists all configured environments available for issues (e.g. local directories with name, type, and path).
 - **Parameters**: none
 
 ---
 
 ## Connector Tools (SpecialistAgent)
 
-These tools are **only available after a successful `checkout_task`**. All paths are confined to the checked-out project environment's directory. They are located in the `/Tools/Connector` subfolder.
+These tools are **only available after a successful `checkout_task`**. All paths are confined to the checked-out issue environment's directory. They are located in the `/Tools/Connector` subfolder.
 
 ### `checkout_task`
-- **Description**: Checks out a running project by its ID and binds the environment connector to it. Required before any filesystem or shell tools.
-- **Parameters**: `projectId` (string)
+- **Description**: Checks out a running issue by its ID and binds the environment connector to it. Required before any filesystem or shell tools.
+- **Parameters**: `issueId` (string)
 - **Implemented in**: `SpecialistAgent.HandleCheckoutTaskAsync` (no separate tool file)
 
 ### `complete_task`
-- **Description**: Marks the current task in the checked-out project as completed and updates the status.
+- **Description**: Marks the current task in the checked-out issue as completed and updates the status.
 - **Parameters**: `nextStepId` (optional, string) – ID of the next BPMN step
 - **Implemented in**: `SpecialistAgent.HandleCompleteTaskAsync` (no separate tool file)
 
@@ -144,12 +144,12 @@ These tools are **only available after a successful `checkout_task`**. All paths
 - **Implemented in**: `SpecialistAgent.HandleRequestCeoHelp` (no separate tool file)
 
 ### `take_notes`
-- **Description**: Stores temporary notes, remarks, or intermediate findings during your task. These are securely saved to the project's remarks file.
+- **Description**: Stores temporary notes, remarks, or intermediate findings during your task. These are securely saved to the issue's remarks file.
 - **Parameters**: `note` (string)
 - **Implemented in**: `SpecialistAgent.HandleTakeNotesAsync` (no separate tool file)
 
 ### `read_notes`
-- **Description**: Reads the temporary notes, remarks, or intermediate findings stored for the current project.
+- **Description**: Reads the temporary notes, remarks, or intermediate findings stored for the current issue.
 - **Parameters**: none
 - **Implemented in**: `SpecialistAgent.HandleReadNotesAsync` (no separate tool file)
 
@@ -165,7 +165,7 @@ These tools are **only available after a successful `checkout_task`**. All paths
 
 ### `delete_file`
 - **Class**: `DeleteFileTool` (`/Tools/Connector/DeleteFileTool.cs`)
-- **Description**: Deletes a file from the project directory.
+- **Description**: Deletes a file from the issue directory.
 - **Parameters**: `relativePath`
 
 ### `list_dir`
@@ -175,22 +175,22 @@ These tools are **only available after a successful `checkout_task`**. All paths
 
 ### `mkdir`
 - **Class**: `MkDirTool` (`/Tools/Connector/MkDirTool.cs`)
-- **Description**: Creates a new directory in the project.
+- **Description**: Creates a new directory in the issue.
 - **Parameters**: `relativePath`
 
 ### `git`
 - **Class**: `GitTool` (`/Tools/Connector/GitTool.cs`)
-- **Description**: Executes a git command in the project directory. The word `git` must **not** be included in the arguments.
+- **Description**: Executes a git command in the issue directory. The word `git` must **not** be included in the arguments.
 - **Parameters**: `arguments`
 
 ### `dotnet`
 - **Class**: `DotnetTool` (`/Tools/Connector/DotnetTool.cs`)
-- **Description**: Executes a .NET CLI command in the project directory. The word `dotnet` must **not** be included in the arguments.
+- **Description**: Executes a .NET CLI command in the issue directory. The word `dotnet` must **not** be included in the arguments.
 - **Parameters**: `arguments`
 
 ### `python`
 - **Class**: `PythonTool` (`/Tools/Connector/PythonTool.cs`)
-- **Description**: Runs a Python command in the project directory. The word `python` must **not** be included in the arguments. Uses the system's `python` executable, which must be installed and available in the system PATH.
+- **Description**: Runs a Python command in the issue directory. The word `python` must **not** be included in the arguments. Uses the system's `python` executable, which must be installed and available in the system PATH.
 - **Parameters**: `arguments` (string) – e.g. `script.py`, `-m pytest`, `-m venv .venv`, `-m pip install -r requirements.txt`
 - **Examples**:
   - Run a script: `arguments = "main.py"`
@@ -198,13 +198,13 @@ These tools are **only available after a successful `checkout_task`**. All paths
   - Run tests with pytest: `arguments = "-m pytest"`
   - Create a virtual environment: `arguments = "-m venv .venv"`
 - **Implemented in**: `LocalWindowsConnector.RunPythonAsync` → delegates to `RunProcessAsync("python", arguments)`
-- **Note**: The working directory is always set to the checked-out project's environment directory.
+- **Note**: The working directory is always set to the checked-out issue's environment directory.
 
 ### `search_regex`
 - **Class**: `SearchRegexTool` (`/Tools/Connector/SearchRegexTool.cs`)
 - **Description**: Searches for a regex pattern within filenames and file contents across the specified directory. Useful for finding code patterns, usages, or content across multiple files.
 - **Parameters**:
-  - `searchPath` (string) – Relative path to search within. Use `'.'` or empty string for the project root.
+  - `searchPath` (string) – Relative path to search within. Use `'.'` or empty string for the issue root.
   - `pattern` (string) – A valid .NET regular expression pattern.
   - `limitLinesPerFile` (integer, optional) – Maximum number of matching lines returned per file. Defaults to `10`.
 - **Returns**: A list of files with matching lines (file path + line number + content). If a filename itself matches the pattern, it is also flagged.

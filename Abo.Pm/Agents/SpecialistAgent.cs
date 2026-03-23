@@ -21,7 +21,7 @@ public class SpecialistAgent : IAgent
     private readonly IXpectoLiveWikiClient _wikiClient;
     private readonly IConfiguration _config;
 
-    // State for the currently checked-out project
+    // State for the currently checked-out issue
     private string? _currentIssueId;
     private IssueRecord? _currentIssue;
     private IWorkspaceConnector? _currentWorkspace;
@@ -52,11 +52,11 @@ public class SpecialistAgent : IAgent
         "### INSTRUCTIONS FOR YOUR TASK:\n" +
         "You have been assigned a specific task by the ManagerAgent. Read your instructions carefully.\n" +
         "### WORKFLOW:\n" +
-        "1. **Checkout Project**: You MUST use `checkout_task` providing the `projectId` (Issue ID) from your instructions. This securely binds your file/shell tools (the Connector) to that project's specific environment. DO NOT guess paths.\n" +
-        "2. **Execute**: Use the connector tools (`read_file`, `write_file`, `list_dir`, `mkdir`, `git`, `dotnet`, `python`, `http_get`) to perform your work. All relative paths are automatically rooted in the checked-out project's directory.\n" +
+        "1. **Checkout Issue**: You MUST use `checkout_task` providing the `issueId` (Issue ID) from your instructions. This securely binds your file/shell tools (the Connector) to that issue's specific environment. DO NOT guess paths.\n" +
+        "2. **Execute**: Use the connector tools (`read_file`, `write_file`, `list_dir`, `mkdir`, `git`, `dotnet`, `python`, `http_get`) to perform your work. All relative paths are automatically rooted in the checked-out issue's directory.\n" +
         "3. **Complete**: When the task is done, use 'complete_task' to signal completion. You MUST supply 'resultNotes' detailing your executed work, outputs, and any context needed by the next Role. If you decide the next step, you must supply the explicit 'nextStep' object containing 'id', 'name', and 'role'.\n\n" +
         "### RULES:\n" +
-        "- You cannot use file/system tools until you have checked out a project.\n" +
+        "- You cannot use file/system tools until you have checked out a issue.\n" +
         "- Do not attempt to bypass the relative path confinement.";
 
     public List<ToolDefinition> GetToolDefinitions()
@@ -77,8 +77,8 @@ public class SpecialistAgent : IAgent
             Function = new FunctionDefinition
             {
                 Name = "checkout_task",
-                Description = "Checks out the next task from a project by ID (Issue ID), binding your environment connector to it so you can use file/system tools.",
-                Parameters = new { type = "object", properties = new { projectId = new { type = "string" } }, required = new[] { "projectId" } }
+                Description = "Checks out the next task from a issue by ID (Issue ID), binding your environment connector to it so you can use file/system tools.",
+                Parameters = new { type = "object", properties = new { issueId = new { type = "string" } }, required = new[] { "issueId" } }
             }
         });
 
@@ -88,7 +88,7 @@ public class SpecialistAgent : IAgent
             Function = new FunctionDefinition
             {
                 Name = "complete_task",
-                Description = "Marks the current task in your checked-out project as completed and updates its status. This will also terminate your session.",
+                Description = "Marks the current task in your checked-out issue as completed and updates its status. This will also terminate your session.",
                 Parameters = new
                 {
                     type = "object",
@@ -210,7 +210,7 @@ public class SpecialistAgent : IAgent
         try
         {
             var args = JsonSerializer.Deserialize<Dictionary<string, string>>(argsJson);
-            if (args == null || !args.TryGetValue("projectId", out var projectId)) return "Error: projectId required.";
+            if (args == null || !args.TryGetValue("issueId", out var issueId)) return "Error: issueId required.";
 
             var environmentsFile = Path.Combine(_dataDir, "Environments", "environments.json");
             var jsOptions = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
@@ -241,7 +241,7 @@ public class SpecialistAgent : IAgent
                 {
                     try
                     {
-                        var issue = await tracker.GetIssueAsync(projectId);
+                        var issue = await tracker.GetIssueAsync(issueId);
                         if (issue != null)
                         {
                             targetIssue = issue;
@@ -254,9 +254,9 @@ public class SpecialistAgent : IAgent
                 }
             }
 
-            if (targetIssue == null || matchingTracker == null || targetEnv == null) return $"Error: Project/Issue '{projectId}' not found across any configured issue trackers.";
+            if (targetIssue == null || matchingTracker == null || targetEnv == null) return $"Error: Issue/Issue '{issueId}' not found across any configured issue trackers.";
 
-            _currentIssueId = projectId;
+            _currentIssueId = issueId;
             _currentIssue = targetIssue;
             _currentIssueTracker = matchingTracker;
             _currentWorkspace = new LocalWorkspaceConnector(targetEnv);
@@ -299,7 +299,7 @@ public class SpecialistAgent : IAgent
                 _connectorTools.Add(new SearchWikiTool(_currentWiki));
             }
 
-            return $"Successfully checked out project/issue '{projectId}'. You are now bound to environment '{targetEnv.Name}' located at '{targetEnv.Dir}'. Your relative paths will root here.";
+            return $"Successfully checked out issue/issue '{issueId}'. You are now bound to environment '{targetEnv.Name}' located at '{targetEnv.Dir}'. Your relative paths will root here.";
         }
         catch (Exception ex)
         {
@@ -309,7 +309,7 @@ public class SpecialistAgent : IAgent
 
     private async Task<string> HandleCompleteTaskAsync(string argsJson)
     {
-        if (string.IsNullOrEmpty(_currentIssueId) || _currentIssueTracker == null || _currentIssue == null) return "Error: No checked-out project to complete.";
+        if (string.IsNullOrEmpty(_currentIssueId) || _currentIssueTracker == null || _currentIssue == null) return "Error: No checked-out issue to complete.";
 
         try
         {
@@ -398,9 +398,9 @@ public class SpecialistAgent : IAgent
             _currentIssue = null;
             _connectorTools.Clear();
 
-            if (reachedEndEvent) return $"Success. Task completed for project '{oldProj}'. The project has reached an endEvent and is now fully completed.";
+            if (reachedEndEvent) return $"Success. Task completed for issue '{oldProj}'. The issue has reached an endEvent and is now fully completed.";
 
-            return $"Success. Task completed for project '{oldProj}'. Advanced to next step: '{nextStepInfo?.StepId}'.";
+            return $"Success. Task completed for issue '{oldProj}'. Advanced to next step: '{nextStepInfo?.StepId}'.";
         }
         catch (Exception ex)
         {

@@ -15,7 +15,7 @@ public class GetEnvironmentsTool : IAboTool
     }
 
     public string Name => "get_environments";
-    public string Description => "Lists all configured environments available for projects to use. Environments define where a project resides (e.g. local directory).";
+    public string Description => "Lists all configured environments available for issues to use. Environments define where a issue resides (e.g. local directory).";
 
     public object ParametersSchema => new
     {

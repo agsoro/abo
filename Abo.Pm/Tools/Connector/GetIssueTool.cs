@@ -13,7 +13,7 @@ public class GetIssueTool : IAboTool
     }
 
     public string Name => "get_issue";
-    public string Description => "Gets the details of a specific issue by ID from the project's configured issue tracker.";
+    public string Description => "Gets the details of a specific issue by ID from the configured issue tracker.";
 
     public object ParametersSchema => new
     {

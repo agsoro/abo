@@ -5,7 +5,7 @@ namespace Abo.Core.Connectors;
 /// <summary>
 /// Represents a configured working environment for an agent.
 /// This defines the storage locations, operating system specifics, and associated integrations (like Issue Trackers)
-/// that an agent has access to when processing a project.
+/// that an agent has access to when processing a issue.
 /// </summary>
 public class ConnectorEnvironment
 {

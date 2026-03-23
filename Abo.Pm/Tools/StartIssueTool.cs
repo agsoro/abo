@@ -9,53 +9,53 @@ using Microsoft.Extensions.Configuration;
 
 namespace Abo.Tools;
 
-public class StartProjectTool : IAboTool
+public class StartIssueTool : IAboTool
 {
     private readonly string _processesDirectory;
     private readonly IConfiguration _config;
 
-    public StartProjectTool(IConfiguration config)
+    public StartIssueTool(IConfiguration config)
     {
         _config = config;
         var dataDir = Path.Combine(AppContext.BaseDirectory, "Data");
         _processesDirectory = Path.Combine(dataDir, "Processes");
     }
 
-    public string Name => "start_project";
-    public string Description => "Starts a new project instance based on an existing BPMN process ID (type). This creates an issue in the environment's configured tracker.";
+    public string Name => "start_issue";
+    public string Description => "Starts a new issue instance based on an existing BPMN process ID (type). This creates an issue in the environment's configured tracker.";
 
     public object ParametersSchema => new
     {
         type = "object",
         properties = new
         {
-            projectId = new { type = "string", description = "The unique numeric or alphanumeric ID for the instantiated project (used as an internal reference)." },
-            title = new { type = "string", description = "A concise title for the project." },
-            typeId = new { type = "string", description = "The ID of the process flow this project runs on (e.g., Type_Dev_Sprint). MUST be an existing process." },
-            info = new { type = "string", description = "The markdown content describing the goals, context, and initial parameters of the project." },
-            parentId = new { type = "string", description = "Optional. The ID of the parent project if this is a subproject." },
+            issueId = new { type = "string", description = "The unique numeric or alphanumeric ID for the instantiated issue (used as an internal reference)." },
+            title = new { type = "string", description = "A concise title for the issue." },
+            typeId = new { type = "string", description = "The ID of the process flow this issue runs on (e.g., Type_Dev_Sprint). MUST be an existing process." },
+            info = new { type = "string", description = "The markdown content describing the goals, context, and initial parameters of the issue." },
+            parentId = new { type = "string", description = "Optional. The ID of the parent issue if this is a subissue." },
             initialStepId = new { type = "string", description = "The exact ID of the Starting Node / Item in the BPMN process to initialize the tracking state with." },
-            environmentName = new { type = "string", description = "The name of the environment to supply for the project (e.g. 'thingsboard'). Execute get_environments to find valid names." }
+            environmentName = new { type = "string", description = "The name of the environment to supply for the issue (e.g. 'thingsboard'). Execute get_environments to find valid names." }
         },
-        required = new[] { "projectId", "title", "typeId", "info", "initialStepId", "environmentName" },
+        required = new[] { "issueId", "title", "typeId", "info", "initialStepId", "environmentName" },
         additionalProperties = false
     };
 
     public async Task<string> ExecuteAsync(string argumentsJson)
     {
         var jsOptions = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
-        StartProjectArgs? args;
+        StartIssueArgs? args;
         try
         {
-            args = JsonSerializer.Deserialize<StartProjectArgs>(argumentsJson, jsOptions);
+            args = JsonSerializer.Deserialize<StartIssueArgs>(argumentsJson, jsOptions);
         }
         catch
         {
             return "Failed to parse arguments.";
         }
 
-        if (args == null || string.IsNullOrWhiteSpace(args.ProjectId) || string.IsNullOrWhiteSpace(args.TypeId) || string.IsNullOrWhiteSpace(args.EnvironmentName))
-            return "Invalid arguments provided. Ensure projectId, typeId, and environmentName are not empty.";
+        if (args == null || string.IsNullOrWhiteSpace(args.IssueId) || string.IsNullOrWhiteSpace(args.TypeId) || string.IsNullOrWhiteSpace(args.EnvironmentName))
+            return "Invalid arguments provided. Ensure issueId, typeId, and environmentName are not empty.";
 
         var environmentsFile = Path.Combine(AppContext.BaseDirectory, "Data", "Environments", "environments.json");
         ConnectorEnvironment? targetEnv = null;
@@ -133,7 +133,7 @@ public class StartProjectTool : IAboTool
             }
 
             // Write info.md equivalent
-            var bodyArgs = $"**Internal Reference ID:** {args.ProjectId}\n**Type:** {args.TypeId}\n**Parent:** {args.ParentId ?? "None"}\n**Environment:** {args.EnvironmentName}\n\n## Context\n{args.Info}";
+            var bodyArgs = $"**Internal Reference ID:** {args.IssueId}\n**Type:** {args.TypeId}\n**Parent:** {args.ParentId ?? "None"}\n**Environment:** {args.EnvironmentName}\n\n## Context\n{args.Info}";
 
             // Map State to Labels
             var labels = new List<string>
@@ -141,24 +141,24 @@ public class StartProjectTool : IAboTool
                 $"env: {args.EnvironmentName}",
                 $"step: {args.InitialStepId}",
                 $"role: {requiredRole}",
-                $"ref: {args.ProjectId}"
+                $"ref: {args.IssueId}"
             };
 
             if (!string.IsNullOrWhiteSpace(args.ParentId)) labels.Add($"parent: {args.ParentId}");
 
             var issue = await tracker.CreateIssueAsync(args.Title, bodyArgs, args.TypeId, "", labels.ToArray());
 
-            return $"Successfully started project '{args.ProjectId}' ({args.Title}). Tracking via Issue ID: {issue.Id}. State initialized at step '{args.InitialStepId}'.";
+            return $"Successfully started issue '{args.IssueId}' ({args.Title}). Tracking via Issue ID: {issue.Id}. State initialized at step '{args.InitialStepId}'.";
         }
         catch (Exception ex)
         {
-            return $"Error starting project: {ex.Message}";
+            return $"Error starting issue: {ex.Message}";
         }
     }
 
-    private class StartProjectArgs
+    private class StartIssueArgs
     {
-        public string ProjectId { get; set; } = string.Empty;
+        public string IssueId { get; set; } = string.Empty;
         public string Title { get; set; } = string.Empty;
         public string TypeId { get; set; } = string.Empty;
         public string Info { get; set; } = string.Empty;

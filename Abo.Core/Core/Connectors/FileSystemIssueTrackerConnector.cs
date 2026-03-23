@@ -5,7 +5,7 @@ namespace Abo.Core.Connectors;
 
 public class FileSystemIssueTrackerConnector : IIssueTrackerConnector
 {
-    private readonly string _activeProjectsFile;
+    private readonly string _activeIssuesFile;
     private readonly string? _environmentName;
     private static readonly JsonSerializerOptions _jsonOptions = new JsonSerializerOptions { WriteIndented = true, PropertyNameCaseInsensitive = true };
 
@@ -13,15 +13,15 @@ public class FileSystemIssueTrackerConnector : IIssueTrackerConnector
     {
         _environmentName = environmentName;
         var dataDir = Path.Combine(AppContext.BaseDirectory, "Data");
-        var projectsDir = Path.Combine(dataDir, "Projects");
-        _activeProjectsFile = Path.Combine(projectsDir, "active_projects.json");
-        if (!Directory.Exists(projectsDir)) Directory.CreateDirectory(projectsDir);
+        var issuesDir = Path.Combine(dataDir, "Issues");
+        _activeIssuesFile = Path.Combine(issuesDir, "active_issues.json");
+        if (!Directory.Exists(issuesDir)) Directory.CreateDirectory(issuesDir);
     }
 
     private async Task<List<IssueRecord>> LoadRecordsAsync()
     {
-        if (!File.Exists(_activeProjectsFile)) return new List<IssueRecord>();
-        var json = await File.ReadAllTextAsync(_activeProjectsFile);
+        if (!File.Exists(_activeIssuesFile)) return new List<IssueRecord>();
+        var json = await File.ReadAllTextAsync(_activeIssuesFile);
         try {
             var recs = JsonSerializer.Deserialize<List<IssueRecord>>(json, _jsonOptions) ?? new List<IssueRecord>();
             if (!string.IsNullOrWhiteSpace(_environmentName)) {
@@ -39,7 +39,7 @@ public class FileSystemIssueTrackerConnector : IIssueTrackerConnector
     private async Task SaveRecordsAsync(List<IssueRecord> records)
     {
         var json = JsonSerializer.Serialize(records, _jsonOptions);
-        await File.WriteAllTextAsync(_activeProjectsFile, json);
+        await File.WriteAllTextAsync(_activeIssuesFile, json);
     }
 
     public async Task<IEnumerable<IssueRecord>> ListIssuesAsync(string? state = null, string[]? labels = null)

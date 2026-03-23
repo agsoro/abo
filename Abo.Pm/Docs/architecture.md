@@ -31,17 +31,17 @@ Since all tool executions run locally in C#, sensitive systems are never directl
 
 ---
 
-## Project and Process Management (PMO Layer)
+## Issue and Process Management (PMO Layer)
 
-ABO implements a full BPMN-based project management system:
+ABO implements a full BPMN-based issue management system:
 
 - **Process definitions** are stored as `.bpmn` files in `/Data/Processes/`.
-- **Project instances** are managed in `/Data/Projects/{projectId}/`, consisting of:
-  - `info.md` – Project goals, context, and initial parameters.
+- **Issue instances** are managed in `/Data/Issues/{issueId}/`, consisting of:
+  - `info.md` – Issue goals, context, and initial parameters.
   - `status.json` – Current BPMN step, status, and timestamps.
-- **`active_projects.json`** is the central list of all running projects (in `/Data/Projects/`).
+- **`active_issues.json`** is the central list of all running issues (in `/Data/Issues/`).
 - The `PmoAgent` designs processes and roles; the `ManagerAgent` delegates work to `SpecialistAgent` instances that perform the actual work.
-- The current project status is accessible via the REST endpoint `GET /api/projects/{id}/status`.
+- The current issue status is accessible via the REST endpoint `GET /api/issues/{id}/status`.
 
 ---
 
@@ -49,17 +49,17 @@ ABO implements a full BPMN-based project management system:
 
 The `SpecialistAgent` uses a **connector pattern** for secure filesystem and network access:
 
-1. The agent calls `checkout_task` with a `projectId`.
-2. ABO resolves the configured **environment** (`ConnectorEnvironment`) of the project (stored in `environments.json`).
+1. The agent calls `checkout_task` with a `issueId`.
+2. ABO resolves the configured **environment** (`ConnectorEnvironment`) of the issue (stored in `environments.json`).
 3. A `LocalWindowsConnector` is instantiated and bound to the environment's directory.
 4. All subsequent filesystem and shell tools (`read_file`, `write_file`, `git`, `dotnet`, `python`, `search_regex`, `http_get`, etc.) are **confined** to that directory (filesystem) or security-validated (HTTP).
 5. After the task is completed (`complete_task`), the connector is released.
 
 ```
 [SpecialistAgent]
-  ↓ checkout_task(projectId)
+  ↓ checkout_task(issueId)
 [ABO-Core: Environment Resolution]
-  ↓ ConnectorEnvironment { Dir = "C:\src\project" }
+  ↓ ConnectorEnvironment { Dir = "C:\src\issue" }
 [LocalWindowsConnector]
   ↓ read_file / write_file / git / dotnet / python / search_regex / http_get ...
 [Filesystem (confined to Dir) / External HTTP (SSRF-protected)]
@@ -120,11 +120,11 @@ ABO exposes a minimal REST API (ASP.NET Core Minimal APIs) and a static Web UI:
 | `/api/status` | GET | Health check: returns model and configuration status |
 | `/api/processes` | GET | Lists all available BPMN process IDs |
 | `/api/processes/{id}` | GET | Returns the BPMN XML definition of a process |
-| `/api/projects/{id}/status` | GET | Returns the current BPMN step and status of a project |
+| `/api/issues/{id}/status` | GET | Returns the current BPMN step and status of a issue |
 | `/api/interact` | POST | Main chat endpoint: receives messages, selects agent, returns response |
-| `/api/projects` | GET | Lists all active projects (name, ID, status) |
+| `/api/issues` | GET | Lists all active issues (name, ID, status) |
 | `/api/llm-consumption` | GET | Returns LLM consumption statistics (supports `?limit=N`) |
-| `/api/open-work` | GET | Returns currently open work items across all active projects |
+| `/api/open-work` | GET | Returns currently open work items across all active issues |
 | `/api/sessions` | GET | Returns active agent sessions with history length and timestamps |
 | `/` | GET | Web UI (`wwwroot/index.html`) – Chat interface |
 | `/processes/index.html` | GET | BPMN process viewer |
@@ -144,10 +144,10 @@ The `/Data/` directory contains all ABO runtime data. These files are written an
 ```
 /Data
   /Processes/             - BPMN process definitions (.bpmn files)
-  /Projects/
-    active_projects.json  - Central list of all active projects
-    /{projectId}/
-      info.md             - Project goals, context, initial parameters
+  /Issues/
+    active_issues.json  - Central list of all active issues
+    /{issueId}/
+      info.md             - Issue goals, context, initial parameters
       status.json         - Current BPMN step, status, timestamps
       notes.md            - Handover notes between agents/steps
   /Environments/
@@ -163,10 +163,10 @@ The `/Data/` directory contains all ABO runtime data. These files are written an
 
 | File | Description |
 |---|---|
-| `active_projects.json` | JSON array of all running project IDs and their process type. Managed by `PmoAgent`. |
-| `{projectId}/status.json` | Contains `ProjectId`, `CurrentStepId`, `Status`, and `LastUpdated`. Updated on every `complete_task`. |
-| `{projectId}/info.md` | Created when a project is started; describes goal, context, and parameters. Immutable after creation. |
-| `{projectId}/notes.md` | Handover notes: each agent writes result context here for the next step. |
+| `active_issues.json` | JSON array of all running issue IDs and their process type. Managed by `PmoAgent`. |
+| `{issueId}/status.json` | Contains `IssueId`, `CurrentStepId`, `Status`, and `LastUpdated`. Updated on every `complete_task`. |
+| `{issueId}/info.md` | Created when a issue is started; describes goal, context, and parameters. Immutable after creation. |
+| `{issueId}/notes.md` | Handover notes: each agent writes result context here for the next step. |
 | `environments.json` | Maps environment names (e.g. `abo`) to local directory paths. Used by the connector for path resolution. |
 | `users.json` | Persisted user data: Mattermost ID, username, roles array, quiz subscription flag. |
 | `leaderboard.json` | Quiz system scores, indexed by username. |
@@ -189,7 +189,7 @@ The `/Data/` directory contains all ABO runtime data. These files are written an
   /Contracts      - JSON schemas and DTOs for API interaction
   /Data
     /Processes    - BPMN process definitions (.bpmn)
-    /Projects     - Project instances (info.md, status.json, active_projects.json)
+    /Issues     - Issue instances (info.md, status.json, active_issues.json)
     /Environments - environments.json
     /Quiz         - Quiz data (leaderboard.json)
   /Docs           - This documentation

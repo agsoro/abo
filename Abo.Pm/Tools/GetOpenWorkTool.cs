@@ -21,7 +21,7 @@ public class GetOpenWorkTool : IAboTool
     }
 
     public string Name => "get_open_work";
-    public string Description => "Analyzes all active projects/issues and extracts actionable tasks. Returns a structured list of open work, revealing the expected role and state based on the BPMN flow.";
+    public string Description => "Analyzes all active issues/issues and extracts actionable tasks. Returns a structured list of open work, revealing the expected role and state based on the BPMN flow.";
 
     public object ParametersSchema => new
     {
@@ -72,7 +72,7 @@ public class GetOpenWorkTool : IAboTool
 
             if (!activeIssues.Any())
             {
-                return "No open project work found.";
+                return "No open issue work found.";
             }
 
             var output = new System.Text.StringBuilder();
@@ -128,7 +128,7 @@ public class GetOpenWorkTool : IAboTool
                     }
                 }
 
-                output.AppendLine($"### Project: {issue.Title} (Ref: `{projRef}` | Issue: `{issue.Id}`)");
+                output.AppendLine($"### Issue: {issue.Title} (Ref: `{projRef}` | Issue: `{issue.Id}`)");
                 output.AppendLine($"- **Environment**: `{envName}`");
                 output.AppendLine($"- **Issue Status**: `{issue.State}`");
                 output.AppendLine($"- **Current Step**: {nodeName} (`{stepId}`)");
@@ -136,7 +136,7 @@ public class GetOpenWorkTool : IAboTool
                     output.AppendLine($"- **Required Role**: `{role}`");
                 output.AppendLine($"- **BPMN Node Type**: `{nodeType}`");
                 output.AppendLine($"- **State**: {status}");
-                output.AppendLine($"- **Action**: Run `checkout_task {{\\\"projectId\\\": \\\"{issue.Id}\\\"}}` to pick up this work.");
+                output.AppendLine($"- **Action**: Run `checkout_task {{\\\"issueId\\\": \\\"{issue.Id}\\\"}}` to pick up this work.");
                 output.AppendLine();
             }
 

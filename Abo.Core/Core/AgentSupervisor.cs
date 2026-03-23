@@ -48,10 +48,8 @@ public class AgentSupervisor
             contextText +
             "Rules:\n" +
             "1. Return ONLY the name of the agent.\n" +
-            "2. If the user is answering a quiz question (e.g. providing a number or a simple 'yes'/'no' to a quiz prompt), select 'QuizAgent'.\n" +
-            "3. If the user is asking to do work on an EXISTING project, or take the next task from a running project, select 'ManagerAgent'.\n" +
-            "4. If the user is just saying hello or asking for the time, select 'HelloWorldAgent'.\n" +
-            "5. If the user is asking to start a NEW project, develop a new feature, or create/update a process, select 'PmoAgent'.";
+            "3. If the user is asking to do work on an EXISTING issue, or take the next task from a running issue, select 'ManagerAgent'.\n" +
+           "5. If the user is asking to start a NEW issue, develop a new feature, select 'PmoAgent'.";
 
         var request = new ChatCompletionRequest
         {

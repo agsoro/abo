@@ -13,7 +13,7 @@ public class ListIssuesTool : IAboTool
     }
 
     public string Name => "list_issues";
-    public string Description => "Lists open issues or feature requests from the project's configured issue tracker (e.g., GitHub).";
+    public string Description => "Lists open issues or feature requests from the configured issue tracker (e.g., GitHub).";
 
     public object ParametersSchema => new
     {
@@ -36,11 +36,11 @@ public class ListIssuesTool : IAboTool
         try
         {
             var args = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(argumentsJson);
-            
+
             string? state = null;
             if (args != null && args.TryGetValue("state", out var stateElement) && stateElement.ValueKind == JsonValueKind.String)
                 state = stateElement.GetString();
-                
+
             string[]? labels = null;
             if (args != null && args.TryGetValue("labels", out var labelsElement) && labelsElement.ValueKind == JsonValueKind.Array)
                 labels = labelsElement.EnumerateArray().Select(e => e.GetString() ?? "").Where(s => !string.IsNullOrEmpty(s)).ToArray();

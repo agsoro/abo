@@ -47,16 +47,16 @@ Agents in ABO are specialized roles with specific instructions, tools, and const
 
 ---
 
-### PmoAgent (Project Management Office)
+### PmoAgent (Issue Management Office)
 - **Class**: `Abo.Agents.PmoAgent`
-- **Description**: The PMO Lead agent. Responsible for designing BPMN processes, instantiating projects, and managing roles.
+- **Description**: The PMO Lead agent. Responsible for designing BPMN processes, instantiating issues, and managing roles.
 - **Requires Capable Model**: Yes (`RequiresCapableModel = true`)
 - **Tools**:
   - `create_process` – Creates a new BPMN process definition.
   - `update_process` – Updates an existing BPMN process definition.
-  - `start_project` – Starts a new project instance based on an existing process.
-  - `list_projects` – Lists all active projects and their current status.
-  - `get_open_work` – Shows open work items across all projects.
+  - `start_issue` – Starts a new issue instance based on an existing process.
+  - `list_issues` – Lists all active issues and their current status.
+  - `get_open_work` – Shows open work items across all issues.
   - `upsert_role` – Creates or updates an AI agent role with a system prompt.
   - `get_roles` – Lists all defined roles.
   - `get_system_time` – Returns the current system time.
@@ -73,18 +73,18 @@ Agents in ABO are specialized roles with specific instructions, tools, and const
 
 ### ManagerAgent
 - **Class**: `Abo.Agents.ManagerAgent`
-- **Description**: The Project Lead / Manager. Identifies open tasks from active projects and delegates them to specialized agents who do the actual work.
+- **Description**: The Issue Lead / Manager. Identifies open tasks from active issues and delegates them to specialized agents who do the actual work.
 - **Requires Capable Model**: Yes (`RequiresCapableModel = true`)
 - **Tools**:
-  - `list_projects` – Lists all active projects and their current status.
-  - `get_open_work` – Shows open work items across all projects.
+  - `list_issues` – Lists all active issues and their current status.
+  - `get_open_work` – Shows open work items across all issues.
   - `get_roles` – Lists all defined roles.
   - `get_system_time` – Returns the current system time.
   - `delegate_task` – Assigns specific work to a `SpecialistAgent` and executes the sub-agent workflow.
 - **Workflow**:
-  1. Use `get_open_work` to identify active projects needing work.
+  1. Use `get_open_work` to identify active issues needing work.
   2. Determine the required role using `get_roles`.
-  3. Call `delegate_task` with `projectId`, `roleId`, and detailed instructions.
+  3. Call `delegate_task` with `issueId`, `roleId`, and detailed instructions.
 
 ---
 
@@ -93,11 +93,11 @@ Agents in ABO are specialized roles with specific instructions, tools, and const
 - **Description**: The generic worker agent. Takes on concrete tasks delegated by the `ManagerAgent` and executes them autonomously in a specialized role.
 - **Requires Capable Model**: Yes (`RequiresCapableModel = true`)
 - **Lifecycle Tools**:
-  - `checkout_task` – Binds a secure connector to a project environment (must be called before filesystem/shell tools).
+  - `checkout_task` – Binds a secure connector to a issue environment (must be called before filesystem/shell tools).
   - `complete_task` – Marks the current task as completed and advances the BPMN step. Optional parameter: `nextStepId`.
   - `request_ceo_help` – Escalates an issue to the human CEO.
   - `take_notes` – Stores temporary notes, remarks, or intermediate findings during tasks.
-  - `read_notes` – Reads the temporary notes stored for the current project.
+  - `read_notes` – Reads the temporary notes stored for the current issue.
 - **Global Information Tools**: `get_system_time`, `get_environments`
 - **Connector Tools** (only available after `checkout_task`):
   - `read_file` – Read a file.
@@ -110,7 +110,7 @@ Agents in ABO are specialized roles with specific instructions, tools, and const
   - `python` – Execute Python commands (without the word `python`).
   - `search_regex` – Search for a regex pattern across files and filenames within a directory.
   - `http_get` – Execute an HTTP GET request to external endpoints.
-  - `list_issues` – List open issues or features from the project's Issue Tracker.
+  - `list_issues` – List open issues or features from the issue's Issue Tracker.
   - `get_issue` – Retrieve a specific issue by ID.
   - `create_issue` – Create a new issue, feature, or bug.
   - `add_issue_comment` – Add a comment to an existing issue.
@@ -118,10 +118,10 @@ Agents in ABO are specialized roles with specific instructions, tools, and const
   - `create_wiki_page` – Create a new wiki page.
   - `update_wiki_page` – Update an existing wiki page.
   - `search_wiki` – Search the configured wiki.
-- **Security**: All filesystem and shell operations are confined to the checked-out project environment's directory. Paths outside are not accessible.
+- **Security**: All filesystem and shell operations are confined to the checked-out issue environment's directory. Paths outside are not accessible.
 - **Workflow**:
   1. The agent is instantiated with a specific role and prompt by the `ManagerAgent`.
-  2. Call `checkout_task` with the `projectId` provided in the instructions.
+  2. Call `checkout_task` with the `issueId` provided in the instructions.
   3. Perform work using connector tools based on instructions.
   4. Call `complete_task` (optionally with `nextStepId`).
 
