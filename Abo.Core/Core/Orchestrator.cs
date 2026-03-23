@@ -234,6 +234,17 @@ public class Orchestrator
                         _sessionService.AddMessage(sessionId, toolResponseMsg);
                         request.Messages.Add(toolResponseMsg);
 
+                        // Sentinel pattern: SpecialistAgent.complete_task returns [COMPLETE_TASK_RESULT]:<resultNotes>
+                        // on success. Detect it here and immediately surface the resultNotes to the caller,
+                        // eliminating the extra LLM synthesis round-trip. Mirrors the [TERMINATE_MANAGER_LOOP] pattern.
+                        if (toolResult.StartsWith(AgentSentinels.CompleteTaskResult))
+                        {
+                            var resultNotes = toolResult.Substring(AgentSentinels.CompleteTaskResult.Length);
+                            _logger.LogInformation($"[Session: {sessionId}] complete_task sentinel detected. Terminating agent loop immediately.");
+                            await LogConsumptionAsync(sessionId, currentModelName, totalCalls, totalInputTokens, totalOutputTokens, totalCost);
+                            return resultNotes;
+                        }
+
                         if ((agent.Name == "SpecialistAgent" && toolCall.Function.Name == "complete_task") ||
                             (agent.Name == "ManagerAgent" && toolCall.Function.Name == "delegate_task"))
                         {

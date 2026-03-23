@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Xml.Linq;
 using Abo.Contracts.Models;
 using Abo.Contracts.OpenAI;
+using Abo.Core;
 using Abo.Core.Connectors;
 using Abo.Tools;
 using Abo.Tools.Connector;
@@ -354,16 +355,16 @@ public class SpecialistAgent : IAgent
                 await _currentIssueTracker.UpdateIssueAsync(_currentIssueId, state: "closed", labels: updatedLabels.ToArray(), project: _currentIssue.Project);
             }
 
-            var oldProj = _currentIssueId;
             _currentIssueId = null;
             _currentWorkspace = null;
             _currentIssueTracker = null;
             _currentIssue = null;
             _connectorTools.Clear();
 
-            if (reachedEndEvent) return $"Success. Task completed for issue '{oldProj}'. The issue has reached an end state and is now fully completed.";
-
-            return $"Success. Task completed for issue '{oldProj}'. Advanced to next step: '{nextStepInfo?.StepId}'.";
+            // Return the sentinel prefix followed by the resultNotes so the Orchestrator can
+            // immediately surface the notes to the user without an extra LLM round-trip.
+            // The Orchestrator detects AgentSentinels.CompleteTaskResult and short-circuits the loop.
+            return $"{AgentSentinels.CompleteTaskResult}{resultNotes}";
         }
         catch (Exception ex)
         {
