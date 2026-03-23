@@ -95,14 +95,12 @@ public class ListActiveIssuesTool : IAboTool
         
         var typeId = ExtractLabelValue(issue.Labels, "type") ?? "Unknown";
         var stepId = ExtractLabelValue(issue.Labels, "step") ?? "Unknown";
-        var role = ExtractLabelValue(issue.Labels, "role") ?? "Unknown";
         var envName = ExtractLabelValue(issue.Labels, "env") ?? "Unknown";
         var projRef = ExtractLabelValue(issue.Labels, "ref") ?? issue.Id;
         var project = issue.Project;
 
         var stepInfo = Abo.Core.WorkflowEngine.GetStepInfo(stepId);
-        var roleToShow = stepInfo?.RequiredRole;
-        if (string.IsNullOrWhiteSpace(roleToShow)) roleToShow = role;
+        var roleToShow = stepInfo?.RequiredRole ?? "Unknown";
 
         var transitions = Abo.Core.WorkflowEngine.GetTransitions(stepId);
         var nextSteps = transitions.Any() 

@@ -78,7 +78,6 @@ public class GetOpenWorkTool : IAboTool
             {
                 var typeId = ExtractLabelValue(issue.Labels, "type") ?? "Unknown";
                 var stepId = ExtractLabelValue(issue.Labels, "step") ?? "Unknown";
-                var role = ExtractLabelValue(issue.Labels, "role") ?? "Unknown";
                 var envName = ExtractLabelValue(issue.Labels, "env") ?? "Unknown";
                 var projRef = ExtractLabelValue(issue.Labels, "ref") ?? issue.Id;
 
@@ -97,8 +96,7 @@ public class GetOpenWorkTool : IAboTool
                 output.AppendLine($"- **Issue Status**: `{issue.State}`");
                 output.AppendLine($"- **Current Step**: {nodeName} (`{stepId}`)");
                 
-                var roleToShow = stepInfo?.RequiredRole;
-                if (string.IsNullOrWhiteSpace(roleToShow)) roleToShow = role;
+                var roleToShow = stepInfo?.RequiredRole ?? "Unknown";
                 
                 if (!string.IsNullOrWhiteSpace(roleToShow))
                     output.AppendLine($"- **Required Role**: `{roleToShow}`");

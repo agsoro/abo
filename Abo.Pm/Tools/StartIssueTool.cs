@@ -103,9 +103,7 @@ public class StartIssueTool : IAboTool
             // Map State to Labels
             var labels = new List<string>
             {
-                $"env: {args.EnvironmentName}",
                 $"step: {args.InitialStepId}",
-                $"role: {requiredRole}",
                 $"ref: {args.IssueId}"
             };
 

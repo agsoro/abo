@@ -412,11 +412,10 @@ public class SpecialistAgent : IAgent
                 await _currentIssueTracker.AddIssueCommentAsync(_currentIssueId, resultNotes);
             }
 
-            var updatedLabels = _currentIssue.Labels.Where(l => !l.StartsWith("step: ") && !l.StartsWith("role: ")).ToList();
+            var updatedLabels = _currentIssue.Labels.Where(l => !l.StartsWith("step: ") && !l.StartsWith("role: ") && !l.StartsWith("env: ")).ToList();
             if (!reachedEndEvent)
             {
                 updatedLabels.Add($"step: {nextStepInfo.StepId}");
-                updatedLabels.Add($"role: {nextStepInfo.RequiredRole}");
                 await _currentIssueTracker.UpdateIssueAsync(_currentIssueId, state: "open", labels: updatedLabels.ToArray());
             }
             else

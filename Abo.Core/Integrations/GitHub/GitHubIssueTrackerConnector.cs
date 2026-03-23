@@ -128,6 +128,11 @@ public class GitHubIssueTrackerConnector : IIssueTrackerConnector
         
         if (!string.IsNullOrWhiteSpace(record.NodeId)) {
             record.Project = project ?? string.Empty;
+            var stepLabel = labelsList.FirstOrDefault(l => l.StartsWith("step: ", StringComparison.OrdinalIgnoreCase));
+            if (stepLabel != null) {
+                record.Labels.RemoveAll(l => l.StartsWith("step: ", StringComparison.OrdinalIgnoreCase));
+                record.Labels.Add(stepLabel);
+            }
             await SyncProjectV2Async(record);
         }
         return record;
@@ -173,6 +178,18 @@ public class GitHubIssueTrackerConnector : IIssueTrackerConnector
         var record = ghIssue?.ToRecord(_environmentName) ?? new IssueRecord();
 
         if (!string.IsNullOrWhiteSpace(record.NodeId)) {
+            await EnrichIssuesWithProjectFieldsAsync(new List<IssueRecord> { record });
+            if (project != null) {
+                record.Project = project;
+            }
+            
+            if (updatedLabels != null) {
+                var stepLabel = updatedLabels.FirstOrDefault(l => l.StartsWith("step: ", StringComparison.OrdinalIgnoreCase));
+                if (stepLabel != null) {
+                    record.Labels.RemoveAll(l => l.StartsWith("step: ", StringComparison.OrdinalIgnoreCase));
+                    record.Labels.Add(stepLabel);
+                }
+            }
             await SyncProjectV2Async(record);
         }
         return record;
