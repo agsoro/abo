@@ -80,9 +80,15 @@ public class GitHubIssueTrackerConnector : IIssueTrackerConnector
 
         if (throwGraphQLErrors && content.Contains("\"errors\":")) {
             using var doc = JsonDocument.Parse(content);
-            if (doc.RootElement.TryGetProperty("errors", out var errors) && errors.ValueKind == JsonValueKind.Array && errors.GetArrayLength() > 0) {
-                var firstError = errors[0].TryGetProperty("message", out var msg) ? msg.GetString() : "Unknown GraphQL Error";
-                throw new Exception($"GraphQL Mapping Error: {firstError}");
+            if (throwGraphQLErrors && doc.RootElement.TryGetProperty("errors", out var errorsProp)) {
+                if (errorsProp.ValueKind == JsonValueKind.Array && errorsProp.GetArrayLength() > 0)
+                {
+                    var firstError = errorsProp[0].GetProperty("message").GetString();
+                    Console.ForegroundColor = ConsoleColor.Red;
+                    Console.WriteLine($"[GitHub Connector Error] GraphQL Mapping Error: {firstError}");
+                    Console.ResetColor();
+                    throw new Exception("GraphQL Mapping Error: " + firstError);
+                }
             }
         }
 
@@ -404,11 +410,17 @@ query($nodeId: ID!) {
            var pTitle = item.GetProperty("project").GetProperty("title").GetString();
            var pId = item.GetProperty("project").GetProperty("id").GetString();
 
-           if (!string.IsNullOrWhiteSpace(targetGithubTitle) && string.Equals(pTitle, targetGithubTitle, StringComparison.OrdinalIgnoreCase)) {
+           if (!string.IsNullOrWhiteSpace(targetGithubTitle) 
+               && string.Equals(pTitle, targetGithubTitle, StringComparison.OrdinalIgnoreCase)
+               && _projectNodeIds.TryGetValue(targetGithubTitle, out var expectedPId) 
+               && pId == expectedPId) {
                targetItemNodeId = itemId;
            } else if (pTitle != null && _config.ProjectTitles.Values.Contains(pTitle, StringComparer.OrdinalIgnoreCase)) {
+               Console.ForegroundColor = ConsoleColor.Cyan;
+               Console.WriteLine($"[GitHub Connector Info] Detected orphaned ticket on incorrectly mapped '{pTitle}' board. Evicting...");
+               Console.ResetColor();
                var delMut = @"mutation($projectId: ID!, $itemId: ID!) { deleteProjectV2Item(input: {projectId: $projectId, itemId: $itemId}) { deletedItemId } }";
-               await SendGraphQLRequestAsync(new { query = delMut, variables = new { projectId = pId, itemId = itemId } });
+               await SendGraphQLRequestAsync(new { query = delMut, variables = new { projectId = pId, itemId = itemId } }, throwGraphQLErrors: false);
            }
         }
 
