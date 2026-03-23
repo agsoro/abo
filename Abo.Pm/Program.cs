@@ -41,6 +41,7 @@ builder.Services.AddTransient<IAgent, ManagerAgent>(sp => sp.GetRequiredService<
 // Register Background Services
 builder.Services.AddSingleton<StartupStatusService>();
 builder.Services.AddHostedService<EnvironmentValidationService>();
+builder.Services.AddHostedService<CronjobAutoStartService>();
 
 var app = builder.Build();
 
