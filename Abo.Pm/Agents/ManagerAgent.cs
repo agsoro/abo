@@ -32,7 +32,7 @@ public class ManagerAgent : IAgent
         "You are the ManagerAgent (Project Lead). Your goal is to oversee running issues and assign tasks to the correct specialists.\n\n" +
         "### WORKFLOW:\n" +
         "1. **Find Work**: Use `get_open_work` to see all active issues, their current step, and status. Find a issue that has work to do.\n" +
-        "2. **Delegate Task**: Once you know the issue, use `delegate_task` to assign the work to a SpecialistAgent. You must provide the `issueId` and detailed `instructions` on what they should do.\n" +
+        "2. **Delegate Task**: Once you know the issue, use `delegate_task` to assign the work to a SpecialistAgent. You must provide the `issueId`.\n" +
         "3. **Completion**: The `delegate_task` tool will synchronously execute the specialist. Calling this tool will terminate your current manager assignment, since you have successfully handed the work off.\n\n" +
         "### RULES:\n" +
         "- You must use `delegate_task` to get the actual work done.";
@@ -59,10 +59,9 @@ public class ManagerAgent : IAgent
                     type = "object",
                     properties = new
                     {
-                        issueId = new { type = "string", description = "The ID of the issue the specialist should work on." },
-                        instructions = new { type = "string", description = "Detailed instructions for the specialist." }
+                        issueId = new { type = "string", description = "The ID of the issue the specialist should work on." }
                     },
-                    required = new[] { "issueId", "instructions" }
+                    required = new[] { "issueId" }
                 }
             }
         });
@@ -106,10 +105,9 @@ public class ManagerAgent : IAgent
         {
             var args = JsonSerializer.Deserialize<Dictionary<string, string>>(argsJson);
             if (args == null ||
-                !args.TryGetValue("issueId", out var issueId) ||
-                !args.TryGetValue("instructions", out var instructions))
+                !args.TryGetValue("issueId", out var issueId))
             {
-                return "Error: issueId and instructions are required.";
+                return "Error: issueId is required.";
             }
 
             var environmentsFile = Path.Combine(AppContext.BaseDirectory, "Data", "Environments", "environments.json");
@@ -170,12 +168,12 @@ public class ManagerAgent : IAgent
 
             _logger.LogInformation($"Manager delegating task to SpecialistAgent ({role.Title}) for issue {issueId}.");
 
-            var combinedInstructions = $"Issue ID: {issueId}\nTask Instructions:\n{instructions}";
+            var initialMessage = $"Issue ID: {issueId}";
 
             // We need a unique session ID for the sub-agent
             var subSessionId = $"sub-{Guid.NewGuid():N}";
 
-            var result = await _orchestrator.RunAgentLoopAsync(specialist, combinedInstructions, subSessionId, "ManagerAgent");
+            var result = await _orchestrator.RunAgentLoopAsync(specialist, initialMessage, subSessionId, "ManagerAgent");
 
             // Instruct the orchestrator to terminate the manager agent loop
             return $"[TERMINATE_MANAGER_LOOP] Specialist output:\n{result}";

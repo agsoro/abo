@@ -60,7 +60,7 @@ Agents in ABO are specialized roles with specific instructions, tools, and const
 - **Workflow**:
   1. Use `get_open_work` to identify active issues needing work.
   2. Determine the required role using `get_roles`.
-  3. Call `delegate_task` with `issueId`, `roleId`, and detailed instructions.
+  3. Call `delegate_task` with `issueId`.
 
 ---
 
