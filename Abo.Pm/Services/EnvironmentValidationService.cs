@@ -221,10 +221,17 @@ public class EnvironmentValidationService : IHostedService
                     if (gqlResponse.IsSuccessStatusCode)
                     {
                         var doc = JsonDocument.Parse(gqlJson);
+                        if (doc.RootElement.TryGetProperty("errors", out var errorsList) && errorsList.ValueKind == JsonValueKind.Array) {
+                            var firstErr = errorsList.EnumerateArray().FirstOrDefault().GetProperty("message").GetString();
+                            var err = $"IssueTracker (GitHub): Token rejected project access. API Message: {firstErr}";
+                            _logger.LogError($"  [ERROR] {err}");
+                            _startupStatus.AddError(err);
+                        }
+
                         JsonElement? orgNode = null;
                         if (doc.RootElement.TryGetProperty("data", out var data) && data.TryGetProperty("organization", out var org) && org.ValueKind != JsonValueKind.Null) {
                             orgNode = org;
-                        } else {
+                        } else if (!doc.RootElement.TryGetProperty("errors", out _)) {
                             var userQuery = query.Replace("organization(login: $owner)", "user(login: $owner)");
                             var uPayload = new { query = userQuery, variables = new { owner = issueTracker.Owner } };
                             var uJsonPayload = JsonSerializer.Serialize(uPayload, new JsonSerializerOptions { DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull });
@@ -232,16 +239,26 @@ public class EnvironmentValidationService : IHostedService
                             var uResp = await client.SendAsync(uReq, cancellationToken);
                             var uJson = await uResp.Content.ReadAsStringAsync();
                             var uDoc = JsonDocument.Parse(uJson);
+                            
+                            if (uDoc.RootElement.TryGetProperty("errors", out var uErrorsList) && uErrorsList.ValueKind == JsonValueKind.Array) {
+                                var firstErr = uErrorsList.EnumerateArray().FirstOrDefault().GetProperty("message").GetString();
+                                var err = $"IssueTracker (GitHub): Token rejected user project access. API Message: {firstErr}";
+                                _logger.LogError($"  [ERROR] {err}");
+                                _startupStatus.AddError(err);
+                            }
+
                             if (uDoc.RootElement.TryGetProperty("data", out var uData) && uData.TryGetProperty("user", out var usr) && usr.ValueKind != JsonValueKind.Null) {
                                 orgNode = usr;
                             }
                         }
 
-                        if (orgNode != null && orgNode.Value.TryGetProperty("projectsV2", out var pV2)) {
+                        if (orgNode != null && orgNode.Value.TryGetProperty("projectsV2", out var pV2) && pV2.ValueKind != JsonValueKind.Null && pV2.TryGetProperty("nodes", out var pNodes) && pNodes.ValueKind != JsonValueKind.Null) {
                             var existingTitles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-                            foreach(var pNode in pV2.GetProperty("nodes").EnumerateArray()) {
-                                var pTitle = pNode.GetProperty("title").GetString();
-                                if (pTitle != null) existingTitles.Add(pTitle);
+                            foreach(var pNode in pNodes.EnumerateArray()) {
+                                if (pNode.ValueKind != JsonValueKind.Null && pNode.TryGetProperty("title", out var tProp) && tProp.ValueKind != JsonValueKind.Null) {
+                                    var pTitle = tProp.GetString();
+                                    if (pTitle != null) existingTitles.Add(pTitle);
+                                }
                             }
 
                             foreach(var expected in issueTracker.ProjectTitles.Values) {
@@ -255,9 +272,9 @@ public class EnvironmentValidationService : IHostedService
                             }
                         }
                     }
-                } catch {
-                    var err = $"IssueTracker (GitHub): Error executing GraphQL project verification.";
-                    _logger.LogError($"  [ERROR] {err}");
+                } catch (Exception ex) {
+                    var err = $"IssueTracker (GitHub): Error executing GraphQL project verification. Details: {ex.Message}";
+                    _logger.LogError(ex, $"  [ERROR] {err}");
                     _startupStatus.AddError(err);
                 }
             }
