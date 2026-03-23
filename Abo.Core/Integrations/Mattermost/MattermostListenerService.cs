@@ -229,8 +229,15 @@ public class MattermostListenerService : BackgroundService
 
             _logger.LogInformation($"Invoking Orchestrator with {agent.Name} on received message...");
 
-            // Determine the thread ID to stay in the thread of the chat
+            // Determine the thread ID to stay in the thread of the chat (for the reply message).
             var threadId = !string.IsNullOrEmpty(post.RootId) ? post.RootId : post.Id;
+
+            // Determine the parent_id for the typing indicator.
+            // For a plain DM (post.RootId is empty), parent_id must be omitted — passing the
+            // incoming post's own ID as parent_id would be semantically invalid (it is not a
+            // thread root) and Mattermost would silently discard the typing indicator.
+            // For a threaded reply, we pass the thread root (post.RootId) as parent_id.
+            var typingParentId = !string.IsNullOrEmpty(post.RootId) ? post.RootId : null;
 
             // Send "typing..." indicator every 5 seconds while the agent is processing.
             // Typing indicators are sent via the authenticated WebSocket connection because
@@ -241,7 +248,7 @@ public class MattermostListenerService : BackgroundService
             {
                 while (!typingCts.Token.IsCancellationRequested)
                 {
-                    await SendTypingOverWebSocketAsync(post.ChannelId, threadId);
+                    await SendTypingOverWebSocketAsync(post.ChannelId, typingParentId);
                     try { await Task.Delay(TimeSpan.FromSeconds(5), typingCts.Token); }
                     catch (OperationCanceledException) { break; }
                 }
