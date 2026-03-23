@@ -32,7 +32,7 @@ public class ManagerAgent : IAgent
         "You are the ManagerAgent (Project Lead). Your goal is to oversee running issues and assign tasks to the correct specialists.\n\n" +
         "### WORKFLOW:\n" +
         "1. **Find Work**: Use `get_open_work` to see all active issues, their current step, and status. Find a issue that has work to do.\n" +
-        "2. **Determine Role**: Look at the current step of the issue. Pay attention to the explicit `RequiredRole` emitted by `get_open_work`. Do NOT guess the role or use `get_roles` unless the required role is entirely missing or unmappable.\n" +
+        "2. **Determine Role**: Look at the current step of the issue. Use the explicit `RequiredRole` emitted by `get_open_work`.\n" +
         "3. **Delegate Task**: Once you know the issue and the required role, use `delegate_task` to assign the work to a SpecialistAgent. You must provide the `issueId`, the `roleId`, and detailed `instructions` on what they should do.\n" +
         "4. **Completion**: The `delegate_task` tool will synchronously execute the specialist. Calling this tool will terminate your current manager assignment, since you have successfully handed the work off.\n\n" +
         "### RULES:\n" +
@@ -43,7 +43,7 @@ public class ManagerAgent : IAgent
     {
         var definitions = new List<ToolDefinition>();
 
-        var allowedGlobalTools = new[] { "list_issues", "get_open_work", "get_roles" };
+        var allowedGlobalTools = new[] { "list_issues", "get_open_work" };
         foreach (var tool in _globalTools.Where(t => allowedGlobalTools.Contains(t.Name)))
         {
             definitions.Add(CreateDef(tool));

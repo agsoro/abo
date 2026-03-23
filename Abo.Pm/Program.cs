@@ -31,8 +31,6 @@ builder.Services.AddTransient<IAboTool, GetSystemTimeTool>();
 
 builder.Services.AddTransient<IAboTool, StartIssueTool>();
 builder.Services.AddTransient<IAboTool, ListActiveIssuesTool>();
-builder.Services.AddTransient<IAboTool, UpsertRoleTool>();
-builder.Services.AddTransient<IAboTool, GetRolesTool>();
 builder.Services.AddTransient<IAboTool, GetEnvironmentsTool>();
 builder.Services.AddTransient<IAboTool, GetOpenWorkTool>();
 

@@ -56,7 +56,7 @@ public class SpecialistAgent : IAgent
         "### WORKFLOW:\n" +
         "1. **Checkout Issue**: You MUST use `checkout_task` providing the `issueId` (Issue ID) from your instructions. This securely binds your file/shell tools (the Connector) to that issue's specific environment. DO NOT guess paths.\n" +
         "2. **Execute**: Use the connector tools (`read_file`, `write_file`, `list_dir`, `mkdir`, `git`, `dotnet`, `python`, `http_get`) to perform your work. All relative paths are automatically rooted in the checked-out issue's directory.\n" +
-        "3. **Complete**: When the task is done, use 'complete_task' to signal completion. You MUST supply 'resultNotes' detailing your executed work, outputs, and any context needed by the next Role. If you decide the next step, you must supply the explicit 'nextStep' object containing 'id', 'name', and 'role'.\n\n" +
+        "3. **Complete**: When the task is done, use 'complete_task' to signal completion. You MUST supply 'resultNotes' detailing your executed work, outputs, and any context needed by the next Role. If there are multiple possible next steps (e.g., a decision gateway), you must supply a 'keyword' matching the condition to take.\n\n" +
         "### RULES:\n" +
         "- You cannot use file/system tools until you have checked out a issue.\n" +
         "- Do not attempt to bypass the relative path confinement.";
@@ -96,17 +96,10 @@ public class SpecialistAgent : IAgent
                     type = "object",
                     properties = new
                     {
-                        nextStep = new
+                        keyword = new
                         {
-                            type = "object",
-                            description = "Optional. The exact step object (including id, name, and role) to jump to next. Omitting this implies the process should advance natively or has reached an end state.",
-                            properties = new
-                            {
-                                id = new { type = "string" },
-                                name = new { type = "string" },
-                                role = new { type = "string" }
-                            },
-                            required = new[] { "id", "name", "role" }
+                            type = "string",
+                            description = "Optional. If the current step has multiple possible next steps, provide a keyword matching the condition name of the path to take."
                         },
                         resultNotes = new { type = "string", description = "A detailed summary of the parameters, context, or results generated during this step to store in notes.md for the next person/agent. (Required)" }
                     },
@@ -359,30 +352,44 @@ public class SpecialistAgent : IAgent
             if (args == null || !args.TryGetValue("resultNotes", out var resultNotesElement)) return "Error: 'resultNotes' is required.";
             var resultNotes = resultNotesElement.GetString();
 
-            ProcessStepInfo? nextStepInfo = null;
-            if (args.TryGetValue("nextStep", out var nextStepObj) && nextStepObj.ValueKind == JsonValueKind.Object)
+            string? keyword = null;
+            if (args.TryGetValue("keyword", out var keywordElement) && keywordElement.ValueKind == JsonValueKind.String)
             {
-                nextStepInfo = new ProcessStepInfo
-                {
-                    StepId = nextStepObj.TryGetProperty("id", out var idProp) ? idProp.GetString() ?? "" : "",
-                    StepName = nextStepObj.TryGetProperty("name", out var nameProp) ? nameProp.GetString() ?? "" : "",
-                    RequiredRole = nextStepObj.TryGetProperty("role", out var roleProp) ? roleProp.GetString() ?? "" : ""
-                };
+                keyword = keywordElement.GetString();
             }
 
             var currentStepId = _currentIssue.Labels.FirstOrDefault(l => l.StartsWith("step: ", StringComparison.OrdinalIgnoreCase))?.Substring(6).Trim();
 
-            if (nextStepInfo == null && !string.IsNullOrWhiteSpace(currentStepId))
+            ProcessStepInfo? nextStepInfo = null;
+
+            if (!string.IsNullOrWhiteSpace(currentStepId))
             {
                 var transitions = Abo.Core.WorkflowEngine.GetTransitions(currentStepId);
 
                 if (transitions.Count > 1) 
                 {
-                    var options = string.Join(", ", transitions.Select(t => $"'{t.NextStepId}' (Condition: {t.ConditionName})"));
-                    return $"Error: The current step leads to a decision gateway with multiple paths. You MUST provide the 'nextStep' object explicitly (including id, name, and role) so the engine knows which route to take. Valid nextStep.id options based on your decision are: {options}";
-                }
+                    if (string.IsNullOrWhiteSpace(keyword)) 
+                    {
+                        var options = string.Join(", ", transitions.Select(t => $"'{t.ConditionName}'"));
+                        return $"Error: The current step leads to a decision gateway with multiple paths. You MUST provide the 'keyword' parameter matching one of these condition names to proceed: {options}";
+                    }
 
-                if (transitions.Count == 1)
+                    var matchedTransition = transitions.FirstOrDefault(t => t.ConditionName.Contains(keyword, StringComparison.OrdinalIgnoreCase) || keyword.Contains(t.ConditionName, StringComparison.OrdinalIgnoreCase));
+                    
+                    if (matchedTransition == null) 
+                    {
+                        var options = string.Join(", ", transitions.Select(t => $"'{t.ConditionName}'"));
+                        return $"Error: The provided keyword '{keyword}' did not match any routing conditions. Valid expected condition matches are: {options}";
+                    }
+
+                    var stepInfo = Abo.Core.WorkflowEngine.GetStepInfo(matchedTransition.NextStepId);
+                    if (stepInfo != null)
+                    {
+                        nextStepInfo = stepInfo;
+                        matchedTransition.ApplyState?.Invoke(_currentIssue);
+                    }
+                }
+                else if (transitions.Count == 1)
                 {
                     var resolvedId = transitions.First().NextStepId;
                     var stepInfo = Abo.Core.WorkflowEngine.GetStepInfo(resolvedId);
@@ -393,15 +400,8 @@ public class SpecialistAgent : IAgent
                     }
                 }
             }
-            else if (nextStepInfo != null && !string.IsNullOrWhiteSpace(currentStepId))
-            {
-                // The agent explicitly specified the next step. Find if it matches a valid transition to apply labels.
-                var transitions = Abo.Core.WorkflowEngine.GetTransitions(currentStepId);
-                var matchedTransition = transitions.FirstOrDefault(t => t.NextStepId.Equals(nextStepInfo.StepId, StringComparison.OrdinalIgnoreCase));
-                matchedTransition?.ApplyState?.Invoke(_currentIssue);
-            }
 
-            if (nextStepInfo == null) return "Error: Could not automatically determine the next step. You must supply 'nextStep' with id, name, and role based on the appropriate workflow transition.";
+            if (nextStepInfo == null) return "Error: Could not automatically determine the next workflow step.";
 
             bool reachedEndEvent = string.Equals(nextStepInfo.StepId, "invalid", StringComparison.OrdinalIgnoreCase) ||
                                    string.Equals(nextStepInfo.StepId, "done", StringComparison.OrdinalIgnoreCase) ||
@@ -416,11 +416,11 @@ public class SpecialistAgent : IAgent
             if (!reachedEndEvent)
             {
                 updatedLabels.Add($"step: {nextStepInfo.StepId}");
-                await _currentIssueTracker.UpdateIssueAsync(_currentIssueId, state: "open", labels: updatedLabels.ToArray());
+                await _currentIssueTracker.UpdateIssueAsync(_currentIssueId, state: "open", labels: updatedLabels.ToArray(), project: _currentIssue.Project);
             }
             else
             {
-                await _currentIssueTracker.UpdateIssueAsync(_currentIssueId, state: "closed", labels: updatedLabels.ToArray());
+                await _currentIssueTracker.UpdateIssueAsync(_currentIssueId, state: "closed", labels: updatedLabels.ToArray(), project: _currentIssue.Project);
             }
 
             var oldProj = _currentIssueId;
