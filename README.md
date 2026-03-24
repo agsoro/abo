@@ -10,11 +10,12 @@ The solution consists of multiple loosely coupled services and libraries focused
 
 Full documentation is available on the **[GitHub Wiki](https://github.com/agsoro/abo/wiki)**:
 
-- [Architecture](https://github.com/agsoro/abo/wiki/Architecture/overview) — Agent loop, connectors, runtime data, web API
-- [Agents](https://github.com/agsoro/abo/wiki/Agents/overview) — ManagerAgent, SpecialistAgent, roles
-- [Tools](https://github.com/agsoro/abo/wiki/Tools/overview) — All tools and security model
-- [Configuration](https://github.com/agsoro/abo/wiki/Configuration/appsettings) — appsettings, secrets, environments
-- [Workflows](https://github.com/agsoro/abo/wiki/Workflows/overview) — BPMN workflow phases and transitions
+- [Architecture](https://github.com/agsoro/abo/wiki/architecture-overview) — Agent loop, connectors, runtime data, web API
+- [Agents](https://github.com/agsoro/abo/wiki/agents-overview) — ManagerAgent, SpecialistAgent, roles
+- [Tools](https://github.com/agsoro/abo/wiki/tools-overview) — All tools and security model
+- [Configuration](https://github.com/agsoro/abo/wiki/configuration-appsettings) — appsettings, secrets, environments
+- [Services](https://github.com/agsoro/abo/wiki/services-background) — Background services, integrations
+- [Workflows](https://github.com/agsoro/abo/wiki/workflows-overview) — BPMN workflow phases and transitions
 
 ## Current Directory Structure
 
@@ -29,7 +30,7 @@ The solution is organized into the following core projects:
 ## Quickstart / Getting Started
 
 1. **Clone the repository**: Make sure all relevant files and directories are present.
-2. **Review Configuration**: Configure the environment settings (`environments.json` in the runtime `Data` folder) and necessary secrets (see [Configuration – Secrets](https://github.com/agsoro/abo/wiki/Configuration/secrets)).
+2. **Review Configuration**: Configure the environment settings (`environments.json` in the runtime `Data` folder) and necessary secrets (see [Configuration – Secrets](https://github.com/agsoro/abo/wiki/configuration-secrets)).
 3. **Run the Application**:
    - `dotnet run --project Abo.Pm` to start the main Product Management API and agents.
 4. **Testing**: Run `dotnet test Abo.sln` from the root directory to verify system integrity.
