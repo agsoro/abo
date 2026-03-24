@@ -16,6 +16,7 @@ Full documentation is available on the **[GitHub Wiki](https://github.com/agsoro
 - [Configuration](https://github.com/agsoro/abo/wiki/configuration-appsettings) — appsettings, secrets, environments
 - [Services](https://github.com/agsoro/abo/wiki/services-background) — Background services, integrations
 - [Workflows](https://github.com/agsoro/abo/wiki/workflows-overview) — BPMN workflow phases and transitions
+- [Roles Reference](https://github.com/agsoro/abo/wiki/roles-reference) — Authoritative per-role tool lists
 
 ## Current Directory Structure
 
