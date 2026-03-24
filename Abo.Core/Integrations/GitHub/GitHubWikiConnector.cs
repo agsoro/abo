@@ -67,14 +67,23 @@ public class GitHubWikiConnector : IWikiConnector
         return output;
     }
 
+    /// <summary>
+    /// Resolves a page path/filename to a full filesystem path, always rooted in the wiki clone directory.
+    /// GitHub wiki does not support subdirectories — all pages must live at the root level.
+    /// Only the filename portion of the input is used; any directory components are stripped.
+    /// </summary>
     private string GetFullPath(string path)
     {
-        var combined = Path.GetFullPath(Path.Combine(_cloneDir, path.TrimStart('/', '\\')));
-        if (!combined.StartsWith(_cloneDir, StringComparison.OrdinalIgnoreCase))
+        // Strip any directory components — GitHub wiki is always flat (no subdirectories)
+        var fileName = Path.GetFileName(path.TrimStart('/', '\\'));
+        var fullPath = Path.GetFullPath(Path.Combine(_cloneDir, fileName));
+
+        // Safety check: ensure the resolved path is still within the clone directory
+        if (!fullPath.StartsWith(_cloneDir, StringComparison.OrdinalIgnoreCase))
         {
             throw new UnauthorizedAccessException("Directory traversal is not allowed in the Wiki.");
         }
-        return combined;
+        return fullPath;
     }
 
     private string EnsureMdExtension(string path)
@@ -108,27 +117,18 @@ public class GitHubWikiConnector : IWikiConnector
         {
             await SyncWikiAsync();
 
+            // GitHub wiki does not support subdirectories — always create at root level.
+            // The parentPath parameter is intentionally ignored for the GitHub wiki connector.
             var fileName = Regex.Replace(title.ToLowerInvariant(), @"[^a-z0-9]+", "-").Trim('-');
             fileName = EnsureMdExtension(fileName);
 
-            var dir = _cloneDir;
-            if (!string.IsNullOrWhiteSpace(parentPath))
-            {
-                dir = GetFullPath(parentPath);
-                if (!Directory.Exists(dir))
-                {
-                    Directory.CreateDirectory(dir);
-                }
-            }
-
-            var fullPath = Path.Combine(dir, fileName);
+            var fullPath = Path.Combine(_cloneDir, fileName);
             if (File.Exists(fullPath)) return $"Error: Wiki page '{fileName}' already exists at this location.";
 
             await File.WriteAllTextAsync(fullPath, content);
             await CommitAndPushAsync($"Create wiki page: {title}");
 
-            var relativePath = Path.GetRelativePath(_cloneDir, fullPath);
-            return $"Successfully created wiki page: {relativePath}";
+            return $"Successfully created wiki page: {fileName}";
         }
         catch (Exception ex)
         {
@@ -196,17 +196,8 @@ public class GitHubWikiConnector : IWikiConnector
             var sourcePath = GetFullPath(EnsureMdExtension(pathOrId));
             if (!File.Exists(sourcePath)) return $"Error: Wiki page '{pathOrId}' does not exist.";
 
-            // Determine the target directory
-            var targetDir = string.IsNullOrWhiteSpace(newPathOrParentId)
-                ? _cloneDir
-                : GetFullPath(newPathOrParentId);
-
-            if (!Directory.Exists(targetDir))
-            {
-                Directory.CreateDirectory(targetDir);
-            }
-
-            // Determine the target filename
+            // GitHub wiki is always flat — always move to root level regardless of newPathOrParentId.
+            // Only the newTitle (if provided) affects the destination filename.
             string targetFileName;
             if (!string.IsNullOrWhiteSpace(newTitle))
             {
@@ -218,7 +209,7 @@ public class GitHubWikiConnector : IWikiConnector
                 targetFileName = Path.GetFileName(sourcePath);
             }
 
-            var destPath = Path.Combine(targetDir, targetFileName);
+            var destPath = Path.Combine(_cloneDir, targetFileName);
 
             if (File.Exists(destPath) && !string.Equals(sourcePath, destPath, StringComparison.OrdinalIgnoreCase))
             {
