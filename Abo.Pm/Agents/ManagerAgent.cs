@@ -36,7 +36,7 @@ public class ManagerAgent : IAgent
         "3. **Completion**: The `delegate_task` tool will synchronously execute the specialist. Calling this tool will terminate your current manager assignment, since you have successfully handed the work off.\n\n" +
         "### RULES:\n" +
         "- You must use `delegate_task` to get the actual work done.\n" +
-        "- **PRIORITY RULE**: Always prefer issues already in-progress (steps: `review`, `check`, `work`, `planned`) over newly triaged issues (step: `open`). The `get_open_work` tool returns issues sorted by priority — pick the first actionable one. Complete one in-progress issue before starting a brand new `open` request.";
+        "- **PRIORITY RULE**: Always prefer newly triaged issues (step: `open`) over issues already in-progress (steps: `planned`, `work`, `check`, `review`). The `get_open_work` tool returns issues sorted by priority — pick the first actionable one. Process all `open` issues first. Only pick a `planned` or in-progress issue when no `open` issues are available.";
 
     public List<ToolDefinition> GetToolDefinitions()
     {
