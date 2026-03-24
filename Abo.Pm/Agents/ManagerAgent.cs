@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Text.Json;
 using Abo.Contracts.OpenAI;
 using Abo.Core;
@@ -8,6 +9,12 @@ namespace Abo.Agents;
 
 public class ManagerAgent : IAgent
 {
+    /// <summary>
+    /// Per-issue in-memory lock to prevent two agent sessions from working on the same issue simultaneously.
+    /// Static because ManagerAgent is Transient — all instances must share the same locks.
+    /// </summary>
+    private static readonly ConcurrentDictionary<string, SemaphoreSlim> _issueWorkLocks = new();
+
     private readonly IEnumerable<IAboTool> _globalTools;
     private readonly Orchestrator _orchestrator;
     private readonly IConfiguration _configuration;
@@ -111,73 +118,97 @@ public class ManagerAgent : IAgent
                 return "Error: issueId is required.";
             }
 
-            var environmentsFile = Path.Combine(AppContext.BaseDirectory, "Data", "Environments", "environments.json");
-            var envs = new List<Abo.Core.Connectors.ConnectorEnvironment>();
-            if (File.Exists(environmentsFile))
+            // Prevent parallel work on the same issue (guards Cronjob + Mattermost concurrency)
+            var issueLock = _issueWorkLocks.GetOrAdd(issueId, _ => new SemaphoreSlim(1, 1));
+            if (!await issueLock.WaitAsync(TimeSpan.Zero))
             {
-                var envJson = await File.ReadAllTextAsync(environmentsFile);
-                var jsOpt = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
-                envs = JsonSerializer.Deserialize<List<Abo.Core.Connectors.ConnectorEnvironment>>(envJson, jsOpt) ?? new();
+                _logger.LogWarning($"Issue '{issueId}' is already being worked on by another agent session. Skipping.");
+                return $"Issue '{issueId}' is currently being worked on by another agent session. Skipping to avoid parallel work.";
             }
 
-            Abo.Contracts.Models.IssueRecord? targetIssue = null;
-            foreach (var env in envs.Where(e => e.IssueTracker != null))
+            try
             {
-                Abo.Core.Connectors.IIssueTrackerConnector? tracker = null;
-                if (env.IssueTracker!.Type.Equals("github", StringComparison.OrdinalIgnoreCase))
+                var environmentsFile = Path.Combine(AppContext.BaseDirectory, "Data", "Environments", "environments.json");
+                var envs = new List<Abo.Core.Connectors.ConnectorEnvironment>();
+                if (File.Exists(environmentsFile))
                 {
-                    tracker = new Abo.Integrations.GitHub.GitHubIssueTrackerConnector(env.IssueTracker, _configuration["Integrations:GitHub:Token"], env.Name);
-                }
-                else if (env.IssueTracker.Type.Equals("filesystem", StringComparison.OrdinalIgnoreCase))
-                {
-                    tracker = new Abo.Core.Connectors.FileSystemIssueTrackerConnector(env.Name);
+                    var envJson = await File.ReadAllTextAsync(environmentsFile);
+                    var jsOpt = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+                    envs = JsonSerializer.Deserialize<List<Abo.Core.Connectors.ConnectorEnvironment>>(envJson, jsOpt) ?? new();
                 }
 
-                if (tracker != null)
+                Abo.Contracts.Models.IssueRecord? targetIssue = null;
+                foreach (var env in envs.Where(e => e.IssueTracker != null))
                 {
-                    try
+                    Abo.Core.Connectors.IIssueTrackerConnector? tracker = null;
+                    if (env.IssueTracker!.Type.Equals("github", StringComparison.OrdinalIgnoreCase))
                     {
-                        var issue = await tracker.GetIssueAsync(issueId);
-                        if (issue != null)
-                        {
-                            targetIssue = issue;
-                            break;
-                        }
+                        tracker = new Abo.Integrations.GitHub.GitHubIssueTrackerConnector(env.IssueTracker, _configuration["Integrations:GitHub:Token"], env.Name);
                     }
-                    catch { /* Ignore */ }
+                    else if (env.IssueTracker.Type.Equals("filesystem", StringComparison.OrdinalIgnoreCase))
+                    {
+                        tracker = new Abo.Core.Connectors.FileSystemIssueTrackerConnector(env.Name);
+                    }
+
+                    if (tracker != null)
+                    {
+                        try
+                        {
+                            var issue = await tracker.GetIssueAsync(issueId);
+                            if (issue != null)
+                            {
+                                targetIssue = issue;
+                                break;
+                            }
+                        }
+                        catch { /* Ignore */ }
+                    }
                 }
+
+                if (targetIssue == null) return $"Error: Issue '{issueId}' not found.";
+
+                var stepId = Abo.Core.WorkflowEngine.ResolveStepIdFallback(targetIssue);
+
+                var stepInfo = Abo.Core.WorkflowEngine.GetStepInfo(stepId);
+                if (stepInfo == null || string.IsNullOrWhiteSpace(stepInfo.RequiredRole)) return $"Error: Could not determine RequiredRole for step '{stepId}'.";
+
+                var roleId = stepInfo.RequiredRole;
+
+                // Re-validate step hasn't changed since get_open_work was called (best-effort secondary guard)
+                var freshStepId = Abo.Core.WorkflowEngine.ResolveStepIdFallback(targetIssue);
+                var freshStepInfo = Abo.Core.WorkflowEngine.GetStepInfo(freshStepId);
+                if (freshStepInfo == null || !string.Equals(freshStepInfo.RequiredRole, roleId, StringComparison.OrdinalIgnoreCase))
+                {
+                    return $"Issue '{issueId}' step has changed (now: '{freshStepId}', role: '{freshStepInfo?.RequiredRole}'). " +
+                           $"Another agent may have already advanced this issue. Skipping delegation.";
+                }
+
+                var roles = Abo.Core.Core.AvailableRoles.AllRoles;
+
+                var role = roles?.FirstOrDefault(r => r.RoleId.Equals(roleId, StringComparison.OrdinalIgnoreCase));
+                if (role == null) return $"Error: Role '{roleId}' not found.";
+
+                // Instantiate SpecialistAgent
+                var specialist = new SpecialistAgent(_globalTools, role.Title, role.SystemPrompt, role.AllowedTools, _configuration, issueId, _wikiClient);
+                var initResult = await specialist.InitializeWorkspaceAsync();
+                if (initResult.StartsWith("Error")) return $"Task delegation failed during environment setup: {initResult}";
+
+                _logger.LogInformation($"Manager delegating task to SpecialistAgent ({role.Title}) for issue {issueId}.");
+
+                var initialMessage = $"Issue ID: {issueId}";
+
+                // We need a unique session ID for the sub-agent
+                var subSessionId = $"sub-{Guid.NewGuid():N}";
+
+                var result = await _orchestrator.RunAgentLoopAsync(specialist, initialMessage, subSessionId, "ManagerAgent", issueId: issueId);
+
+                // Instruct the orchestrator to terminate the manager agent loop
+                return $"[TERMINATE_MANAGER_LOOP] Specialist output:\n{result}";
             }
-
-            if (targetIssue == null) return $"Error: Issue '{issueId}' not found.";
-
-            var stepId = Abo.Core.WorkflowEngine.ResolveStepIdFallback(targetIssue);
-
-            var stepInfo = Abo.Core.WorkflowEngine.GetStepInfo(stepId);
-            if (stepInfo == null || string.IsNullOrWhiteSpace(stepInfo.RequiredRole)) return $"Error: Could not determine RequiredRole for step '{stepId}'.";
-
-            var roleId = stepInfo.RequiredRole;
-
-            var roles = Abo.Core.Core.AvailableRoles.AllRoles;
-
-            var role = roles?.FirstOrDefault(r => r.RoleId.Equals(roleId, StringComparison.OrdinalIgnoreCase));
-            if (role == null) return $"Error: Role '{roleId}' not found.";
-
-            // Instantiate SpecialistAgent
-            var specialist = new SpecialistAgent(_globalTools, role.Title, role.SystemPrompt, role.AllowedTools, _configuration, issueId, _wikiClient);
-            var initResult = await specialist.InitializeWorkspaceAsync();
-            if (initResult.StartsWith("Error")) return $"Task delegation failed during environment setup: {initResult}";
-
-            _logger.LogInformation($"Manager delegating task to SpecialistAgent ({role.Title}) for issue {issueId}.");
-
-            var initialMessage = $"Issue ID: {issueId}";
-
-            // We need a unique session ID for the sub-agent
-            var subSessionId = $"sub-{Guid.NewGuid():N}";
-
-            var result = await _orchestrator.RunAgentLoopAsync(specialist, initialMessage, subSessionId, "ManagerAgent", issueId: issueId);
-
-            // Instruct the orchestrator to terminate the manager agent loop
-            return $"[TERMINATE_MANAGER_LOOP] Specialist output:\n{result}";
+            finally
+            {
+                issueLock.Release();
+            }
         }
         catch (Exception ex)
         {
