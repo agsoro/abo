@@ -71,8 +71,19 @@ public class GetOpenWorkTool : IAboTool
                 return "No open issue work found.";
             }
 
+            // Sort issues by step priority so in-progress issues appear first
+            activeIssues = activeIssues
+                .OrderBy(i => GetStepPriority(Abo.Core.WorkflowEngine.ResolveStepIdFallback(i)))
+                .ThenBy(i => i.Id)
+                .ToList();
+
             var output = new System.Text.StringBuilder();
             output.AppendLine("# Open Work Items\n");
+
+            // Priority rule banner
+            output.AppendLine("> ⚠️ **PRIORITY RULE**: Pick the first listed issue. Issues are sorted: `review` > `check` > `work` > `planned` > `open`.");
+            output.AppendLine("> Always complete an in-progress issue before picking up a new `open` issue.");
+            output.AppendLine();
 
             foreach (var issue in activeIssues)
             {
@@ -89,10 +100,22 @@ public class GetOpenWorkTool : IAboTool
                     status = "Completed";
                 }
 
+                var priority = GetStepPriority(stepId);
+                var priorityLabel = priority switch
+                {
+                    0 => "🔴 Highest — In Review",
+                    1 => "🔴 High — Awaiting Release",
+                    2 => "🟠 High — In Development",
+                    3 => "🟡 Medium — Planned (needs dev)",
+                    4 => "🟢 Low — New Request",
+                    _ => "⚪ Unknown"
+                };
+
                 output.AppendLine($"### Issue: {issue.Title} (Ref: `{projRef}` | Issue: `{issue.Id}`)");
                 if (!string.IsNullOrWhiteSpace(issue.Project))
                     output.AppendLine($"- **Project**: `{issue.Project}`");
                 output.AppendLine($"- **Environment**: `{envName}`");
+                output.AppendLine($"- **Priority**: `{priorityLabel}`");
                 output.AppendLine($"- **Issue Status**: `{issue.State}`");
                 output.AppendLine($"- **Current Step**: {nodeName} (`{stepId}`)");
 
@@ -119,6 +142,20 @@ public class GetOpenWorkTool : IAboTool
             return $"Error reading open work: {ex.Message}";
         }
     }
+
+    /// <summary>
+    /// Returns a sort priority for a given step ID.
+    /// Lower number = higher priority (should be worked on first).
+    /// </summary>
+    private static int GetStepPriority(string stepId) => stepId.ToLower() switch
+    {
+        "review"  => 0,
+        "check"   => 1,
+        "work"    => 2,
+        "planned" => 3,
+        "open"    => 4,
+        _         => 5
+    };
 
     private string? ExtractLabelValue(IEnumerable<string> labels, string key)
     {

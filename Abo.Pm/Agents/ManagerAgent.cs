@@ -35,7 +35,8 @@ public class ManagerAgent : IAgent
         "2. **Delegate Task**: Once you know the issue, use `delegate_task` to assign the work to a SpecialistAgent. You must provide the `issueId`.\n" +
         "3. **Completion**: The `delegate_task` tool will synchronously execute the specialist. Calling this tool will terminate your current manager assignment, since you have successfully handed the work off.\n\n" +
         "### RULES:\n" +
-        "- You must use `delegate_task` to get the actual work done.";
+        "- You must use `delegate_task` to get the actual work done.\n" +
+        "- **PRIORITY RULE**: Always prefer issues already in-progress (steps: `review`, `check`, `work`, `planned`) over newly triaged issues (step: `open`). The `get_open_work` tool returns issues sorted by priority — pick the first actionable one. Complete one in-progress issue before starting a brand new `open` request.";
 
     public List<ToolDefinition> GetToolDefinitions()
     {
@@ -185,4 +186,3 @@ public class ManagerAgent : IAgent
         }
     }
 }
-
