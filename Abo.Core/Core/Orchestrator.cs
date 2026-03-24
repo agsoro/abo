@@ -71,7 +71,7 @@ public class Orchestrator
             request.Tools = null;
         }
 
-        int maxLoops = 60;
+        int maxLoops = 200;
         int currentLoop = 0;
         string? lastQuestionOutput = null;
         string? accumulatedContent = null;
