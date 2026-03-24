@@ -15,6 +15,14 @@ public class ManagerAgent : IAgent
     /// </summary>
     private static readonly ConcurrentDictionary<string, SemaphoreSlim> _issueWorkLocks = new();
 
+    /// <summary>
+    /// Per-environment in-memory lock to prevent two agent sessions from concurrently operating
+    /// on the same git workspace / environment directory.
+    /// Keyed by environment name (env.Name). Each entry is a SemaphoreSlim(1,1).
+    /// Static because ManagerAgent is Transient — all instances must share the same locks.
+    /// </summary>
+    private static readonly ConcurrentDictionary<string, SemaphoreSlim> _envWorkLocks = new();
+
     private readonly IEnumerable<IAboTool> _globalTools;
     private readonly Orchestrator _orchestrator;
     private readonly IConfiguration _configuration;
@@ -138,6 +146,7 @@ public class ManagerAgent : IAgent
                 }
 
                 Abo.Contracts.Models.IssueRecord? targetIssue = null;
+                Abo.Core.Connectors.ConnectorEnvironment? targetEnv = null;
                 foreach (var env in envs.Where(e => e.IssueTracker != null))
                 {
                     Abo.Core.Connectors.IIssueTrackerConnector? tracker = null;
@@ -158,6 +167,7 @@ public class ManagerAgent : IAgent
                             if (issue != null)
                             {
                                 targetIssue = issue;
+                                targetEnv = env; // capture matching environment
                                 break;
                             }
                         }
@@ -188,22 +198,38 @@ public class ManagerAgent : IAgent
                 var role = roles?.FirstOrDefault(r => r.RoleId.Equals(roleId, StringComparison.OrdinalIgnoreCase));
                 if (role == null) return $"Error: Role '{roleId}' not found.";
 
-                // Instantiate SpecialistAgent
-                var specialist = new SpecialistAgent(_globalTools, role.Title, role.SystemPrompt, role.AllowedTools, _configuration, issueId, _wikiClient);
-                var initResult = await specialist.InitializeWorkspaceAsync();
-                if (initResult.StartsWith("Error")) return $"Task delegation failed during environment setup: {initResult}";
+                // Prevent parallel work on the same environment (guards against concurrent git workspace conflicts)
+                var envName = targetEnv!.Name;
+                var envLock = _envWorkLocks.GetOrAdd(envName, _ => new SemaphoreSlim(1, 1));
+                if (!await envLock.WaitAsync(TimeSpan.Zero))
+                {
+                    _logger.LogWarning($"Environment '{envName}' is currently busy with another agent session. Skipping issue '{issueId}'.");
+                    return $"Environment '{envName}' is currently busy — skipping issue '{issueId}' to avoid parallel workspace conflicts.";
+                }
 
-                _logger.LogInformation($"Manager delegating task to SpecialistAgent ({role.Title}) for issue {issueId}.");
+                try
+                {
+                    // Instantiate SpecialistAgent
+                    var specialist = new SpecialistAgent(_globalTools, role.Title, role.SystemPrompt, role.AllowedTools, _configuration, issueId, _wikiClient);
+                    var initResult = await specialist.InitializeWorkspaceAsync();
+                    if (initResult.StartsWith("Error")) return $"Task delegation failed during environment setup: {initResult}";
 
-                var initialMessage = $"Issue ID: {issueId}";
+                    _logger.LogInformation($"Manager delegating task to SpecialistAgent ({role.Title}) for issue {issueId}.");
 
-                // We need a unique session ID for the sub-agent
-                var subSessionId = $"sub-{Guid.NewGuid():N}";
+                    var initialMessage = $"Issue ID: {issueId}";
 
-                var result = await _orchestrator.RunAgentLoopAsync(specialist, initialMessage, subSessionId, "ManagerAgent", issueId: issueId);
+                    // We need a unique session ID for the sub-agent
+                    var subSessionId = $"sub-{Guid.NewGuid():N}";
 
-                // Instruct the orchestrator to terminate the manager agent loop
-                return $"[TERMINATE_MANAGER_LOOP] Specialist output:\n{result}";
+                    var result = await _orchestrator.RunAgentLoopAsync(specialist, initialMessage, subSessionId, "ManagerAgent", issueId: issueId);
+
+                    // Instruct the orchestrator to terminate the manager agent loop
+                    return $"[TERMINATE_MANAGER_LOOP] Specialist output:\n{result}";
+                }
+                finally
+                {
+                    envLock.Release();
+                }
             }
             finally
             {
