@@ -81,10 +81,11 @@ public class GitHubIssueTrackerConnectorIntegrationTests
             var verify3 = await _connector.GetIssueAsync(createdIssue.Id);
             Assert.NotNull(verify3);
             
-            // As our ResolveStepIdFallback enforces requested states intrinsically:
+            // The connector reads the raw board status field — StepId reflects what was set via the stepId parameter.
+            // GetIssueAsync returns the actual board value ("open"), not a fallback-resolved value.
             if (!string.IsNullOrWhiteSpace(verify3.Project)) {
                 Assert.Equal("requested", verify3.Project);
-                Assert.Equal("requested", verify3.StepId);
+                Assert.Equal("open", verify3.StepId);   // "open" was explicitly set via stepId on UpdateIssueAsync
             }
         }
         finally
