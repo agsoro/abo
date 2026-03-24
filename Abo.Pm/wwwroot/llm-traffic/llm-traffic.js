@@ -560,6 +560,14 @@
                 return;
             }
 
+            // Remove any static placeholder nodes (e.g. a "Loading data..." div
+            // that may have been left in the HTML before JS takes over).
+            for (const child of Array.from(entryListEl.children)) {
+                if (child.classList.contains('empty-state')) {
+                    entryListEl.removeChild(child);
+                }
+            }
+
             // Build a set of keys that should currently be visible
             const desiredKeys = new Set(filtered.map(getEntryKey));
 
