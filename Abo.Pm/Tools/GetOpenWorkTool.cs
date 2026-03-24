@@ -71,7 +71,8 @@ public class GetOpenWorkTool : IAboTool
                 return "No open issue work found.";
             }
 
-            // Sort issues by step priority so newly triaged (open) issues appear first
+            // Sort issues by step priority so newly triaged (open) issues appear first,
+            // then prefer issues closest to completion (review > check > work > planned).
             activeIssues = activeIssues
                 .OrderBy(i => GetStepPriority(Abo.Core.WorkflowEngine.ResolveStepIdFallback(i)))
                 .ThenBy(i => i.Id)
@@ -81,8 +82,8 @@ public class GetOpenWorkTool : IAboTool
             output.AppendLine("# Open Work Items\n");
 
             // Priority rule banner
-            output.AppendLine("> ⚠️ **PRIORITY RULE**: Pick the first listed issue. Issues are sorted: `open` > `planned` > `work` > `check` > `review`.");
-            output.AppendLine("> Always process open (newly triaged) issues first. Only pick up planned or in-progress issues when no open issues remain.");
+            output.AppendLine("> ⚠️ **PRIORITY RULE**: Pick the first listed issue. Issues are sorted: `open` > `review` > `check` > `work` > `planned`.");
+            output.AppendLine("> Always process open (newly triaged) issues first. Among in-progress issues, prefer those closest to completion: review first, then check, work, planned.");
             output.AppendLine();
 
             foreach (var issue in activeIssues)
@@ -104,10 +105,10 @@ public class GetOpenWorkTool : IAboTool
                 var priorityLabel = priority switch
                 {
                     0 => "🔴 Highest — New Request (open)",
-                    1 => "🟠 High — Planned (needs dev)",
-                    2 => "🟡 Medium — In Development",
-                    3 => "🟢 Low — Awaiting Release",
-                    4 => "🟢 Low — In Review",
+                    1 => "🟠 High — In QA Review (almost done)",
+                    2 => "🟡 Medium-High — Awaiting Release Documentation",
+                    3 => "🟡 Medium — In Development",
+                    4 => "🟢 Low — Planned (not yet in dev)",
                     _ => "⚪ Unknown"
                 };
 
@@ -146,15 +147,17 @@ public class GetOpenWorkTool : IAboTool
     /// <summary>
     /// Returns a sort priority for a given step ID.
     /// Lower number = higher priority (should be worked on first).
-    /// Open (newly triaged) issues are processed first; in-progress issues are picked last.
+    /// Open (newly triaged) issues are processed first.
+    /// Among in-progress issues, prefer those closest to completion:
+    ///   review (1) > check (2) > work (3) > planned (4).
     /// </summary>
     private static int GetStepPriority(string stepId) => stepId.ToLower() switch
     {
         "open"    => 0,
-        "planned" => 1,
-        "work"    => 2,
-        "check"   => 3,
-        "review"  => 4,
+        "review"  => 1,
+        "check"   => 2,
+        "work"    => 3,
+        "planned" => 4,
         _         => 5
     };
 
