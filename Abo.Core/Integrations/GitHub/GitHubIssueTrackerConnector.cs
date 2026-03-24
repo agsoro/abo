@@ -16,6 +16,11 @@ public class GitHubIssueTrackerConnector : IIssueTrackerConnector
     private static readonly Dictionary<string, string> _projectNodeIds = new(StringComparer.OrdinalIgnoreCase);
     private static readonly Dictionary<string, Dictionary<string, (string fieldId, string optionId)>> _projectStatuses = new(StringComparer.OrdinalIgnoreCase);
 
+    // Enrichment result cache: key = issue number (string), value = (Project, StepId, CachedAt)
+    private static readonly Dictionary<string, (string Project, string StepId, DateTime CachedAt)> _enrichmentCache
+        = new(StringComparer.OrdinalIgnoreCase);
+    private static readonly TimeSpan _enrichmentCacheTtl = TimeSpan.FromSeconds(60);
+
     public GitHubIssueTrackerConnector(IssueTrackerConfig config, string? issueTrackerToken = null, string? environmentName = null)
     {
         _config = config;
@@ -95,6 +100,45 @@ public class GitHubIssueTrackerConnector : IIssueTrackerConnector
         return content;
     }
 
+    /// <summary>
+    /// Executes a GraphQL query that targets either an organization or a user (org → user fallback).
+    /// The query must use <c>organization(login: $owner)</c>; the fallback replaces it with <c>user(login: $owner)</c>.
+    /// Returns the resolved entity element (organization or user node), or null if neither resolves.
+    /// </summary>
+    private async Task<JsonElement?> QueryOrgOrUserAsync(string query, object variables)
+    {
+        try
+        {
+            var json = await SendGraphQLRequestAsync(new { query, variables });
+            using var doc = JsonDocument.Parse(json);
+            if (doc.RootElement.TryGetProperty("data", out var data))
+            {
+                if (data.TryGetProperty("organization", out var org) && org.ValueKind != JsonValueKind.Null)
+                    return org.Clone();
+                if (data.TryGetProperty("user", out var userFallback) && userFallback.ValueKind != JsonValueKind.Null)
+                    return userFallback.Clone();
+            }
+        }
+        catch { /* fall through to user query */ }
+
+        try
+        {
+            var userQuery = query.Replace("organization(login: $owner)", "user(login: $owner)");
+            var userJson = await SendGraphQLRequestAsync(new { query = userQuery, variables });
+            using var userDoc = JsonDocument.Parse(userJson);
+            if (userDoc.RootElement.TryGetProperty("data", out var uData))
+            {
+                if (uData.TryGetProperty("user", out var usr) && usr.ValueKind != JsonValueKind.Null)
+                    return usr.Clone();
+                if (uData.TryGetProperty("organization", out var uOrg) && uOrg.ValueKind != JsonValueKind.Null)
+                    return uOrg.Clone();
+            }
+        }
+        catch { /* ignore fallback failure */ }
+
+        return null;
+    }
+
     public async Task<IEnumerable<IssueRecord>> ListIssuesAsync(string? state = null, string[]? labels = null)
     {
         var path = "issues?per_page=30";
@@ -170,6 +214,8 @@ public class GitHubIssueTrackerConnector : IIssueTrackerConnector
             record.Project = project ?? string.Empty;
             record.StepId = stepId ?? string.Empty;
             await SyncProjectV2Async(record);
+            // Invalidate cache entry so the next fetch reflects the new project state
+            _enrichmentCache.Remove(record.Id);
         }
         return record;
     }
@@ -223,6 +269,8 @@ public class GitHubIssueTrackerConnector : IIssueTrackerConnector
                 record.StepId = stepId;
             }
             await SyncProjectV2Async(record);
+            // Invalidate cache so the next fetch reflects the updated project/step state
+            _enrichmentCache.Remove(issueId);
         }
         return record;
     }
@@ -234,7 +282,12 @@ public class GitHubIssueTrackerConnector : IIssueTrackerConnector
 
         var mut = @"mutation($issueId: ID!) { deleteIssue(input: {issueId: $issueId}) { clientMutationId } }";
         var res = await SendGraphQLRequestAsync(new { query = mut, variables = new { issueId = record.NodeId } });
-        return res.Contains("deleteIssue");
+        if (res.Contains("deleteIssue"))
+        {
+            _enrichmentCache.Remove(issueId);
+            return true;
+        }
+        return false;
     }
 
     public async Task<string> AddIssueCommentAsync(string issueId, string body)
@@ -268,18 +321,10 @@ query($owner: String!) {
   }
 }";
         try {
-            var payload = new { query, variables = new { owner = _config.Owner } };
-            var json = await SendGraphQLRequestAsync(payload);
-            var doc = JsonDocument.Parse(json);
-            if (doc.RootElement.TryGetProperty("data", out var data) && data.TryGetProperty("organization", out var org) && org.ValueKind != JsonValueKind.Null) {
-                ParseProjectsV2(org);
-            } else {
-                var userQuery = query.Replace("organization(login: $owner)", "user(login: $owner)");
-                var userJson = await SendGraphQLRequestAsync(new { query = userQuery, variables = new { owner = _config.Owner } });
-                var userDoc = JsonDocument.Parse(userJson);
-                if (userDoc.RootElement.TryGetProperty("data", out var uData) && uData.TryGetProperty("user", out var usr) && usr.ValueKind != JsonValueKind.Null) {
-                    ParseProjectsV2(usr);
-                }
+            var entity = await QueryOrgOrUserAsync(query, new { owner = _config.Owner });
+            if (entity.HasValue)
+            {
+                ParseProjectsV2(entity.Value);
             }
         } catch { /* Ignore cache failures */ }
     }
@@ -325,6 +370,23 @@ query($owner: String!) {
     private async Task EnrichIssuesWithProjectFieldsAsync(List<IssueRecord> issues)
     {
         if (!issues.Any() || _config.ProjectTitles == null || !_config.ProjectTitles.Any()) return;
+
+        // Short-circuit: if all issues have a fresh cache entry, apply cached values without any API call
+        var now = DateTime.UtcNow;
+        var allCached = issues.All(i =>
+            _enrichmentCache.TryGetValue(i.Id, out var entry) &&
+            (now - entry.CachedAt) < _enrichmentCacheTtl);
+
+        if (allCached)
+        {
+            foreach (var issue in issues)
+            {
+                var cached = _enrichmentCache[issue.Id];
+                if (string.IsNullOrEmpty(issue.Project)) issue.Project = cached.Project;
+                if (string.IsNullOrEmpty(issue.StepId))  issue.StepId  = cached.StepId;
+            }
+            return;
+        }
         
         await EnsureProjectsCachedAsync();
         
@@ -352,18 +414,7 @@ query($owner: String!) {
   }
 }";
         try {
-            JsonElement? orgNode = null;
-            var json = await SendGraphQLRequestAsync(new { query, variables = new { owner = _config.Owner } });
-            var doc = JsonDocument.Parse(json);
-            if (doc.RootElement.TryGetProperty("data", out var data) && data.TryGetProperty("organization", out var org) && org.ValueKind != JsonValueKind.Null) {
-                orgNode = org;
-            } else {
-                var userJson = await SendGraphQLRequestAsync(new { query = query.Replace("organization", "user"), variables = new { owner = _config.Owner } });
-                var userDoc = JsonDocument.Parse(userJson);
-                if (userDoc.RootElement.TryGetProperty("data", out var uData) && uData.TryGetProperty("user", out var usr) && usr.ValueKind != JsonValueKind.Null) {
-                    orgNode = usr;
-                }
-            }
+            var orgNode = await QueryOrgOrUserAsync(query, new { owner = _config.Owner });
 
             if (orgNode == null || !orgNode.Value.TryGetProperty("projectsV2", out var pV2)) return;
 
@@ -397,6 +448,12 @@ query($owner: String!) {
                         }
                     }
                 }
+            }
+
+            // Write back all enriched issues to the cache
+            foreach (var issue in issues)
+            {
+                _enrichmentCache[issue.Id] = (issue.Project, issue.StepId, DateTime.UtcNow);
             }
         } catch { /* Ignore enrichment failure gracefully */ }
     }
