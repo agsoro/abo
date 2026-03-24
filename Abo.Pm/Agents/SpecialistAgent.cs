@@ -349,7 +349,7 @@ public class SpecialistAgent : IAgent
             }
             else
             {
-                await _currentIssueTracker.UpdateIssueAsync(_currentIssueId, state: "closed", labels: updatedLabels.ToArray(), project: _currentIssue.Project);
+                await _currentIssueTracker.UpdateIssueAsync(_currentIssueId, state: "closed", labels: updatedLabels.ToArray(), project: _currentIssue.Project, stepId: nextStepInfo.StepId);
             }
 
             _currentIssueId = null;
