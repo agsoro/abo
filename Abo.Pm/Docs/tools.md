@@ -19,102 +19,28 @@ This approach deliberately avoids the complexity of the full MCP (Model Context 
 
 ---
 
-## General Tools
+## Global / PMO Tools
+
+These tools are registered as global services in `Program.cs` and are available to `ManagerAgent` (subject to the allowed-tools filter).
 
 ### `get_system_time`
 - **Class**: `GetSystemTimeTool`
 - **Description**: Returns the current UTC system time.
 - **Parameters**: none
-- **Used by**: HelloWorldAgent, QuizAgent, EmployeeAgent
-
----
-
-## Quiz Tools
-
-### `get_random_question`
-- **Class**: `GetRandomQuestionTool`
-- **Description**: Retrieves a random quiz question from the data store (optionally filtered by topic).
-- **Parameters**: `topic` (optional, string)
-
-### `ask_quiz_question`
-- **Class**: `AskQuizQuestionTool`
-- **Description**: Presents a multiple-choice quiz question formatted as Markdown.
-- **Parameters**: `id` (string), `topic` (string), `options` (array)
-- **Important**: The fields `id`, `topic`, and `options` must always be passed from the source data of the question.
-
-### `add_quiz_question`
-- **Class**: `AddQuizQuestionTool`
-- **Description**: Inserts a new quiz question into the data store after explicit user confirmation.
-- **Parameters**: `topic`, `question`, `options`, `answer`, `explanation`, `explanationUrl` (optional), `userId`
-
-### `get_quiz_topics`
-- **Class**: `GetQuizTopicsTool`
-- **Description**: Returns all available quiz topics.
-- **Parameters**: none
-
-### `update_quiz_score`
-- **Class**: `QuizTools` (score update)
-- **Description**: Updates a user's score. Must **only** be called for a correct answer.
-- **Parameters**: `channelId`, `userName`, `topic` (optional)
-
-### `get_quiz_leaderboard`
-- **Class**: `QuizTools` (leaderboard)
-- **Description**: Returns the current quiz leaderboard.
-- **Parameters**: `channelId`
-
-### `subscribe_quiz` / `unsubscribe_quiz`
-- **Class**: `QuizTools`
-- **Description**: Manages hourly quiz subscriptions for a channel.
-- **Parameters**: `channelId`, `userName`
-
-### `ask_multiple_choice`
-- **Class**: `AskMultipleChoiceTool`
-- **Description**: Asks a generic multiple-choice question (e.g. favorite color). Used by the `HelloWorldAgent`.
-- **Parameters**: `question`, `options` (array)
-
----
-
-## PMO / Process Management Tools
-
-### `create_process`
-- **Class**: `CreateProcessTool`
-- **Description**: Creates a new BPMN process definition as a `.bpmn` file. Automatically validates the XML before saving.
-- **Parameters**: `processId` (string, unique), `bpmnXml` (string, complete BPMN 2.0 XML)
-- **Important**: Every node, gateway, and transition **must have a unique ID**.
-
-### `update_process`
-- **Class**: `UpdateProcessTool`
-- **Description**: Updates an existing BPMN process definition.
-- **Parameters**: `processId`, `bpmnXml`
-
-### `check_bpmn`
-- **Class**: `CheckBpmnTool`
-- **Description**: Checks whether a BPMN XML string is well-formed and parseable. Should be used **before saving** via `create_process` or `update_process`.
-- **Parameters**: `bpmnXml`
 
 ### `start_issue`
 - **Class**: `StartIssueTool`
-- **Description**: Starts a new issue instance based on an existing BPMN process. Creates the issue directory, `info.md`, `status.json`, and registers the issue in `active_issues.json`.
+- **Description**: Starts a new issue instance based on a workflow definition. Creates the necessary records and registers the issue as active.
 - **Parameters**: `issueId`, `title`, `typeId`, `info`, `initialStepId`, `environmentName`, `parentId` (optional)
 
 ### `list_issues`
-- **Class**: `ListIssuesTool`
-- **Description**: Lists all active issues with hierarchy, type, current BPMN step, and status link.
+- **Class**: `ListActiveIssuesTool`
+- **Description**: Lists all active issues with hierarchy, type, current workflow step, and status information.
 - **Parameters**: none
 
 ### `get_open_work`
 - **Class**: `GetOpenWorkTool`
-- **Description**: Analyzes all active issues and extracts structured, actionable tasks. Shows expected role and state based on the BPMN flow.
-- **Parameters**: none
-
-### `upsert_role`
-- **Class**: `UpsertRoleTool`
-- **Description**: Creates or updates an AI agent role (name + system prompt). Role IDs must match those used in the BPMN.
-- **Parameters**: `roleId`, `name`, `systemPrompt`
-
-### `get_roles`
-- **Class**: `GetRolesTool`
-- **Description**: Returns all currently defined AI roles and their descriptions.
+- **Description**: Analyzes all active issues and extracts structured, actionable tasks. Shows expected role and state based on the workflow.
 - **Parameters**: none
 
 ### `get_environments`
@@ -126,81 +52,55 @@ This approach deliberately avoids the complexity of the full MCP (Model Context 
 
 ## Connector Tools (SpecialistAgent)
 
-These tools are **only available after a successful `checkout_task`**. All paths are confined to the checked-out issue environment's directory. They are located in the `/Tools/Connector` subfolder.
+These tools are **automatically mounted** during workspace initialization (`InitializeWorkspaceAsync`), which is called by `ManagerAgent` before the specialist agent loop starts. All paths are confined to the checked-out issue environment's directory. They are located in the `/Tools/Connector` subfolder.
 
-### `checkout_task`
-- **Description**: Checks out a running issue by its ID and binds the environment connector to it. Required before any filesystem or shell tools.
-- **Parameters**: `issueId` (string)
-- **Implemented in**: `SpecialistAgent.HandleCheckoutTaskAsync` (no separate tool file)
+> **Note**: Which tools are actually available to the agent depends on the role's `AllowedTools` list defined in `Abo.Core/Core/AvailableRoles.cs`.
 
-### `complete_task`
-- **Description**: Marks the current task in the checked-out issue as completed and updates the status.
-- **Parameters**: `nextStepId` (optional, string) – ID of the next BPMN step
-- **Implemented in**: `SpecialistAgent.HandleCompleteTaskAsync` (no separate tool file)
+### Lifecycle Tools
 
-### `request_ceo_help`
+#### `complete_task`
+- **Description**: Marks the current task in your checked-out issue as completed and updates its status. This will also terminate your session.
+- **Parameters**:
+  - `resultNotes` (string, **required**) – A detailed summary of the work performed, results, and any context needed by the next agent. These notes are automatically added as a comment to the issue.
+  - `keyword` (string, optional) – If the current step leads to a decision gateway with multiple possible next steps, provide a keyword matching the condition name of the path to take.
+- **Behavior**: Uses the `AgentSentinels.CompleteTaskResult` (`[COMPLETE_TASK_RESULT]:`) sentinel. The `resultNotes` are returned **directly** to the caller (no extra LLM synthesis round-trip). The orchestrator detects the sentinel prefix and short-circuits the loop.
+- **Implemented in**: `SpecialistAgent.HandleCompleteTaskAsync`
+
+#### `request_ceo_help`
 - **Description**: Stops work and escalates a question/issue to the human CEO.
 - **Parameters**: `message` (string)
-- **Implemented in**: `SpecialistAgent.HandleRequestCeoHelp` (no separate tool file)
+- **Implemented in**: `SpecialistAgent.HandleRequestCeoHelp`
 
-### `take_notes`
-- **Description**: Stores temporary notes, remarks, or intermediate findings during your task. These are securely saved to the issue's remarks file.
-- **Parameters**: `note` (string)
-- **Implemented in**: `SpecialistAgent.HandleTakeNotesAsync` (no separate tool file)
+---
 
-### `read_notes`
-- **Description**: Reads the temporary notes, remarks, or intermediate findings stored for the current issue.
-- **Parameters**: none
-- **Implemented in**: `SpecialistAgent.HandleReadNotesAsync` (no separate tool file)
+### Filesystem Tools
 
-### `read_file`
+#### `read_file`
 - **Class**: `ReadFileTool` (`/Tools/Connector/ReadFileTool.cs`)
 - **Description**: Reads the contents of a file using a relative path.
 - **Parameters**: `relativePath`
 
-### `write_file`
+#### `write_file`
 - **Class**: `WriteFileTool` (`/Tools/Connector/WriteFileTool.cs`)
 - **Description**: Writes content to a file (creates or overwrites).
 - **Parameters**: `relativePath`, `content`
 
-### `delete_file`
+#### `delete_file`
 - **Class**: `DeleteFileTool` (`/Tools/Connector/DeleteFileTool.cs`)
 - **Description**: Deletes a file from the issue directory.
 - **Parameters**: `relativePath`
 
-### `list_dir`
+#### `list_dir`
 - **Class**: `ListDirTool` (`/Tools/Connector/ListDirTool.cs`)
 - **Description**: Lists the contents of a directory.
 - **Parameters**: `relativePath`
 
-### `mkdir`
+#### `mkdir`
 - **Class**: `MkDirTool` (`/Tools/Connector/MkDirTool.cs`)
 - **Description**: Creates a new directory in the issue.
 - **Parameters**: `relativePath`
 
-### `git`
-- **Class**: `GitTool` (`/Tools/Connector/GitTool.cs`)
-- **Description**: Executes a git command in the issue directory. The word `git` must **not** be included in the arguments.
-- **Parameters**: `arguments`
-
-### `dotnet`
-- **Class**: `DotnetTool` (`/Tools/Connector/DotnetTool.cs`)
-- **Description**: Executes a .NET CLI command in the issue directory. The word `dotnet` must **not** be included in the arguments.
-- **Parameters**: `arguments`
-
-### `python`
-- **Class**: `PythonTool` (`/Tools/Connector/PythonTool.cs`)
-- **Description**: Runs a Python command in the issue directory. The word `python` must **not** be included in the arguments. Uses the system's `python` executable, which must be installed and available in the system PATH.
-- **Parameters**: `arguments` (string) – e.g. `script.py`, `-m pytest`, `-m venv .venv`, `-m pip install -r requirements.txt`
-- **Examples**:
-  - Run a script: `arguments = "main.py"`
-  - Install dependencies: `arguments = "-m pip install -r requirements.txt"`
-  - Run tests with pytest: `arguments = "-m pytest"`
-  - Create a virtual environment: `arguments = "-m venv .venv"`
-- **Implemented in**: `LocalWindowsConnector.RunPythonAsync` → delegates to `RunProcessAsync("python", arguments)`
-- **Note**: The working directory is always set to the checked-out issue's environment directory.
-
-### `search_regex`
+#### `search_regex`
 - **Class**: `SearchRegexTool` (`/Tools/Connector/SearchRegexTool.cs`)
 - **Description**: Searches for a regex pattern within filenames and file contents across the specified directory. Useful for finding code patterns, usages, or content across multiple files.
 - **Parameters**:
@@ -209,9 +109,37 @@ These tools are **only available after a successful `checkout_task`**. All paths
   - `limitLinesPerFile` (integer, optional) – Maximum number of matching lines returned per file. Defaults to `10`.
 - **Returns**: A list of files with matching lines (file path + line number + content). If a filename itself matches the pattern, it is also flagged.
 - **Limits**: Results per file are capped at `limitLinesPerFile` lines and at 10 KB of output per file to prevent token overload.
-- **Implemented in**: `LocalWindowsConnector.SearchRegexAsync`
 
-### `http_get` *(neu – ABO-XXXX)*
+---
+
+### Shell Tools
+
+#### `git`
+- **Class**: `GitTool` (`/Tools/Connector/GitTool.cs`)
+- **Description**: Executes a git command in the issue directory. The word `git` must **not** be included in the arguments.
+- **Parameters**: `arguments`
+
+#### `dotnet`
+- **Class**: `DotnetTool` (`/Tools/Connector/DotnetTool.cs`)
+- **Description**: Executes a .NET CLI command in the issue directory. The word `dotnet` must **not** be included in the arguments.
+- **Parameters**: `arguments`
+
+#### `python`
+- **Class**: `PythonTool` (`/Tools/Connector/PythonTool.cs`)
+- **Description**: Runs a Python command in the issue directory. The word `python` must **not** be included in the arguments. Uses the system's `python` executable, which must be installed and available in the system PATH.
+- **Parameters**: `arguments` (string) – e.g. `script.py`, `-m pytest`, `-m venv .venv`, `-m pip install -r requirements.txt`
+- **Examples**:
+  - Run a script: `arguments = "main.py"`
+  - Install dependencies: `arguments = "-m pip install -r requirements.txt"`
+  - Run tests with pytest: `arguments = "-m pytest"`
+  - Create a virtual environment: `arguments = "-m venv .venv"`
+- **Note**: The working directory is always set to the checked-out issue's environment directory.
+
+---
+
+### HTTP Tool
+
+#### `http_get`
 - **Class**: `HttpGetTool` (`/Tools/Connector/HttpGetTool.cs`)
 - **Description**: Sends an HTTP GET request to the specified URL and returns the HTTP status code and response body. Use this to query external APIs, health endpoints, or fetch remote data. Response is limited to 100 KB.
 - **Parameters**:
@@ -229,45 +157,52 @@ These tools are **only available after a successful `checkout_task`**. All paths
   - **Response Size Cap**: Response body is truncated at **100 KB** to prevent LLM context overflow.
   - **Header Injection**: System headers (`Host`, `Content-Length`, `Transfer-Encoding`, `Connection`, `Upgrade`, `Proxy-Authorization`, `Proxy-Connection`) cannot be overridden by callers.
   - **Timeout Cap**: Maximum timeout is capped at **120 seconds** to prevent agent-loop blocking.
-- **Implemented in**: `LocalWindowsConnector.HttpGetAsync` + `HttpGetSecurityHelper` (SSRF/header logic)
 - **Tests**: `Abo.Tests/HttpGetToolTests.cs` (98 tests total, covering all security scenarios)
 
-### `list_issues`
+---
+
+### Issue Tracker Tools
+
+#### `list_issues`
 - **Class**: `ListIssuesTool` (`/Tools/Connector/ListIssuesTool.cs`)
 - **Description**: Lists open issues or feature requests from the configured issue tracker (e.g., GitHub).
 - **Parameters**: `state` (optional), `labels` (optional array)
 
-### `get_issue`
+#### `get_issue`
 - **Class**: `GetIssueTool` (`/Tools/Connector/GetIssueTool.cs`)
 - **Description**: Retrieves the details of a specific issue by ID.
 - **Parameters**: `issueId`
 
-### `create_issue`
+#### `create_issue`
 - **Class**: `CreateIssueTool` (`/Tools/Connector/CreateIssueTool.cs`)
 - **Description**: Creates a new issue, feature request, or bug report. Maps `type` and `size` to issue tracker labels automatically.
 - **Parameters**: `title`, `body`, `type`, `size` (optional)
 
-### `add_issue_comment`
+#### `add_issue_comment`
 - **Class**: `AddIssueCommentTool` (`/Tools/Connector/AddIssueCommentTool.cs`)
 - **Description**: Adds a comment to an existing issue (e.g., to link a completed task or commit).
 - **Parameters**: `issueId`, `body`
 
-### `get_wiki_page`
+---
+
+### Wiki Tools
+
+#### `get_wiki_page`
 - **Class**: `GetWikiPageTool` (`/Tools/Connector/GetWikiPageTool.cs`)
 - **Description**: Retrieves the contents of a wiki page (from local filesystem or external XpectoLive).
 - **Parameters**: `pathOrId` (relative path or Page ID)
 
-### `create_wiki_page`
+#### `create_wiki_page`
 - **Class**: `CreateWikiPageTool` (`/Tools/Connector/CreateWikiPageTool.cs`)
 - **Description**: Creates a new wiki page.
 - **Parameters**: `title`, `content`, `parentPathOrId` (optional)
 
-### `update_wiki_page`
+#### `update_wiki_page`
 - **Class**: `UpdateWikiPageTool` (`/Tools/Connector/UpdateWikiPageTool.cs`)
 - **Description**: Updates the contents of an existing wiki page.
 - **Parameters**: `pathOrId`, `content`
 
-### `move_wiki_page`
+#### `move_wiki_page`
 - **Class**: `MoveWikiPageTool` (`/Tools/Connector/MoveWikiPageTool.cs`)
 - **Description**: Moves (and optionally renames) an existing wiki page to a new parent location.
 - **Parameters**:
@@ -279,7 +214,7 @@ These tools are **only available after a successful `checkout_task`**. All paths
   - **GitHubWikiConnector**: Same as filesystem, then commits and pushes the change: `"Move wiki page: {source} -> {dest}"`.
   - **XpectoLiveWikiConnector**: Delegates to `_client.MovePageAsync` with `TargetSpaceId = _spaceId`; if `newTitle` is provided, additionally calls `UpdatePageDraftAsync` + `PublishPageDraftAsync` to rename the page.
 
-### `search_wiki`
+#### `search_wiki`
 - **Class**: `SearchWikiTool` (`/Tools/Connector/SearchWikiTool.cs`)
 - **Description**: Searches for content or titles in the configured wiki.
 - **Parameters**: `query`

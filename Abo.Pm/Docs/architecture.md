@@ -8,7 +8,7 @@ The Agsoro Bot Orchestrator (ABO) is built on a **Controller-Worker** loop that 
 
 The core orchestration loop ensures that the AI never has direct, uncontrolled access to internal data. All actions are mediated by the C# orchestrator:
 
-1. **Intelligent Selection**: When a request comes in, the `AgentSupervisor` uses the LLM to analyze the intent and select the most appropriate specialized agent (e.g. `QuizAgent`, `HelloWorldAgent`, or `SpecialistAgent`).
+1. **Intelligent Selection**: When a request comes in, the `AgentSupervisor` uses the LLM to analyze the intent and select the most appropriate specialized agent (e.g. `ManagerAgent` or `SpecialistAgent`).
 2. **Reasoning**: The selected agent provides its `SystemPrompt` and `ToolDefinitions`. The orchestrator sends a REST `POST` request to the AI endpoint. The model returns a "Tool Call" in JSON.
 3. **Local Execution**: The C# orchestrator parses the JSON tool call and invokes the corresponding internal C# method.
 4. **Synthesis**: The result is sent back to the AI model to generate a final, human-readable summary or action confirmation.
@@ -31,16 +31,13 @@ Since all tool executions run locally in C#, sensitive systems are never directl
 
 ---
 
-## Issue and Process Management (PMO Layer)
+## Issue and Workflow Management
 
-ABO implements a full BPMN-based issue management system:
+ABO manages issues via configured external issue trackers (e.g., GitHub) and an internal `WorkflowEngine`:
 
-- **Process definitions** are stored as `.bpmn` files in `/Data/Processes/`.
-- **Issue instances** are managed in `/Data/Issues/{issueId}/`, consisting of:
-  - `info.md` – Issue goals, context, and initial parameters.
-  - `status.json` – Current BPMN step, status, and timestamps.
-- **`active_issues.json`** is the central list of all running issues (in `/Data/Issues/`).
-- The `ManagerAgent` delegates work to `SpecialistAgent` instances that perform the actual work.
+- **Issue Tracker**: Issues are created and tracked in the configured external system (GitHub or filesystem-based). The `ManagerAgent` retrieves open issues via `list_issues` and `get_open_work`.
+- **Workflow Engine** (`WorkflowEngine.cs`): Determines the current workflow step from the issue's state/labels and resolves the required role and next transitions.
+- **Environments** (`environments.json`): Maps environment names to local directory paths, issue tracker configurations, and wiki configurations. Used by the connector for path resolution and API access.
 - The current issue status is accessible via the REST endpoint `GET /api/issues/{id}/status`.
 
 ---
@@ -49,18 +46,18 @@ ABO implements a full BPMN-based issue management system:
 
 The `SpecialistAgent` uses a **connector pattern** for secure filesystem and network access:
 
-1. The agent calls `checkout_task` with a `issueId`.
-2. ABO resolves the configured **environment** (`ConnectorEnvironment`) of the issue (stored in `environments.json`).
-3. A `LocalWindowsConnector` is instantiated and bound to the environment's directory.
-4. All subsequent filesystem and shell tools (`read_file`, `write_file`, `git`, `dotnet`, `python`, `search_regex`, `http_get`, etc.) are **confined** to that directory (filesystem) or security-validated (HTTP).
-5. After the task is completed (`complete_task`), the connector is released.
+1. `ManagerAgent` calls `SpecialistAgent.InitializeWorkspaceAsync()` automatically before the agent loop starts.
+2. ABO resolves the configured **environment** (`ConnectorEnvironment`) from `environments.json`.
+3. A `LocalWorkspaceConnector` is instantiated and bound to the environment's directory.
+4. All connector tools are mounted: filesystem, shell, issue tracker, and wiki tools (subject to the role's `AllowedTools` filter).
+5. After the task is completed (when the `complete_task` sentinel is detected), the connector is released.
 
 ```
-[SpecialistAgent]
-  ↓ checkout_task(issueId)
+[ManagerAgent]
+  ↓ InitializeWorkspaceAsync(issueId)  [called automatically before specialist loop]
 [ABO-Core: Environment Resolution]
   ↓ ConnectorEnvironment { Dir = "C:\src\issue" }
-[LocalWindowsConnector]
+[LocalWorkspaceConnector]
   ↓ read_file / write_file / git / dotnet / python / search_regex / http_get ...
 [Filesystem (confined to Dir) / External HTTP (SSRF-protected)]
 ```
@@ -79,20 +76,29 @@ The `SpecialistAgent` uses a **connector pattern** for secure filesystem and net
 | `python` | `PythonTool` | Execute Python commands (requires Python in PATH) |
 | `search_regex` | `SearchRegexTool` | Search for regex patterns across files and filenames |
 | `http_get` | `HttpGetTool` | Send HTTP GET requests to external APIs (SSRF-protected, 100 KB cap) |
+| `list_issues` | `ListIssuesTool` | List open issues from the configured issue tracker |
+| `get_issue` | `GetIssueTool` | Retrieve a specific issue by ID |
+| `create_issue` | `CreateIssueTool` | Create a new issue in the issue tracker |
+| `add_issue_comment` | `AddIssueCommentTool` | Add a comment to an existing issue |
+| `get_wiki_page` | `GetWikiPageTool` | Retrieve the contents of a wiki page |
+| `create_wiki_page` | `CreateWikiPageTool` | Create a new wiki page |
+| `update_wiki_page` | `UpdateWikiPageTool` | Update an existing wiki page |
+| `move_wiki_page` | `MoveWikiPageTool` | Move (and optionally rename) an existing wiki page |
+| `search_wiki` | `SearchWikiTool` | Search the configured wiki |
 
 ### HttpGet Security Architecture
 
-The `http_get` tool delegates to `LocalWindowsConnector.HttpGetAsync`, which enforces a multi-layered security model via the separate `HttpGetSecurityHelper` class:
+The `http_get` tool delegates to `LocalWorkspaceConnector.HttpGetAsync`, which enforces a multi-layered security model via the separate `HttpGetSecurityHelper` class:
 
 ```
 [HttpGetTool.ExecuteAsync]
   ↓ URL-Parsing + Parameter-Validation
-[LocalWindowsConnector.HttpGetAsync]
+[LocalWorkspaceConnector.HttpGetAsync]
   ↓ Schema-Check (http/https only)
   ↓ SSRF-Check: HttpGetSecurityHelper.CheckSsrfAsync(uri)
     ├── Loopback-Hostname-Block (localhost, 127.0.0.1, [::1])
     ├── Direct IP: IPAddress.IsLoopback() + IsPrivateIpAddress()
-    └── DNS-Resolution: alle Adressen prüfen (RFC-1918 Bitmasken)
+    └── DNS-Resolution: all addresses checked (RFC-1918 bitmasks)
   ↓ HttpClient.SendAsync (ResponseHeadersRead)
   ↓ Body-Truncation (max 100 KB)
 [External HTTP Target / Error Response]
@@ -118,16 +124,14 @@ ABO exposes a minimal REST API (ASP.NET Core Minimal APIs) and a static Web UI:
 | Endpoint | Method | Description |
 |---|---|---|
 | `/api/status` | GET | Health check: returns model and configuration status |
-| `/api/processes` | GET | Lists all available BPMN process IDs |
-| `/api/processes/{id}` | GET | Returns the BPMN XML definition of a process |
-| `/api/issues/{id}/status` | GET | Returns the current BPMN step and status of a issue |
+| `/api/issues/{id}/status` | GET | Returns the current workflow step and status of an issue |
 | `/api/interact` | POST | Main chat endpoint: receives messages, selects agent, returns response |
 | `/api/issues` | GET | Lists all active issues (name, ID, status) |
 | `/api/llm-consumption` | GET | Returns LLM consumption statistics (supports `?limit=N`) |
+| `/api/llm-traffic` | GET | Returns the LLM traffic log for debugging |
 | `/api/open-work` | GET | Returns currently open work items across all active issues |
 | `/api/sessions` | GET | Returns active agent sessions with history length and timestamps |
 | `/` | GET | Web UI (`wwwroot/index.html`) – Chat interface |
-| `/processes/index.html` | GET | BPMN process viewer |
 | `/agents/index.html` | GET | Agent / session overview |
 | `/open-work/index.html` | GET | Open work dashboard |
 | `/llm-traffic/index.html` | GET | LLM traffic log viewer |
@@ -139,22 +143,14 @@ Detailed API documentation with request/response schemas: see [services.md](serv
 
 ## Runtime Data Structure (`/Data/`)
 
-The `/Data/` directory contains all ABO runtime data. These files are written and read at runtime and should **not** be checked into version control (exception: initial data such as BPMN processes).
+The `/Data/` directory contains ABO runtime data. These files are written and read at runtime and should **not** be checked into version control.
 
 ```
 /Data
-  /Processes/             - BPMN process definitions (.bpmn files)
-  /Issues/
-    active_issues.json  - Central list of all active issues
-    /{issueId}/
-      info.md             - Issue goals, context, initial parameters
-      status.json         - Current BPMN step, status, timestamps
-      notes.md            - Handover notes between agents/steps
   /Environments/
-    environments.json     - Configured connector environments (name → directory path)
-  /Quiz/
-    leaderboard.json      - Quiz leaderboard with scores
-  users.json              - All users (Mattermost ID, username, roles, quiz subscription)
+    environments.json     - Configured connector environments (name → directory path,
+                            issue tracker config, wiki config)
+  users.json              - All users (Mattermost ID, username, roles)
   llm_traffic.jsonl       - LLM requests/responses (debugging, JSONL format)
   llm_consumption.jsonl   - LLM token/cost tracking per agent run (JSONL format)
 ```
@@ -163,13 +159,8 @@ The `/Data/` directory contains all ABO runtime data. These files are written an
 
 | File | Description |
 |---|---|
-| `active_issues.json` | JSON array of all running issue IDs and their process type. |
-| `{issueId}/status.json` | Contains `IssueId`, `CurrentStepId`, `Status`, and `LastUpdated`. Updated on every `complete_task`. |
-| `{issueId}/info.md` | Created when a issue is started; describes goal, context, and parameters. Immutable after creation. |
-| `{issueId}/notes.md` | Handover notes: each agent writes result context here for the next step. |
-| `environments.json` | Maps environment names (e.g. `abo`) to local directory paths. Used by the connector for path resolution. |
-| `users.json` | Persisted user data: Mattermost ID, username, roles array, quiz subscription flag. |
-| `leaderboard.json` | Quiz system scores, indexed by username. |
+| `environments.json` | Maps environment names (e.g. `abo`) to local directory paths, issue tracker type/config, and wiki type/config. Used by the connector for path and API resolution. |
+| `users.json` | Persisted user data: Mattermost ID, username, roles array. |
 | `llm_traffic.jsonl` | Debug log: every AI API request and response is logged as a JSON line. Useful for error analysis. Can grow large under heavy usage. |
 | `llm_consumption.jsonl` | Token and cost tracking per agent run (prompt tokens, completion tokens, total tokens, cost in USD, session ID). |
 
@@ -178,29 +169,34 @@ The `/Data/` directory contains all ABO runtime data. These files are written an
 ## Directory Structure
 
 ```
-/Abo
-  /Agents         - Agent implementations (IAgent)
+/Abo.Core
   /Core
-    /Connectors   - IConnector, LocalWindowsConnector, HttpGetSecurityHelper,
-                    ConnectorEnvironment
+    /Connectors   - IConnector, LocalWorkspaceConnector, HttpGetSecurityHelper,
+                    ConnectorEnvironment, IssueTracker/Wiki connector interfaces
+    AgentSentinels.cs
+    AvailableRoles.cs
+    WorkflowEngine.cs
+
+/Abo.Pm
+  /Agents         - Agent implementations (IAgent): ManagerAgent, SpecialistAgent
+  /Core
     AgentSupervisor.cs
     Orchestrator.cs
     SessionService.cs
   /Contracts      - JSON schemas and DTOs for API interaction
   /Data
-    /Processes    - BPMN process definitions (.bpmn)
-    /Issues     - Issue instances (info.md, status.json, active_issues.json)
     /Environments - environments.json
-    /Quiz         - Quiz data (leaderboard.json)
   /Docs           - This documentation
   /Integrations
+    /GitHub       - GitHub issue tracker connector + HTTP client
     /Mattermost   - Mattermost HTTP client + WebSocket listener
     /XpectoLive   - XpectoLive HTTP client + Wiki client
   /Models         - Database models / entities (User)
-  /Services       - Business logic services (UserService, QuizService)
-  /Tools          - IAboTool implementations
+  /Services       - Business logic services (CronjobAutoStartService,
+                    EnvironmentValidationService, StartupStatusService)
+  /Tools          - IAboTool implementations (global tools)
     /Connector    - Connector tools (ReadFileTool, WriteFileTool, GitTool, DotnetTool,
-                    PythonTool, SearchRegexTool, HttpGetTool)
-  /wwwroot        - Static Web UI files (Chat, BPMN viewer, Agents, Open Work,
+                    PythonTool, SearchRegexTool, HttpGetTool, MoveWikiPageTool, etc.)
+  /wwwroot        - Static Web UI files (Chat, Agents, Open Work,
                     LLM Traffic, LLM Stats dashboards)
 ```
