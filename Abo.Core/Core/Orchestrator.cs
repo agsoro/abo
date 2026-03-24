@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 using Abo.Agents;
 using Abo.Contracts.OpenAI;
@@ -79,6 +80,10 @@ public class Orchestrator
         string currentModelName = request.Model;
         bool terminateAfterSynthesis = false;
 
+        // Cost-based summarization tracking for SpecialistAgent
+        double lastCallInputCost = 0.0;
+        const double SummarizationCostThreshold = 0.80;
+
         try
         {
             while (currentLoop < maxLoops)
@@ -97,8 +102,8 @@ public class Orchestrator
                 }
                 request.Model = currentModelName;
 
-                // Auto summarize if request.Messages is getting long
-                if (request.Messages.Count > 80)
+                // Emergency hard-cap: summarize for all agents if message count exceeds 200
+                if (request.Messages.Count > 200)
                 {
                     int keepTailCount = 4;
                     int splitIndex = request.Messages.Count - keepTailCount;
@@ -122,7 +127,7 @@ public class Orchestrator
 
                     if (splitIndex > 1 && splitIndex < request.Messages.Count)
                     {
-                        _logger.LogInformation($"[Session: {sessionId}] History reached {request.Messages.Count} messages. Summarizing older context...");
+                        _logger.LogInformation($"[Session: {sessionId}] [EMERGENCY CAP] History reached {request.Messages.Count} messages. Summarizing older context...");
                         var messagesToSummarize = request.Messages.GetRange(1, splitIndex - 1);
                         var summaryText = await SummarizeMessagesAsync(messagesToSummarize, currentModelName, sessionId);
 
@@ -143,6 +148,57 @@ public class Orchestrator
                         newHistory.AddRange(request.Messages.Skip(splitIndex));
                         _sessionService.ReplaceHistory(sessionId, newHistory);
                     }
+                }
+
+                // Cost-based summarization: only for SpecialistAgent, triggered when last call's input cost exceeded threshold
+                if (agent.Name == "SpecialistAgent" && lastCallInputCost > SummarizationCostThreshold)
+                {
+                    int keepTailCount = 4;
+                    int splitIndex = request.Messages.Count - keepTailCount;
+
+                    while (splitIndex < request.Messages.Count)
+                    {
+                        var msg = request.Messages[splitIndex];
+                        if (msg.Role == "tool")
+                        {
+                            splitIndex++;
+                        }
+                        else if (msg.Role == "assistant" && msg.ToolCalls != null && msg.ToolCalls.Count > 0)
+                        {
+                            break;
+                        }
+                        else
+                        {
+                            break;
+                        }
+                    }
+
+                    if (splitIndex > 1 && splitIndex < request.Messages.Count)
+                    {
+                        _logger.LogInformation($"[Session: {sessionId}] [COST THRESHOLD] Last call input cost ${lastCallInputCost:F4} exceeded ${SummarizationCostThreshold}. Summarizing older context...");
+                        var messagesToSummarize = request.Messages.GetRange(1, splitIndex - 1);
+                        var summaryText = await SummarizeMessagesAsync(messagesToSummarize, currentModelName, sessionId);
+
+                        var summaryMessage = new ChatMessage
+                        {
+                            Role = "user",
+                            Content = "Here is a summary of the earlier conversation and actions for context:\n\n" + summaryText
+                        };
+
+                        var newRequestMessages = new List<ChatMessage> { request.Messages[0] };
+                        newRequestMessages.Add(summaryMessage);
+                        newRequestMessages.AddRange(request.Messages.Skip(splitIndex));
+
+                        request.Messages = newRequestMessages;
+
+                        var newHistory = new List<ChatMessage>();
+                        newHistory.Add(summaryMessage);
+                        newHistory.AddRange(request.Messages.Skip(splitIndex));
+                        _sessionService.ReplaceHistory(sessionId, newHistory);
+                    }
+
+                    // Reset cost tracker after summarization
+                    lastCallInputCost = 0.0;
                 }
 
                 _logger.LogInformation($"[Session: {sessionId}] [Loop {currentLoop}] Sending request to {apiEndpoint}");
@@ -187,6 +243,21 @@ public class Orchestrator
                     totalInputTokens += aiResponse.Usage.PromptTokens;
                     totalOutputTokens += aiResponse.Usage.CompletionTokens;
                     totalCost += aiResponse.Usage.Cost ?? 0.0;
+
+                    // Compute per-call input cost for cost-based summarization (SpecialistAgent)
+                    if (aiResponse.Usage.Cost.HasValue && aiResponse.Usage.Cost.Value > 0.0)
+                    {
+                        // Primary: use API-reported cost directly
+                        lastCallInputCost = aiResponse.Usage.Cost.Value;
+                    }
+                    else
+                    {
+                        // Fallback: compute from prompt tokens × configured price per million
+                        var inputPricePerMillion = double.TryParse(
+                            _configuration["Config:InputTokenPricePerMillion"],
+                            NumberStyles.Any, CultureInfo.InvariantCulture, out var p) ? p : 3.0;
+                        lastCallInputCost = aiResponse.Usage.PromptTokens * (inputPricePerMillion / 1_000_000.0);
+                    }
                 }
 
                 // Append assistant's response to history and current request context
