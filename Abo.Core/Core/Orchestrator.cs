@@ -1,7 +1,9 @@
+using System.Collections.Concurrent;
 using System.Globalization;
 using System.Text.Json;
 using Abo.Agents;
 using Abo.Contracts.OpenAI;
+using Abo.Core.Models;
 
 namespace Abo.Core;
 
@@ -14,6 +16,8 @@ public class Orchestrator
     private readonly SessionService _sessionService;
     private readonly string _logPath = Path.Combine(AppContext.BaseDirectory, "Data", "llm_traffic.jsonl");
     private readonly string _consumptionLogPath = Path.Combine(AppContext.BaseDirectory, "Data", "llm_consumption.jsonl");
+
+    private static readonly ConcurrentDictionary<string, SemaphoreSlim> _issueFileLocks = new();
 
     public Orchestrator(HttpClient httpClient, IConfiguration configuration, ILogger<Orchestrator> logger, SessionService sessionService)
     {
@@ -31,7 +35,7 @@ public class Orchestrator
         return _sessionService.GetHistory(sessionId);
     }
 
-    public async Task<string> RunAgentLoopAsync(IAgent agent, string userMessage, string sessionId, string? userName = null, string? userId = null)
+    public async Task<string> RunAgentLoopAsync(IAgent agent, string userMessage, string sessionId, string? userName = null, string? userId = null, string? issueId = null)
     {
         var apiEndpoint = _configuration["Config:ApiEndpoint"] ?? throw new InvalidOperationException("API Endpoint not configured.");
         var apiKey = _configuration["Config:ApiKey"] ?? string.Empty;
@@ -312,7 +316,7 @@ public class Orchestrator
                         {
                             var resultNotes = toolResult.Substring(AgentSentinels.CompleteTaskResult.Length);
                             _logger.LogInformation($"[Session: {sessionId}] complete_task sentinel detected. Terminating agent loop immediately.");
-                            await LogConsumptionAsync(sessionId, currentModelName, totalCalls, totalInputTokens, totalOutputTokens, totalCost);
+                            await LogConsumptionAsync(sessionId, currentModelName, totalCalls, totalInputTokens, totalOutputTokens, totalCost, issueId);
                             return resultNotes;
                         }
 
@@ -328,7 +332,7 @@ public class Orchestrator
                 }
 
                 // Final answer reached – log consumption for this run
-                await LogConsumptionAsync(sessionId, currentModelName, totalCalls, totalInputTokens, totalOutputTokens, totalCost);
+                await LogConsumptionAsync(sessionId, currentModelName, totalCalls, totalInputTokens, totalOutputTokens, totalCost, issueId);
 
                 var finalContent = choice.Message.Content ?? accumulatedContent;
 
@@ -359,7 +363,7 @@ public class Orchestrator
             // Still try to log whatever consumption we've accumulated
             if (totalCalls > 0)
             {
-                await LogConsumptionAsync(sessionId, currentModelName, totalCalls, totalInputTokens, totalOutputTokens, totalCost);
+                await LogConsumptionAsync(sessionId, currentModelName, totalCalls, totalInputTokens, totalOutputTokens, totalCost, issueId);
             }
             return $"Error: {ex.Message}";
         }
@@ -367,7 +371,7 @@ public class Orchestrator
         // Max loops reached – log consumption
         if (totalCalls > 0)
         {
-            await LogConsumptionAsync(sessionId, currentModelName, totalCalls, totalInputTokens, totalOutputTokens, totalCost);
+            await LogConsumptionAsync(sessionId, currentModelName, totalCalls, totalInputTokens, totalOutputTokens, totalCost, issueId);
         }
 
         return "Error: Max agent loops reached.";
@@ -466,7 +470,7 @@ public class Orchestrator
         }
     }
 
-    private async Task LogConsumptionAsync(string sessionId, string model, int callCount, int inputTokens, int outputTokens, double totalCost)
+    private async Task LogConsumptionAsync(string sessionId, string model, int callCount, int inputTokens, int outputTokens, double totalCost, string? issueId = null)
     {
         try
         {
@@ -487,6 +491,56 @@ public class Orchestrator
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to write LLM consumption log.");
+        }
+
+        if (!string.IsNullOrWhiteSpace(issueId))
+        {
+            await AccumulateIssueConsumptionAsync(issueId, callCount, totalCost);
+        }
+    }
+
+    private async Task AccumulateIssueConsumptionAsync(string issueId, int calls, double cost)
+    {
+        var lockObj = _issueFileLocks.GetOrAdd(issueId, _ => new SemaphoreSlim(1, 1));
+        await lockObj.WaitAsync();
+        try
+        {
+            var dir = Path.Combine(AppContext.BaseDirectory, "Data", "IssueConsumption");
+            Directory.CreateDirectory(dir);
+            var filePath = Path.Combine(dir, $"{issueId}.json");
+
+            IssueConsumptionRecord record;
+            if (File.Exists(filePath))
+            {
+                try
+                {
+                    var json = await File.ReadAllTextAsync(filePath);
+                    record = JsonSerializer.Deserialize<IssueConsumptionRecord>(json)
+                             ?? new IssueConsumptionRecord { IssueId = issueId };
+                }
+                catch
+                {
+                    record = new IssueConsumptionRecord { IssueId = issueId };
+                }
+            }
+            else
+            {
+                record = new IssueConsumptionRecord { IssueId = issueId };
+            }
+
+            record.TotalCalls += calls;
+            record.TotalCost += cost;
+
+            await File.WriteAllTextAsync(filePath,
+                JsonSerializer.Serialize(record, new JsonSerializerOptions { WriteIndented = true }));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, $"Failed to accumulate issue consumption for issue '{issueId}'.");
+        }
+        finally
+        {
+            lockObj.Release();
         }
     }
 }

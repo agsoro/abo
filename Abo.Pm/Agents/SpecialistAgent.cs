@@ -4,6 +4,7 @@ using Abo.Contracts.Models;
 using Abo.Contracts.OpenAI;
 using Abo.Core;
 using Abo.Core.Connectors;
+using Abo.Core.Models;
 using Abo.Tools;
 using Abo.Tools.Connector;
 using Abo.Integrations.GitHub;
@@ -350,7 +351,47 @@ public class SpecialistAgent : IAgent
             else
             {
                 await _currentIssueTracker.UpdateIssueAsync(_currentIssueId, state: "closed", labels: updatedLabels.ToArray(), project: _currentIssue.Project, stepId: nextStepInfo.StepId);
+
+                // Post a short status comment with aggregated LLM consumption stats (best-effort, non-blocking)
+                var consumptionFilePath = Path.Combine(
+                    AppContext.BaseDirectory, "Data", "IssueConsumption", $"{_currentIssueId}.json");
+
+                int totalCalls = 0;
+                double totalCost = 0.0;
+                bool hasData = false;
+
+                if (File.Exists(consumptionFilePath))
+                {
+                    try
+                    {
+                        var json = await File.ReadAllTextAsync(consumptionFilePath);
+                        var record = JsonSerializer.Deserialize<IssueConsumptionRecord>(json);
+                        if (record != null)
+                        {
+                            totalCalls = record.TotalCalls;
+                            totalCost = record.TotalCost;
+                            hasData = true;
+                        }
+                    }
+                    catch { /* graceful degradation – ignore read errors */ }
+                }
+
+                if (hasData)
+                {
+                    var statusComment = $"🤖 Completed in {totalCalls} LLM calls | Est. cost: ${totalCost:F4}";
+                    try
+                    {
+                        await _currentIssueTracker.AddIssueCommentAsync(_currentIssueId, statusComment);
+                    }
+                    catch { /* non-blocking – issue is already closed */ }
+
+                    // Clean up the accumulator file
+                    try { File.Delete(consumptionFilePath); } catch { }
+                }
             }
+
+            // Capture issueId before clearing state (needed for sentinel return value context)
+            var completedIssueId = _currentIssueId;
 
             _currentIssueId = null;
             _currentWorkspace = null;

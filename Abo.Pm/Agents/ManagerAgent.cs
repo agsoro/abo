@@ -174,7 +174,7 @@ public class ManagerAgent : IAgent
             // We need a unique session ID for the sub-agent
             var subSessionId = $"sub-{Guid.NewGuid():N}";
 
-            var result = await _orchestrator.RunAgentLoopAsync(specialist, initialMessage, subSessionId, "ManagerAgent");
+            var result = await _orchestrator.RunAgentLoopAsync(specialist, initialMessage, subSessionId, "ManagerAgent", issueId: issueId);
 
             // Instruct the orchestrator to terminate the manager agent loop
             return $"[TERMINATE_MANAGER_LOOP] Specialist output:\n{result}";
