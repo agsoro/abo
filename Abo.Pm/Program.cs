@@ -307,7 +307,8 @@ app.Lifetime.ApplicationStarted.Register(() =>
                         foreach (var issue in group) {
                             var step = Abo.Core.WorkflowEngine.ResolveStepIdFallback(issue);
                             var role = Abo.Core.WorkflowEngine.GetStepInfo(step)?.RequiredRole ?? "Any";
-                            sb.AppendLine($"- [{issue.Id}] {issue.Title} (Status: {step}, Role: {role})");
+                            var envName = issue.Labels.FirstOrDefault(l => l.StartsWith("env: ", StringComparison.OrdinalIgnoreCase))?.Substring(5).Trim() ?? "?";
+                            sb.AppendLine($"- [{issue.Id}] {issue.Title} (Env: {envName}, Step: {step}, Role: {role})");
                         }
                     }
                 } else {
