@@ -160,4 +160,13 @@ public class FileSystemIssueTrackerConnector : IIssueTrackerConnector
         await SaveRecordsAsync(records);
         return "Comment added.";
     }
+
+    /// <summary>
+    /// No-op for the filesystem connector — native sub-issue linking is a GitHub concept.
+    /// Always returns true to allow the caller to continue with label-based tracking.
+    /// </summary>
+    public Task<bool> AddSubIssueAsync(string parentIssueNodeId, string childIssueNodeId)
+    {
+        return Task.FromResult(true);
+    }
 }

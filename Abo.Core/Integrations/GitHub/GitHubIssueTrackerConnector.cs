@@ -296,6 +296,56 @@ public class GitHubIssueTrackerConnector : IIssueTrackerConnector
         return await SendGitHubRequestAsync(req);
     }
 
+    /// <summary>
+    /// Links a child issue as a native GitHub sub-issue of the parent using the GraphQL <c>addSubIssue</c> mutation.
+    /// Returns true on success, false on failure (graceful degradation — label-based tracking is the fallback).
+    /// </summary>
+    public async Task<bool> AddSubIssueAsync(string parentIssueNodeId, string childIssueNodeId)
+    {
+        try
+        {
+            var mutation = @"
+mutation AddSubIssue($parentIssueId: ID!, $childIssueId: ID!) {
+  addSubIssue(input: { issueId: $parentIssueId, subIssueId: $childIssueId }) {
+    issue { id number }
+    subIssue { id number }
+  }
+}";
+            var result = await SendGraphQLRequestAsync(
+                new { query = mutation, variables = new { parentIssueId = parentIssueNodeId, childIssueId = childIssueNodeId } },
+                throwGraphQLErrors: false);
+
+            // Check if the mutation returned valid data (not just errors)
+            using var doc = JsonDocument.Parse(result);
+            if (doc.RootElement.TryGetProperty("data", out var data) &&
+                data.TryGetProperty("addSubIssue", out var addSubIssue) &&
+                addSubIssue.ValueKind != JsonValueKind.Null)
+            {
+                return true;
+            }
+
+            // Log warning if there were GraphQL errors but don't throw
+            if (doc.RootElement.TryGetProperty("errors", out var errors) && errors.ValueKind == JsonValueKind.Array)
+            {
+                var firstMsg = errors.GetArrayLength() > 0
+                    ? errors[0].GetProperty("message").GetString()
+                    : "unknown error";
+                Console.ForegroundColor = ConsoleColor.Yellow;
+                Console.WriteLine($"[GitHub Connector Warning] addSubIssue GraphQL returned errors: {firstMsg}. Falling back to label-based tracking.");
+                Console.ResetColor();
+            }
+
+            return false;
+        }
+        catch (Exception ex)
+        {
+            Console.ForegroundColor = ConsoleColor.Yellow;
+            Console.WriteLine($"[GitHub Connector Warning] AddSubIssueAsync failed: {ex.Message}. Falling back to label-based tracking.");
+            Console.ResetColor();
+            return false;
+        }
+    }
+
     private async Task EnsureProjectsCachedAsync()
     {
         if (_projectNodeIds.Any()) return;

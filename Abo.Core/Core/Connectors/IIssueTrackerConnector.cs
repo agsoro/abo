@@ -10,4 +10,10 @@ public interface IIssueTrackerConnector
     Task<IssueRecord> UpdateIssueAsync(string issueId, string? title = null, string? body = null, string? state = null, string[]? labels = null, string? project = null, string? stepId = null);
     Task<bool> DeleteIssueAsync(string issueId);
     Task<string> AddIssueCommentAsync(string issueId, string body);
+
+    /// <summary>
+    /// Links a child issue as a sub-issue of the parent using the native issue tracker API.
+    /// Returns true on success, false if the operation is not supported or fails gracefully.
+    /// </summary>
+    Task<bool> AddSubIssueAsync(string parentIssueNodeId, string childIssueNodeId);
 }

@@ -71,12 +71,41 @@ public class GetOpenWorkTool : IAboTool
                 return "No open issue work found.";
             }
 
-            // Sort issues by step priority so newly triaged (open) issues appear first,
-            // then prefer issues closest to completion (review > check > work > planned).
+            // --- Sub-issue blocking logic ---
+            // Build a parent → children map from "parent: <id>" labels on child issues
+            var childrenByParentId = activeIssues
+                .Where(i => i.Labels.Any(l => l.StartsWith("parent: ", StringComparison.OrdinalIgnoreCase)))
+                .GroupBy(i => ExtractLabelValue(i.Labels, "parent"))
+                .Where(g => g.Key != null)
+                .ToDictionary(g => g.Key!, g => g.ToList());
+
+            // Determine which parent issues are blocked by at least one non-terminal child
+            var blockedIssueIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var (parentId, children) in childrenByParentId)
+            {
+                bool hasBlockingChild = children.Any(c =>
+                {
+                    var childStep = Abo.Core.WorkflowEngine.ResolveStepIdFallback(c).ToLower();
+                    // "open", "planned", "work", "review" block the parent; "check", "done", "invalid" do not
+                    return childStep is "open" or "planned" or "work" or "review";
+                });
+                if (hasBlockingChild)
+                {
+                    blockedIssueIds.Add(parentId);
+                }
+            }
+
+            // Filter out blocked parents from the actionable work queue
             activeIssues = activeIssues
+                .Where(i => !blockedIssueIds.Contains(i.Id))
                 .OrderBy(i => GetStepPriority(Abo.Core.WorkflowEngine.ResolveStepIdFallback(i)))
                 .ThenBy(i => i.Id)
                 .ToList();
+
+            if (!activeIssues.Any())
+            {
+                return "No open issue work found. All remaining issues are blocked by open sub-issues.";
+            }
 
             var output = new System.Text.StringBuilder();
             output.AppendLine("# Open Work Items\n");
@@ -84,6 +113,10 @@ public class GetOpenWorkTool : IAboTool
             // Priority rule banner
             output.AppendLine("> ⚠️ **PRIORITY RULE**: Pick the first listed issue. Issues are sorted: `open` > `review` > `check` > `work` > `planned`.");
             output.AppendLine("> Always process open (newly triaged) issues first. Among in-progress issues, prefer those closest to completion: review first, then check, work, planned.");
+            if (blockedIssueIds.Any())
+            {
+                output.AppendLine($"> 🔒 **{blockedIssueIds.Count} parent issue(s) are hidden** because they have open sub-issues that must be completed first.");
+            }
             output.AppendLine();
 
             foreach (var issue in activeIssues)
@@ -112,7 +145,14 @@ public class GetOpenWorkTool : IAboTool
                     _ => "⚪ Unknown"
                 };
 
-                output.AppendLine($"### Issue: {issue.Title} (Ref: `{projRef}` | Issue: `{issue.Id}`)");
+                // Indicate if this issue is itself a sub-issue
+                var parentId = ExtractLabelValue(issue.Labels, "parent");
+                var subIssueNote = parentId != null ? $" _(sub-issue of #{parentId})_" : string.Empty;
+
+                // Indicate if this issue has sub-issues still in progress (sub-issue count info)
+                var subIssueCount = childrenByParentId.TryGetValue(issue.Id, out var subs) ? subs.Count : 0;
+
+                output.AppendLine($"### Issue: {issue.Title} (Ref: `{projRef}` | Issue: `{issue.Id}`){subIssueNote}");
                 if (!string.IsNullOrWhiteSpace(issue.Project))
                     output.AppendLine($"- **Project**: `{issue.Project}`");
                 output.AppendLine($"- **Environment**: `{envName}`");
@@ -132,6 +172,8 @@ public class GetOpenWorkTool : IAboTool
                     output.AppendLine($"- **Next Steps**: {stepsDesc}");
                 }
                 output.AppendLine($"- **State**: {status}");
+                if (subIssueCount > 0)
+                    output.AppendLine($"- **Sub-issues**: {subIssueCount} linked sub-issue(s) (all in terminal/near-terminal state — parent is unblocked)");
                 output.AppendLine($"- **Action**: Run `checkout_task {{\\\"issueId\\\": \\\"{issue.Id}\\\"}}` to pick up this work.");
                 output.AppendLine();
             }

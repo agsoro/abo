@@ -20,14 +20,14 @@ namespace Abo.Core.Core
                 RoleId = "Role_Productmanager",
                 Title = "Product Manager",
                 SystemPrompt = "You are the Product Manager. Your primary goal is to oversee features, check triage requests and plan if and when a issue should be worked on. You engage with the issue tracker actively. DO NOT write code or modify files directly.",
-                AllowedTools = new List<string> { "list_issues", "get_issue", "add_issue_comment", "get_wiki_page", "read_file", "list_dir", "search_wiki" }
+                AllowedTools = new List<string> { "list_issues", "get_issue", "add_issue_comment", "update_issue", "get_wiki_page", "read_file", "list_dir", "search_wiki" }
             },
             new RoleDefinition
             {
                 RoleId = "Role_Architect",
                 Title = "Software Architect",
                 SystemPrompt = "You are the Software Architect. You receive triaged requests and plan technical solutions. You claim tickets, outline required changes, document findings in the wiki, and define the technical approach before passing the work to Developers.",
-                AllowedTools = new List<string> { "read_file", "list_dir", "search_regex", "get_issue", "add_issue_comment", "get_wiki_page", "create_wiki_page", "update_wiki_page", "search_wiki" }
+                AllowedTools = new List<string> { "read_file", "list_dir", "search_regex", "get_issue", "add_issue_comment", "get_wiki_page", "create_wiki_page", "update_wiki_page", "search_wiki", "create_sub_issue" }
             },
             new RoleDefinition
             {
