@@ -13,10 +13,14 @@ using Microsoft.Extensions.Options;
 namespace Abo.Services;
 
 /// <summary>
-/// Background service that triggers on every full hour to:
+/// Background service that triggers every 10 minutes (aligned to UTC grid: :00, :10, :20, …) to:
 ///   1. Fetch all open issues.
 ///   2. Send a Mattermost DM to the CEO listing the open work it intends to process.
 ///   3. Invoke the ManagerAgent via the Orchestrator to start processing that work.
+///
+/// A <see cref="SemaphoreSlim"/> concurrency guard ensures that if a previous cycle is still
+/// running when the next tick fires, the new tick is skipped (logged as a warning) to prevent
+/// parallel development phases on a single environment.
 ///
 /// Can be disabled via Config:CronjobEnabled = false in appsettings.json.
 /// </summary>
@@ -25,6 +29,11 @@ public class CronjobAutoStartService : BackgroundService
     private readonly IServiceProvider _serviceProvider;
     private readonly ILogger<CronjobAutoStartService> _logger;
     private readonly IConfiguration _configuration;
+
+    /// <summary>
+    /// Ensures only one <see cref="RunCycleAsync"/> execution is active at a time.
+    /// </summary>
+    private readonly SemaphoreSlim _cycleSemaphore = new SemaphoreSlim(1, 1);
 
     public CronjobAutoStartService(
         IServiceProvider serviceProvider,
@@ -45,12 +54,12 @@ public class CronjobAutoStartService : BackgroundService
             return;
         }
 
-        _logger.LogInformation("CronjobAutoStartService started. Will trigger on every full hour (UTC).");
+        _logger.LogInformation("CronjobAutoStartService started. Will trigger every 10 minutes (UTC, aligned to grid).");
 
         while (!stoppingToken.IsCancellationRequested)
         {
-            var delay = TimeUntilNextFullHour();
-            _logger.LogInformation("CronjobAutoStartService: next trigger in {Delay:hh\\:mm\\:ss}.", delay);
+            var delay = TimeUntilNextTenMinuteMark();
+            _logger.LogInformation("CronjobAutoStartService: next trigger in {Delay:mm\\:ss}.", delay);
 
             try
             {
@@ -65,20 +74,40 @@ public class CronjobAutoStartService : BackgroundService
             if (stoppingToken.IsCancellationRequested)
                 break;
 
-            await RunCycleAsync(stoppingToken);
+            // Concurrency guard: skip this tick if the previous cycle is still running
+            if (!await _cycleSemaphore.WaitAsync(TimeSpan.Zero, stoppingToken))
+            {
+                _logger.LogWarning("CronjobAutoStartService: Previous cycle still running — skipping tick at {SkipTime:O}.", DateTime.UtcNow);
+                continue;
+            }
+
+            try
+            {
+                await RunCycleAsync(stoppingToken);
+            }
+            finally
+            {
+                _cycleSemaphore.Release();
+            }
         }
 
         _logger.LogInformation("CronjobAutoStartService stopped.");
     }
 
     /// <summary>
-    /// Calculates the time span until the next full UTC hour.
+    /// Calculates the time span until the next 10-minute grid mark (UTC).
+    /// Grid marks are :00, :10, :20, :30, :40, :50 of every hour.
     /// </summary>
-    private static TimeSpan TimeUntilNextFullHour()
+    private static TimeSpan TimeUntilNextTenMinuteMark()
     {
         var now = DateTime.UtcNow;
-        var nextHour = now.Date.AddHours(now.Hour + 1);
-        return nextHour - now;
+        var minutesIntoCurrentBlock = now.Minute % 10;
+        var nextMark = now.Date
+            .AddHours(now.Hour)
+            .AddMinutes(now.Minute - minutesIntoCurrentBlock + 10)
+            .AddSeconds(-now.Second)
+            .AddMilliseconds(-now.Millisecond);
+        return nextMark - now;
     }
 
     /// <summary>
