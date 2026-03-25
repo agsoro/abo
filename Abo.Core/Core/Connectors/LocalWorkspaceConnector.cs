@@ -162,7 +162,12 @@ public class LocalWorkspaceConnector : IWorkspaceConnector
 
     public async Task<string> RunPythonAsync(string arguments)
     {
-        return await RunProcessAsync("python", arguments);
+        var executable = _environment.Os switch
+        {
+            "win" => "python",
+            _ => "python3"   // "linux", "mac", and any future values
+        };
+        return await RunProcessAsync(executable, arguments);
     }
 
     private async Task<string> RunProcessAsync(string command, string arguments)
