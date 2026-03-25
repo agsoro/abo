@@ -123,11 +123,10 @@ public class CronjobAutoStartService : BackgroundService
     {
         var now = DateTime.UtcNow;
         var minutesIntoCurrentBlock = now.Minute % 10;
+        // now.Date is already 00:00:00.000 — no need to subtract seconds or milliseconds.
         var nextMark = now.Date
             .AddHours(now.Hour)
-            .AddMinutes(now.Minute - minutesIntoCurrentBlock + 10)
-            .AddSeconds(-now.Second)
-            .AddMilliseconds(-now.Millisecond);
+            .AddMinutes(now.Minute - minutesIntoCurrentBlock + 10);
         return nextMark - now;
     }
 
