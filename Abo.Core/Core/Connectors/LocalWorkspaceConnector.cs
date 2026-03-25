@@ -170,6 +170,11 @@ public class LocalWorkspaceConnector : IWorkspaceConnector
         return await RunProcessAsync(executable, arguments);
     }
 
+    public async Task<string> RunShellAsync(string command, string arguments)
+    {
+        return await RunProcessAsync(command, arguments);
+    }
+
     private async Task<string> RunProcessAsync(string command, string arguments)
     {
         try
