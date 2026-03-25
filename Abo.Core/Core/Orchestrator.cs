@@ -467,7 +467,16 @@ public class Orchestrator
             await _trafficLogLock.WaitAsync();
             try
             {
+                const int MaxLogEntries = 500;
                 await File.AppendAllTextAsync(_logPath, line);
+                var allLines = (await File.ReadAllLinesAsync(_logPath))
+                    .Where(l => !string.IsNullOrWhiteSpace(l))
+                    .ToArray();
+                if (allLines.Length > MaxLogEntries)
+                {
+                    var trimmed = allLines.Skip(allLines.Length - MaxLogEntries);
+                    await File.WriteAllLinesAsync(_logPath, trimmed);
+                }
             }
             finally
             {
@@ -499,7 +508,16 @@ public class Orchestrator
             await _consumptionLogLock.WaitAsync();
             try
             {
+                const int MaxLogEntries = 500;
                 await File.AppendAllTextAsync(_consumptionLogPath, line);
+                var allLines = (await File.ReadAllLinesAsync(_consumptionLogPath))
+                    .Where(l => !string.IsNullOrWhiteSpace(l))
+                    .ToArray();
+                if (allLines.Length > MaxLogEntries)
+                {
+                    var trimmed = allLines.Skip(allLines.Length - MaxLogEntries);
+                    await File.WriteAllLinesAsync(_consumptionLogPath, trimmed);
+                }
             }
             finally
             {
