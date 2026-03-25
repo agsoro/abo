@@ -130,8 +130,8 @@ public class GitHubIssueTrackerConnectorIntegrationTests
         
         try
         {
-            // Step 1: open -> planned (Using 'Other / Default' transition to route it to the planned GitHub board)
-            var t1 = Abo.Core.WorkflowEngine.GetTransitions(currentIssue.StepId).First(t => t.NextStepId == "planned" && t.ConditionName == "Other / Default");
+            // Step 1: open -> planned (Using 'Backlog' transition to route it to the planned GitHub board)
+            var t1 = Abo.Core.WorkflowEngine.GetTransitions(currentIssue.StepId).First(t => t.NextStepId == "planned" && t.ConditionName == "Backlog");
             t1.ApplyState?.Invoke(currentIssue);
             // ApplyState modifies currentIssue.Project to "planned".
             var updated1 = await _connector.UpdateIssueAsync(currentIssue.Id, project: currentIssue.Project, stepId: t1.NextStepId);
