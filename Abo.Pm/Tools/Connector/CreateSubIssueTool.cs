@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Abo.Contracts.Models;
 using Abo.Core.Connectors;
 using Microsoft.Extensions.Configuration;
 
@@ -35,7 +36,12 @@ public class CreateSubIssueTool : IAboTool
             parentIssueId = new { type = "string", description = "The numeric ID of the parent issue that this sub-issue belongs to." },
             title = new { type = "string", description = "The title of the sub-issue." },
             body = new { type = "string", description = "The detailed body description of the sub-issue. Use markdown as appropriate." },
-            type = new { type = "string", description = "The type of the sub-issue, e.g. 'bug', 'feature', 'task'." },
+            type = new
+            {
+                type = "string",
+                description = "The type of the sub-issue.",
+                @enum = new[] { "feature", "bug", "improvement", "task", "chore" }
+            },
             size = new { type = "string", description = "Optional relative size estimate, e.g. 'S', 'M', 'L'." }
         },
         required = new[] { "parentIssueId", "title", "body", "type" },
@@ -55,6 +61,9 @@ public class CreateSubIssueTool : IAboTool
             {
                 return "Error: parentIssueId, title, body, and type parameters are required.";
             }
+
+            if (!IssueType.IsValid(type))
+                return $"Error: Invalid type '{type}'. Allowed values: {string.Join(", ", IssueType.AllowedValues)}.";
 
             args.TryGetValue("size", out var size);
 
