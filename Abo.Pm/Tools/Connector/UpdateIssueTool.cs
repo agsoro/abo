@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Abo.Contracts.Models;
 using Abo.Core.Connectors;
 
 namespace Abo.Tools.Connector;
@@ -13,7 +14,7 @@ public class UpdateIssueTool : IAboTool
     }
 
     public string Name => "update_issue";
-    public string Description => "Updates the title and/or body of an existing issue in the configured issue tracker. Use this to standardize issue titles to the format: 'type: component: reason' (5–15 words, where type = feature/bug/improvement) and rephrase the body to a concise, technical description containing only necessary information.";
+    public string Description => "Updates the title, body, and/or type of an existing issue. Use this to standardize issue titles to the format: 'type: component: reason' (5–15 words) and rephrase the body to a concise, technical description. Also used during triage to fill or correct the 'type' label.";
 
     public object ParametersSchema => new
     {
@@ -22,7 +23,13 @@ public class UpdateIssueTool : IAboTool
         {
             issueId = new { type = "string", description = "The ID or number of the issue to update." },
             title = new { type = "string", description = "Optional. The new title for the issue. Should follow the format: 'type: component: reason' (5–15 words, type = feature/bug/improvement)." },
-            body = new { type = "string", description = "Optional. The new body/description for the issue. Should be rephrased to a clear, technical perspective with only necessary information." }
+            body = new { type = "string", description = "Optional. The new body/description for the issue. Should be rephrased to a clear, technical perspective with only necessary information." },
+            type = new
+            {
+                type = "string",
+                description = "Optional. Set or correct the issue type label. Used during triage to fill a missing or invalid type.",
+                @enum = new[] { "feature", "bug", "improvement", "task", "chore" }
+            },
         },
         required = new[] { "issueId" },
         additionalProperties = false
@@ -42,6 +49,7 @@ public class UpdateIssueTool : IAboTool
 
             string? title = null;
             string? body = null;
+            string[]? labels = null;
 
             if (args.TryGetValue("title", out var titleElement) && titleElement.ValueKind == JsonValueKind.String)
                 title = titleElement.GetString();
@@ -49,7 +57,22 @@ public class UpdateIssueTool : IAboTool
             if (args.TryGetValue("body", out var bodyElement) && bodyElement.ValueKind == JsonValueKind.String)
                 body = bodyElement.GetString();
 
-            var updated = await _connector.UpdateIssueAsync(issueId, title: title, body: body);
+            if (args.TryGetValue("type", out var typeElement) && typeElement.ValueKind == JsonValueKind.String)
+            {
+                var newType = typeElement.GetString();
+                if (!IssueType.IsValid(newType))
+                    return $"Error: Invalid type '{newType}'. Allowed values: {string.Join(", ", IssueType.AllowedValues)}.";
+
+                var existing = await _connector.GetIssueAsync(issueId);
+                if (existing != null)
+                {
+                    existing.Labels.RemoveAll(l => l.StartsWith("type: ", StringComparison.OrdinalIgnoreCase));
+                    existing.Labels.Add($"type: {newType}");
+                    labels = existing.Labels.ToArray();
+                }
+            }
+
+            var updated = await _connector.UpdateIssueAsync(issueId, title: title, body: body, labels: labels);
             return JsonSerializer.Serialize(updated);
         }
         catch (Exception ex)
