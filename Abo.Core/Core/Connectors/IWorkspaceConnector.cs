@@ -10,6 +10,15 @@ public interface IWorkspaceConnector
     Task<string> RunGitAsync(string arguments);
     Task<string> RunDotnetAsync(string arguments);
     Task<string> RunPythonAsync(string arguments);
+
+    /// <summary>
+    /// Runs a shell command (a named executable) in the workspace directory.
+    /// Use for pyenv commands, shell scripts, and other tools not covered by git/dotnet/python.
+    /// </summary>
+    /// <param name="command">The executable/command name (e.g., "pyenv", "bash", "npm").</param>
+    /// <param name="arguments">Arguments to pass to the command.</param>
+    Task<string> RunShellAsync(string command, string arguments);
+
     Task<string> SearchRegexAsync(string relativePath, string pattern, int limitLinesPerFile);
 
     /// <summary>

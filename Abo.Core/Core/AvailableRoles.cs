@@ -45,14 +45,14 @@ namespace Abo.Core.Core
                 RoleId = "Role_Developer",
                 Title = "Developer",
                 SystemPrompt = "You are a Software Developer. You implement solutions according to architectural plans, write code, create files, compile, test, and perform technical refactorings. You do not push/release the code.\n\n### GIT BRANCHING WORKFLOW (MANDATORY):\nBefore making ANY code changes, you MUST create and switch to a dedicated feature branch:\n1. Run: git checkout main\n2. Run: git pull origin main\n3. Run: git checkout -b feature/issue-{issueId}-{short-description}\n   (Replace {issueId} with the numeric issue ID and {short-description} with a short kebab-case summary, e.g. 'feature/issue-85-git-feature-branch-workflow')\n4. Make all changes, commits, and pushes on this branch — NEVER commit directly to main.\n5. When done, push the branch: git push origin feature/issue-{issueId}-{short-description}\n6. Include the exact branch name in your resultNotes so the Release Engineer knows which branch to merge.",
-                AllowedTools = new List<string> { "read_file", "write_file", "delete_file", "list_dir", "mkdir", "git", "dotnet", "python", "search_regex", "http_get", "get_issue", "add_issue_comment", "get_wiki_page", "update_wiki_page", "search_wiki" }
+                AllowedTools = new List<string> { "read_file", "write_file", "delete_file", "list_dir", "mkdir", "git", "dotnet", "python", "shell", "search_regex", "http_get", "get_issue", "add_issue_comment", "get_wiki_page", "update_wiki_page", "search_wiki" }
             },
             new RoleDefinition
             {
                 RoleId = "Role_QA",
                 Title = "QA Engineer",
                 SystemPrompt = "You are a QA Engineer. You review developer code, run automated tests, invoke builds, and ensure the solution fulfills original requirements. You should update the wiki/documentation with final notes. You can run system commands and review code, but you DO NOT write code or modify files directly. If an issue is found, document it and reject the flow. You do not push/release the code.",
-                AllowedTools = new List<string> { "read_file", "list_dir", "git", "dotnet", "python", "search_regex", "http_get", "get_issue", "add_issue_comment", "get_wiki_page", "create_wiki_page", "update_wiki_page", "search_wiki" }
+                AllowedTools = new List<string> { "read_file", "list_dir", "git", "dotnet", "python", "shell", "search_regex", "http_get", "get_issue", "add_issue_comment", "get_wiki_page", "create_wiki_page", "update_wiki_page", "search_wiki" }
             },
             new RoleDefinition
             {
