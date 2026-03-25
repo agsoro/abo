@@ -59,6 +59,27 @@ public class CronjobAutoStartService : BackgroundService
         while (!stoppingToken.IsCancellationRequested)
         {
             var delay = TimeUntilNextTenMinuteMark();
+
+            // Lower-bound clamp: Task.Delay throws ArgumentOutOfRangeException for non-positive values.
+            // This can happen due to millisecond-level precision edge cases when the loop re-enters
+            // exactly on (or just after) a 10-minute grid boundary.
+            if (delay <= TimeSpan.Zero)
+            {
+                _logger.LogWarning(
+                    "CronjobAutoStartService: Computed delay was non-positive ({Delay}); clamping to 100 ms.",
+                    delay);
+                delay = TimeSpan.FromMilliseconds(100);
+            }
+            // Upper-bound clamp (defence-in-depth): guard against a corrupt or extreme system clock
+            // returning a value that would exceed Task.Delay's maximum allowed timer duration.
+            else if (delay > TimeSpan.FromMinutes(10))
+            {
+                _logger.LogWarning(
+                    "CronjobAutoStartService: Computed delay exceeded 10 minutes ({Delay}); clamping to 10 min.",
+                    delay);
+                delay = TimeSpan.FromMinutes(10);
+            }
+
             _logger.LogInformation("CronjobAutoStartService: next trigger in {Delay:mm\\:ss}.", delay);
 
             try
