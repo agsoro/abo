@@ -25,6 +25,13 @@ public class ConnectorEnvironment
     public string Os { get; set; } = "win";
 
     /// <summary>
+    /// The primary technology stack of the environment's projects.
+    /// Valid values: "dotnet", "python", "node", "mixed".
+    /// Required — used to filter which runtime tools are available to agents.
+    /// </summary>
+    public string Technology { get; set; } = string.Empty;
+
+    /// <summary>
     /// The root directory path for the environment where workspace operations (file reading/writing, git, dotnet) take place.
     /// </summary>
     public string Dir { get; set; } = string.Empty;

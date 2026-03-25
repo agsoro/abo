@@ -77,7 +77,26 @@ public class EnvironmentValidationService : IHostedService
                     _logger.LogWarning("  [WARN] Environment has no Dir configured.");
                 }
 
-                // 2. Wiki Check
+                // 2. Technology field check
+                var validTechnologies = new[] { "dotnet", "python", "node", "mixed" };
+                if (string.IsNullOrWhiteSpace(env.Technology))
+                {
+                    var err = $"Environment '{env.Name}': Missing required 'Technology' field. Valid values: dotnet, python, node, mixed.";
+                    _logger.LogError($"  [ERROR] {err}");
+                    _startupStatus.AddError(err);
+                }
+                else if (!validTechnologies.Contains(env.Technology, StringComparer.OrdinalIgnoreCase))
+                {
+                    var err = $"Environment '{env.Name}': Invalid 'Technology' value '{env.Technology}'. Valid values: dotnet, python, node, mixed.";
+                    _logger.LogError($"  [ERROR] {err}");
+                    _startupStatus.AddError(err);
+                }
+                else
+                {
+                    _logger.LogInformation($"  [OK] Technology: '{env.Technology}'.");
+                }
+
+                // 3. Wiki Check
                 if (env.Wiki != null)
                 {
                     if (env.Wiki.Type.Equals("filesystem", StringComparison.OrdinalIgnoreCase))
@@ -124,7 +143,7 @@ public class EnvironmentValidationService : IHostedService
                     }
                 }
 
-                // 3. Issue Tracker Check
+                // 4. Issue Tracker Check
                 if (env.IssueTracker != null)
                 {
                     if (env.IssueTracker.Type.Equals("github", StringComparison.OrdinalIgnoreCase))
