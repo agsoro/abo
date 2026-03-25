@@ -246,9 +246,28 @@ public class SpecialistAgent : IAgent
             _connectorTools.Add(new ListDirTool(_currentWorkspace));
             _connectorTools.Add(new MkDirTool(_currentWorkspace));
             _connectorTools.Add(new GitTool(_currentWorkspace));
-            _connectorTools.Add(new DotnetTool(_currentWorkspace));
-            _connectorTools.Add(new PythonTool(_currentWorkspace));
-            _connectorTools.Add(new ShellTool(_currentWorkspace));
+
+            // Technology-based runtime tool filtering
+            var tech = targetEnv.Technology?.ToLowerInvariant() ?? string.Empty;
+
+            if (string.IsNullOrWhiteSpace(tech))
+            {
+                // Fallback: mount all runtime tools; startup validation already logged the error
+                _connectorTools.Add(new DotnetTool(_currentWorkspace));
+                _connectorTools.Add(new PythonTool(_currentWorkspace));
+                _connectorTools.Add(new ShellTool(_currentWorkspace));
+            }
+            else
+            {
+                bool includeDotnet = tech == "dotnet" || tech == "mixed";
+                bool includePython = tech == "python" || tech == "mixed";
+                bool includeShell  = tech == "python" || tech == "node" || tech == "mixed";
+
+                if (includeDotnet) _connectorTools.Add(new DotnetTool(_currentWorkspace));
+                if (includePython) _connectorTools.Add(new PythonTool(_currentWorkspace));
+                if (includeShell)  _connectorTools.Add(new ShellTool(_currentWorkspace));
+            }
+
             _connectorTools.Add(new SearchRegexTool(_currentWorkspace));
             _connectorTools.Add(new HttpGetTool(_currentWorkspace));
 
