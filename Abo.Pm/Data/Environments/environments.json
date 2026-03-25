@@ -3,6 +3,7 @@
         "Name": "abo",
         "Type": "local",
         "Os": "win",
+        "Technology": "dotnet",
         "Dir": "C:\\src\\agsoro\\abo",
         "IssueTracker": {
             "Type": "github",
@@ -24,6 +25,7 @@
         "Name": "abo-linux",
         "Type": "local",
         "Os": "linux",
+        "Technology": "dotnet",
         "Dir": "/home/user/repos/abo",
         "IssueTracker": {
             "Type": "github",
