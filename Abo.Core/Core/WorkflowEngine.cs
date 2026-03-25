@@ -34,7 +34,7 @@ public static class WorkflowEngine
             "planned" => new ProcessStepInfo { StepId = "planned", StepName = "Solution Planning", RequiredRole = "Role_Architect" },
             "work" => new ProcessStepInfo { StepId = "work", StepName = "Implementation", RequiredRole = "Role_Developer" },
             "review" => new ProcessStepInfo { StepId = "review", StepName = "QA Review", RequiredRole = "Role_QA" },
-            "check" => new ProcessStepInfo { StepId = "check", StepName = "Release Documentation", RequiredRole = "Role_Releaseengineer" },
+            "check" => new ProcessStepInfo { StepId = "check", StepName = "Release", RequiredRole = "Role_Releaseengineer" },
             "done" => new ProcessStepInfo { StepId = "done", StepName = "Completed", RequiredRole = "" },
             "invalid" => new ProcessStepInfo { StepId = "invalid", StepName = "Rejected or Duplicate", RequiredRole = "" },
             "waiting customer" => new ProcessStepInfo { StepId = "waiting customer", StepName = "Waiting for Customer Input", RequiredRole = "" },
@@ -48,29 +48,29 @@ public static class WorkflowEngine
         {
             "open" => new List<WorkflowTransition>
             {
-                new WorkflowTransition { ConditionName = "Reject or Duplicate?", NextStepId = "invalid", ApplyState = issue => SetProject(issue, "requested") },
-                new WorkflowTransition { ConditionName = "Must-have?", NextStepId = "planned", ApplyState = issue => SetProject(issue, "release-current") },
-                new WorkflowTransition { ConditionName = "Should-have?", NextStepId = "planned", ApplyState = issue => SetProject(issue, "release-next") },
-                new WorkflowTransition { ConditionName = "Other / Default", NextStepId = "planned", ApplyState = issue => SetProject(issue, "planned") }
+                new WorkflowTransition { ConditionName = "Reject or Duplicate", NextStepId = "invalid", ApplyState = issue => SetProject(issue, "requested") },
+                new WorkflowTransition { ConditionName = "Must-have", NextStepId = "planned", ApplyState = issue => SetProject(issue, "release-current") },
+                new WorkflowTransition { ConditionName = "Should-have", NextStepId = "planned", ApplyState = issue => SetProject(issue, "release-next") },
+                new WorkflowTransition { ConditionName = "Backlog", NextStepId = "planned", ApplyState = issue => SetProject(issue, "planned") }
             },
             "planned" => new List<WorkflowTransition>
             {
-                new WorkflowTransition { ConditionName = "Needs more input/help?", NextStepId = "waiting customer" },
-                new WorkflowTransition { ConditionName = "Solution Planned successfully", NextStepId = "work" }
+                new WorkflowTransition { ConditionName = "Problem: Need more input/help", NextStepId = "waiting customer" },
+                new WorkflowTransition { ConditionName = "Solution planned", NextStepId = "work" }
             },
             "work" => new List<WorkflowTransition>
             {
-                new WorkflowTransition { ConditionName = "Needs more input/help?", NextStepId = "waiting customer" },
+                new WorkflowTransition { ConditionName = "Problem: Need more input/help", NextStepId = "waiting customer" },
                 new WorkflowTransition { ConditionName = "Implementation completed", NextStepId = "review" }
             },
             "review" => new List<WorkflowTransition>
             {
-                new WorkflowTransition { ConditionName = "Should the solution be rejected?", NextStepId = "planned" },
-                new WorkflowTransition { ConditionName = "Solution Accepted", NextStepId = "check" }
+                new WorkflowTransition { ConditionName = "Problem: Solution rejected", NextStepId = "planned" },
+                new WorkflowTransition { ConditionName = "Solution accepted", NextStepId = "check" }
             },
             "check" => new List<WorkflowTransition>
             {
-                new WorkflowTransition { ConditionName = "Release steps finished", NextStepId = "done" }
+                new WorkflowTransition { ConditionName = "Release finished", NextStepId = "done" }
             },
             _ => new List<WorkflowTransition>()
         };
