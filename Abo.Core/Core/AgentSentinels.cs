@@ -14,4 +14,12 @@ public static class AgentSentinels
     /// Format: [COMPLETE_TASK_RESULT]:{resultNotes}
     /// </summary>
     public const string CompleteTaskResult = "[COMPLETE_TASK_RESULT]:";
+
+    /// <summary>
+    /// Prefix returned by SpecialistAgent.postpone_task.
+    /// The Orchestrator detects this and immediately returns the contextNotes
+    /// to the caller without advancing the workflow step.
+    /// Format: [POSTPONE_TASK_RESULT]:{contextNotes}
+    /// </summary>
+    public const string PostponeTaskResult = "[POSTPONE_TASK_RESULT]:";
 }
