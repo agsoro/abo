@@ -65,7 +65,7 @@ public static class WorkflowEngine
             },
             "review" => new List<WorkflowTransition>
             {
-                new WorkflowTransition { ConditionName = "Should the solution be rejected?", NextStepId = "work" },
+                new WorkflowTransition { ConditionName = "Should the solution be rejected?", NextStepId = "planned" },
                 new WorkflowTransition { ConditionName = "Solution Accepted", NextStepId = "check" }
             },
             "check" => new List<WorkflowTransition>
