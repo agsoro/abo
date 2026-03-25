@@ -189,8 +189,28 @@ app.MapGet("/api/llm-traffic", async (HttpContext httpContext) =>
         }
     }
 
-    // Return newest entries first, limited by the limit parameter
-    var result = entries.AsEnumerable().Reverse().Take(limit).ToList();
+    // Return newest entries first with a stable secondary sort.
+    // Pair each entry with its original file line-index so we have a stable tiebreaker
+    // when two entries share the same Timestamp (e.g. REQUEST and RESPONSE written within
+    // the same millisecond). ThenBy(idx) preserves file-write order within a tied timestamp
+    // group, ensuring REQUEST (written first, lower idx) always appears before its paired
+    // RESPONSE (written second, higher idx) in the newest-first output.
+    var indexed = entries
+        .Select((entry, idx) => new { entry, idx })
+        .ToList();
+
+    var result = indexed
+        .OrderByDescending(x =>
+        {
+            if (x.entry.TryGetProperty("Timestamp", out var ts))
+                return ts.GetString() ?? "";
+            return "";
+        })
+        .ThenBy(x => x.idx)   // preserve original write-order (REQUEST before RESPONSE) within same timestamp
+        .Take(limit)
+        .Select(x => x.entry)
+        .ToList();
+
     return Results.Ok(result);
 });
 

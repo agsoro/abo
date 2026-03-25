@@ -26,8 +26,11 @@
                 .replace(/'/g, '&#39;');
         }
 
-        function getEntryKey(entry) {
-            return (entry.Timestamp || '') + '_' + (entry.SessionId || '') + '_' + (entry.Type || '');
+        // index is the entry's positional index in the filtered array.
+        // Appending it guarantees key uniqueness even when Timestamp + SessionId + Type
+        // are identical, preventing silent card deduplication in the cardRegistry Map.
+        function getEntryKey(entry, index) {
+            return (entry.Timestamp || '') + '_' + (entry.SessionId || '') + '_' + (entry.Type || '') + '_' + index;
         }
 
         function formatTimestamp(ts) {
@@ -477,8 +480,10 @@
         // Map from entry key -> { card (DOM node), entry (data), bodyRendered }
         const cardRegistry = new Map();
 
-        function buildCard(entry) {
-            const key         = getEntryKey(entry);
+        // index is the entry's positional index in the filtered array, forwarded
+        // from renderEntries() to guarantee a unique key per card slot.
+        function buildCard(entry, index) {
+            const key         = getEntryKey(entry, index);
             const isExpanded  = expandedIds.has(key);
             const rawType     = (entry.Type || 'UNKNOWN').toUpperCase();
             const displayType = getDisplayType(entry);
@@ -568,8 +573,10 @@
                 }
             }
 
-            // Build a set of keys that should currently be visible
-            const desiredKeys = new Set(filtered.map(getEntryKey));
+            // Build a set of keys that should currently be visible.
+            // Pass the filtered array index (i) to getEntryKey so each slot gets a
+            // unique key even when Timestamp + SessionId + Type values are identical.
+            const desiredKeys = new Set(filtered.map((entry, i) => getEntryKey(entry, i)));
 
             // Remove cards no longer in the filtered set
             for (const [key, rec] of cardRegistry.entries()) {
@@ -588,12 +595,12 @@
 
             for (let i = filtered.length - 1; i >= 0; i--) {
                 const entry = filtered[i];
-                const key   = getEntryKey(entry);
+                const key   = getEntryKey(entry, i);
 
                 let rec = cardRegistry.get(key);
                 if (!rec) {
-                    // New card - create it
-                    const card = buildCard(entry);
+                    // New card - create it (pass i so buildCard uses the same key)
+                    const card = buildCard(entry, i);
                     rec = cardRegistry.get(key); // buildCard sets it
                     entryListEl.insertBefore(card, referenceNode);
                 } else {
