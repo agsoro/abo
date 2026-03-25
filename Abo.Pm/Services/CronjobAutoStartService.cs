@@ -58,26 +58,14 @@ public class CronjobAutoStartService : BackgroundService
 
         while (!stoppingToken.IsCancellationRequested)
         {
-            var delay = TimeUntilNextTenMinuteMark();
+            var delay = TimeUntilNextMark();
 
-            // Lower-bound clamp: Task.Delay throws ArgumentOutOfRangeException for non-positive values.
-            // This can happen due to millisecond-level precision edge cases when the loop re-enters
-            // exactly on (or just after) a 10-minute grid boundary.
             if (delay <= TimeSpan.Zero)
             {
                 _logger.LogWarning(
                     "CronjobAutoStartService: Computed delay was non-positive ({Delay}); clamping to 100 ms.",
                     delay);
                 delay = TimeSpan.FromMilliseconds(100);
-            }
-            // Upper-bound clamp (defence-in-depth): guard against a corrupt or extreme system clock
-            // returning a value that would exceed Task.Delay's maximum allowed timer duration.
-            else if (delay > TimeSpan.FromMinutes(10))
-            {
-                _logger.LogWarning(
-                    "CronjobAutoStartService: Computed delay exceeded 10 minutes ({Delay}); clamping to 10 min.",
-                    delay);
-                delay = TimeSpan.FromMinutes(10);
             }
 
             _logger.LogInformation("CronjobAutoStartService: next trigger in {Delay:mm\\:ss}.", delay);
@@ -116,17 +104,14 @@ public class CronjobAutoStartService : BackgroundService
     }
 
     /// <summary>
-    /// Calculates the time span until the next 10-minute grid mark (UTC).
-    /// Grid marks are :00, :10, :20, :30, :40, :50 of every hour.
+    /// Calculates the time span until the next grid mark (UTC).
     /// </summary>
-    private static TimeSpan TimeUntilNextTenMinuteMark()
+    private static TimeSpan TimeUntilNextMark()
     {
         var now = DateTime.UtcNow;
-        var minutesIntoCurrentBlock = now.Minute % 10;
-        // now.Date is already 00:00:00.000 — no need to subtract seconds or milliseconds.
         var nextMark = now.Date
             .AddHours(now.Hour)
-            .AddMinutes(now.Minute - minutesIntoCurrentBlock + 10);
+            .AddMinutes(now.Minute + 5);
         return nextMark - now;
     }
 
