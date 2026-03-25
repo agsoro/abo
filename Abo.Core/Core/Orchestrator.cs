@@ -18,6 +18,8 @@ public class Orchestrator
     private readonly string _consumptionLogPath = Path.Combine(AppContext.BaseDirectory, "Data", "llm_consumption.jsonl");
 
     private static readonly ConcurrentDictionary<string, SemaphoreSlim> _issueFileLocks = new();
+    private static readonly SemaphoreSlim _trafficLogLock     = new SemaphoreSlim(1, 1);
+    private static readonly SemaphoreSlim _consumptionLogLock = new SemaphoreSlim(1, 1);
 
     public Orchestrator(HttpClient httpClient, IConfiguration configuration, ILogger<Orchestrator> logger, SessionService sessionService)
     {
@@ -462,7 +464,15 @@ public class Orchestrator
                 Content = content
             };
             var line = JsonSerializer.Serialize(logEntry) + Environment.NewLine;
-            await File.AppendAllTextAsync(_logPath, line);
+            await _trafficLogLock.WaitAsync();
+            try
+            {
+                await File.AppendAllTextAsync(_logPath, line);
+            }
+            finally
+            {
+                _trafficLogLock.Release();
+            }
         }
         catch (Exception ex)
         {
@@ -486,7 +496,15 @@ public class Orchestrator
                 TotalCost = totalCost
             };
             var line = JsonSerializer.Serialize(logEntry) + Environment.NewLine;
-            await File.AppendAllTextAsync(_consumptionLogPath, line);
+            await _consumptionLogLock.WaitAsync();
+            try
+            {
+                await File.AppendAllTextAsync(_consumptionLogPath, line);
+            }
+            finally
+            {
+                _consumptionLogLock.Release();
+            }
         }
         catch (Exception ex)
         {
