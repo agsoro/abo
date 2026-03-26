@@ -85,6 +85,7 @@ public class Orchestrator
         double totalCost = 0.0;
         string currentModelName = request.Model;
         bool terminateAfterSynthesis = false;
+        bool loopLimitWarningInjected = false; // Change A: guard flag for one-time warning injection
 
         // Cost-based summarization tracking for SpecialistAgent
         double lastCallInputCost = 0.0;
@@ -207,6 +208,32 @@ public class Orchestrator
                     lastCallInputCost = 0.0;
                 }
 
+                // Change B: Loop-limit warning injection (ephemeral — added to request.Messages only, NOT to _sessionService history)
+                int warningThreshold = (int)(maxLoops * 0.90); // 180 of 200
+
+                if (!loopLimitWarningInjected && currentLoop >= warningThreshold)
+                {
+                    loopLimitWarningInjected = true;
+                    _logger.LogWarning($"[Session: {sessionId}] [Loop {currentLoop}] Approaching loop limit ({maxLoops}). Injecting warning message.");
+
+                    var warningText =
+                        $"⚠️ LOOP LIMIT WARNING — You are at loop {currentLoop} of {maxLoops} (90% threshold reached).\n\n" +
+                        "You must now choose ONE of the following actions and execute it IMMEDIATELY:\n\n" +
+                        "**Option A — COMMIT (partial work done, worth keeping):**\n" +
+                        "Call `complete_task` with resultNotes describing what was accomplished. The workflow will advance normally.\n\n" +
+                        "**Option B — POSTPONE (work is incomplete but context must be preserved):**\n" +
+                        "1. Optionally call `create_sub_issue` for each remaining piece of work.\n" +
+                        "2. Call `postpone_task` with `contextNotes`: a detailed summary of what was done, what sub-issues were created (IDs), and what remains.\n\n" +
+                        "**Option C — DISCARD (nothing useful was accomplished):**\n" +
+                        "Call `postpone_task` with `contextNotes` explaining why the work is being discarded.\n\n" +
+                        $"You MUST call `complete_task` or `postpone_task` before loop {maxLoops} is reached.\n" +
+                        "Do NOT continue normal work — choose your exit strategy NOW.";
+
+                    var warningMessage = new ChatMessage { Role = "user", Content = warningText };
+                    request.Messages.Add(warningMessage);
+                    // Intentionally NOT added to _sessionService history (ephemeral scaffolding only)
+                }
+
                 _logger.LogInformation($"[Session: {sessionId}] [Loop {currentLoop}] Sending request to {apiEndpoint}");
 
                 var jsonRequest = JsonSerializer.Serialize(request, new JsonSerializerOptions { WriteIndented = true });
@@ -320,6 +347,17 @@ public class Orchestrator
                             _logger.LogInformation($"[Session: {sessionId}] complete_task sentinel detected. Terminating agent loop immediately.");
                             await LogConsumptionAsync(sessionId, currentModelName, totalCalls, totalInputTokens, totalOutputTokens, totalCost, issueId);
                             return resultNotes;
+                        }
+
+                        // Change C: PostponeTaskResult sentinel detection — immediately after CompleteTaskResult detection.
+                        // SpecialistAgent.postpone_task returns [POSTPONE_TASK_RESULT]:{contextNotes}.
+                        // Detect it here and return [POSTPONED] {contextNotes} to the caller without advancing the workflow step.
+                        if (toolResult.StartsWith(AgentSentinels.PostponeTaskResult))
+                        {
+                            var contextNotes = toolResult.Substring(AgentSentinels.PostponeTaskResult.Length);
+                            _logger.LogInformation($"[Session: {sessionId}] postpone_task sentinel detected. Terminating agent loop gracefully.");
+                            await LogConsumptionAsync(sessionId, currentModelName, totalCalls, totalInputTokens, totalOutputTokens, totalCost, issueId);
+                            return $"[POSTPONED] {contextNotes}";
                         }
 
                         if ((agent.Name == "SpecialistAgent" && toolCall.Function.Name == "complete_task") ||
