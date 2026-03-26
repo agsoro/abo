@@ -60,3 +60,4 @@ appsettings.*.json
 
 # Data files
 **/Data/
+environments.json
