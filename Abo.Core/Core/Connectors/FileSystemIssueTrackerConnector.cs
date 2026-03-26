@@ -89,7 +89,6 @@ public class FileSystemIssueTrackerConnector : IIssueTrackerConnector
         var newId = (maxId > 0 ? maxId + 1 : 1).ToString();
         
         var labels = new List<string>();
-        if (!string.IsNullOrWhiteSpace(type)) labels.Add($"type: {type}");
         if (!string.IsNullOrWhiteSpace(size)) labels.Add($"size: {size}");
         if (additionalLabels != null) labels.AddRange(additionalLabels);
         if (!string.IsNullOrWhiteSpace(project)) labels.Add($"project: {project}");
@@ -102,6 +101,7 @@ public class FileSystemIssueTrackerConnector : IIssueTrackerConnector
             State = "open",
             Project = project ?? string.Empty,
             StepId = stepId ?? string.Empty,
+            Type = type,
             Labels = labels
         };
 
@@ -110,7 +110,7 @@ public class FileSystemIssueTrackerConnector : IIssueTrackerConnector
         return issue;
     }
 
-    public async Task<IssueRecord> UpdateIssueAsync(string issueId, string? title = null, string? body = null, string? state = null, string[]? labels = null, string? project = null, string? stepId = null)
+    public async Task<IssueRecord> UpdateIssueAsync(string issueId, string? title = null, string? body = null, string? state = null, string[]? labels = null, string? project = null, string? stepId = null, string? type = null)
     {
         var records = await LoadRecordsAsync();
         var issue = records.FirstOrDefault(r => r.Id == issueId);
@@ -121,6 +121,7 @@ public class FileSystemIssueTrackerConnector : IIssueTrackerConnector
         if (state != null) issue.State = state;
         if (labels != null) issue.Labels = labels.ToList();
         if (stepId != null) issue.StepId = stepId;
+        if (type != null) issue.Type = type;
 
         if (project != null)
         {
