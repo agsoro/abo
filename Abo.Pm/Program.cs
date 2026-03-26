@@ -353,6 +353,12 @@ var appSettingsPath = Path.Combine(AppContext.BaseDirectory, "appsettings.json")
 var modelSelector = app.Services.GetRequiredService<Abo.Core.OpenRouterModelSelector>();
 await modelSelector.UpdateModelsIfRequiredAsync(appSettingsPath);
 
+// Force reload configuration immediately to ensure AgentSupervisor sees the new models
+if (app.Services.GetRequiredService<IConfiguration>() is IConfigurationRoot configRoot)
+{
+    configRoot.Reload();
+}
+
 app.Run();
 
 public class InteractRequest
