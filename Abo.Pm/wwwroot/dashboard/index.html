@@ -1,0 +1,676 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ABO – Dashboard</title>
+    <style>
+        :root {
+            --bg-color: #0f172a;
+            --surface-color: #1e293b;
+            --text-color: #f8fafc;
+            --text-muted: #94a3b8;
+            --primary-color: #3b82f6;
+            --primary-hover: #2563eb;
+            --border-color: #334155;
+            --green: #16a34a;
+            --green-bg: rgba(22, 163, 74, 0.15);
+            --green-text: #4ade80;
+            --yellow: #ca8a04;
+            --yellow-bg: rgba(202, 138, 4, 0.15);
+            --yellow-text: #fbbf24;
+            --blue-bg: rgba(59, 130, 246, 0.15);
+            --blue-text: #60a5fa;
+            --tag-radius: 0.25rem;
+        }
+
+        * { box-sizing: border-box; }
+
+        body {
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            margin: 0;
+            padding: 0;
+            min-height: 100vh;
+        }
+
+        header {
+            background-color: var(--surface-color);
+            padding: 1rem 2rem;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 0.75rem;
+        }
+
+        header h1 {
+            margin: 0;
+            font-size: 1.5rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .header-nav {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            flex-wrap: wrap;
+        }
+
+        .header-nav a {
+            color: var(--text-muted);
+            text-decoration: none;
+            font-size: 0.875rem;
+            padding: 0.35rem 0.75rem;
+            border-radius: var(--tag-radius);
+            border: 1px solid var(--border-color);
+            transition: all 0.2s;
+            white-space: nowrap;
+        }
+
+        .header-nav a:hover {
+            color: var(--text-color);
+            border-color: var(--primary-color);
+        }
+
+        .header-nav a.active {
+            color: var(--text-color);
+            border-color: var(--primary-color);
+            background-color: rgba(59, 130, 246, 0.1);
+        }
+
+        #status-indicator {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 0.875rem;
+            color: var(--text-muted);
+        }
+
+        #status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background-color: #94a3b8;
+            transition: background-color 0.3s;
+        }
+
+        #status-dot.live {
+            background-color: var(--green);
+            box-shadow: 0 0 6px var(--green);
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        main {
+            max-width: 1100px;
+            margin: 0 auto;
+            padding: 1.5rem 1rem;
+        }
+
+        /* Summary Cards */
+        .summary-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .summary-card {
+            background-color: var(--surface-color);
+            border: 1px solid var(--border-color);
+            border-radius: 0.5rem;
+            padding: 1.25rem 1.5rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.25rem;
+        }
+
+        .summary-card .label {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .summary-card .value {
+            font-size: 1.75rem;
+            font-weight: 700;
+            color: var(--text-color);
+        }
+
+        .summary-card .sub {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+        }
+
+        /* Section Cards */
+        .section-card {
+            background-color: var(--surface-color);
+            border: 1px solid var(--border-color);
+            border-radius: 0.5rem;
+            margin-bottom: 1rem;
+            overflow: hidden;
+        }
+
+        .section-header {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            padding: 0.85rem 1.25rem;
+            cursor: pointer;
+            user-select: none;
+            background-color: var(--surface-color);
+            border-bottom: 1px solid var(--border-color);
+            transition: background-color 0.15s;
+        }
+
+        .section-header:hover {
+            background-color: rgba(255, 255, 255, 0.03);
+        }
+
+        .section-title {
+            font-size: 0.95rem;
+            font-weight: 600;
+            color: var(--text-color);
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            flex: 1;
+        }
+
+        .section-count {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            background-color: rgba(59, 130, 246, 0.15);
+            color: var(--blue-text);
+            border: 1px solid rgba(59, 130, 246, 0.3);
+            border-radius: 9999px;
+            font-size: 0.72rem;
+            font-weight: 700;
+            min-width: 1.4rem;
+            height: 1.4rem;
+            padding: 0 0.4rem;
+        }
+
+        .section-filter {
+            background-color: var(--bg-color);
+            border: 1px solid var(--border-color);
+            color: var(--text-color);
+            padding: 0.3rem 0.6rem;
+            border-radius: var(--tag-radius);
+            font-size: 0.8rem;
+            width: 180px;
+            transition: border-color 0.2s;
+        }
+
+        .section-filter:focus {
+            outline: none;
+            border-color: var(--primary-color);
+        }
+
+        .collapse-icon {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            transition: transform 0.2s;
+            flex-shrink: 0;
+        }
+
+        .section-header.collapsed .collapse-icon {
+            transform: rotate(-90deg);
+        }
+
+        .section-header.collapsed {
+            border-bottom: none;
+        }
+
+        .section-body {
+            padding: 0.5rem 0;
+        }
+
+        /* Issue Rows */
+        .issue-row {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            padding: 0.65rem 1.25rem;
+            border-bottom: 1px solid rgba(51, 65, 85, 0.5);
+            transition: background-color 0.15s;
+        }
+
+        .issue-row:last-child {
+            border-bottom: none;
+        }
+
+        .issue-row:hover {
+            background-color: rgba(255, 255, 255, 0.02);
+        }
+
+        .issue-id {
+            font-family: monospace;
+            font-size: 0.85rem;
+            color: var(--text-muted);
+            white-space: nowrap;
+            min-width: 3.5rem;
+        }
+
+        .issue-info {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 0.25rem;
+            min-width: 0;
+        }
+
+        .issue-title {
+            font-size: 0.9rem;
+            color: var(--text-color);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .issue-meta {
+            display: flex;
+            gap: 0.5rem;
+            flex-wrap: wrap;
+        }
+
+        .step-badge {
+            display: inline-block;
+            padding: 0.15rem 0.5rem;
+            border-radius: 9999px;
+            font-size: 0.75rem;
+            background-color: rgba(148, 163, 184, 0.1);
+            color: var(--text-muted);
+            border: 1px solid var(--border-color);
+        }
+
+        .env-tag {
+            display: inline-block;
+            padding: 0.15rem 0.5rem;
+            border-radius: var(--tag-radius);
+            font-size: 0.75rem;
+            background-color: rgba(59, 130, 246, 0.1);
+            color: #60a5fa;
+            border: 1px solid rgba(59, 130, 246, 0.3);
+            font-family: monospace;
+        }
+
+        .action-btn {
+            background-color: var(--primary-color);
+            color: #fff;
+            border: none;
+            border-radius: var(--tag-radius);
+            padding: 0.35rem 0.85rem;
+            font-size: 0.8rem;
+            cursor: pointer;
+            white-space: nowrap;
+            transition: background-color 0.2s, opacity 0.2s;
+            flex-shrink: 0;
+        }
+
+        .action-btn:hover:not(:disabled) {
+            background-color: var(--primary-hover);
+        }
+
+        .action-btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .empty-state {
+            padding: 2rem;
+            text-align: center;
+            color: var(--text-muted);
+            font-size: 0.85rem;
+        }
+
+        #last-updated {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            text-align: right;
+            margin-top: 0.5rem;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>🗂️ Dashboard <span style="font-size: 1rem; color: var(--text-muted); font-weight: normal;">Environment Overview</span></h1>
+        <nav class="header-nav">
+            <a href="/">💬 Chat</a>
+            <a href="/processes/">⚙️ Prozesse</a>
+            <a href="/agents/">🤖 Agents</a>
+            <a href="/open-work/">📋 Offene Arbeit</a>
+            <a href="/llm-traffic/">📊 LLM Traffic</a>
+            <a href="/llm-stats/">📈 LLM Stats</a>
+            <a href="/dashboard/" class="active">🗂️ Dashboard</a>
+        </nav>
+        <div id="status-indicator">
+            <div id="status-dot"></div>
+            <span id="status-text">Loading...</span>
+        </div>
+    </header>
+
+    <main>
+        <!-- Summary Cards -->
+        <div class="summary-grid">
+            <div class="summary-card">
+                <div class="label">Requested</div>
+                <div class="value" id="card-requested">–</div>
+                <div class="sub">Open / Requested issues</div>
+            </div>
+            <div class="summary-card">
+                <div class="label">Current Release</div>
+                <div class="value" id="card-current">–</div>
+                <div class="sub">Planned in current release</div>
+            </div>
+            <div class="summary-card">
+                <div class="label">In Development</div>
+                <div class="value" id="card-indev">–</div>
+                <div class="sub">Work / Review / Check</div>
+            </div>
+            <div class="summary-card">
+                <div class="label">Active Agents</div>
+                <div class="value" id="card-agents">–</div>
+                <div class="sub">Active within 5 minutes</div>
+            </div>
+        </div>
+
+        <!-- Section: Requested -->
+        <div class="section-card">
+            <div class="section-header" onclick="toggleSection(this)">
+                <span class="section-title">
+                    📋 Requested
+                    <span class="section-count" id="count-requested">0</span>
+                </span>
+                <input class="section-filter" type="text" placeholder="Filter..."
+                    onclick="event.stopPropagation()"
+                    oninput="filterSection(this, 'requested')">
+                <span class="collapse-icon">▼</span>
+            </div>
+            <div class="section-body" id="body-requested">
+                <div class="empty-state"><p>Loading...</p></div>
+            </div>
+        </div>
+
+        <!-- Section: Planned (Current Release) -->
+        <div class="section-card">
+            <div class="section-header" onclick="toggleSection(this)">
+                <span class="section-title">
+                    🚀 Planned (Current Release)
+                    <span class="section-count" id="count-release-current">0</span>
+                </span>
+                <input class="section-filter" type="text" placeholder="Filter..."
+                    onclick="event.stopPropagation()"
+                    oninput="filterSection(this, 'release-current')">
+                <span class="collapse-icon">▼</span>
+            </div>
+            <div class="section-body" id="body-release-current">
+                <div class="empty-state"><p>Loading...</p></div>
+            </div>
+        </div>
+
+        <!-- Section: Planned (Next Release) — collapsed by default -->
+        <div class="section-card">
+            <div class="section-header collapsed" onclick="toggleSection(this)">
+                <span class="section-title">
+                    📅 Planned (Next Release)
+                    <span class="section-count" id="count-release-next">0</span>
+                </span>
+                <input class="section-filter" type="text" placeholder="Filter..."
+                    onclick="event.stopPropagation()"
+                    oninput="filterSection(this, 'release-next')">
+                <span class="collapse-icon">▼</span>
+            </div>
+            <div class="section-body" id="body-release-next" style="display:none">
+                <div class="empty-state"><p>Loading...</p></div>
+            </div>
+        </div>
+
+        <!-- Section: In Development -->
+        <div class="section-card">
+            <div class="section-header" onclick="toggleSection(this)">
+                <span class="section-title">
+                    🔨 In Development
+                    <span class="section-count" id="count-in-dev">0</span>
+                </span>
+                <input class="section-filter" type="text" placeholder="Filter..."
+                    onclick="event.stopPropagation()"
+                    oninput="filterSection(this, 'in-dev')">
+                <span class="collapse-icon">▼</span>
+            </div>
+            <div class="section-body" id="body-in-dev">
+                <div class="empty-state"><p>Loading...</p></div>
+            </div>
+        </div>
+
+        <!-- Section: Live Agent Status -->
+        <div class="section-card">
+            <div class="section-header" onclick="toggleSection(this)">
+                <span class="section-title">
+                    🤖 Live Agent Status
+                    <span class="section-count" id="count-live-agents">0</span>
+                </span>
+                <input class="section-filter" type="text" placeholder="Filter..."
+                    onclick="event.stopPropagation()"
+                    oninput="filterSection(this, 'live-agents')">
+                <span class="collapse-icon">▼</span>
+            </div>
+            <div class="section-body" id="body-live-agents">
+                <div class="empty-state"><p>Loading...</p></div>
+            </div>
+        </div>
+
+        <div id="last-updated"></div>
+    </main>
+
+    <script>
+        let allIssues = [];
+        let activeSessions = [];
+
+        // ── Data Fetching ──────────────────────────────────────────────────────
+        async function fetchData() {
+            try {
+                const [issuesRes, sessionsRes] = await Promise.all([
+                    fetch('/api/issues'),
+                    fetch('/api/sessions')
+                ]);
+                allIssues = await issuesRes.json();
+                activeSessions = await sessionsRes.json();
+                renderAllSections();
+                updateSummaryCards();
+                updateLiveIndicator();
+                document.getElementById('last-updated').textContent =
+                    `Last updated: ${new Date().toLocaleTimeString('en-US')}`;
+            } catch (err) {
+                document.getElementById('status-dot').className = '';
+                document.getElementById('status-text').textContent = 'Error';
+                console.error('Error loading dashboard data:', err);
+            }
+        }
+
+        fetchData();
+        setInterval(fetchData, 10000);
+
+        // ── Section Filtering ──────────────────────────────────────────────────
+        function getIssuesForSection(sectionId) {
+            switch (sectionId) {
+                case 'requested':
+                    return allIssues.filter(i =>
+                        i.project === 'requested' || i.currentStep?.stepId === 'open');
+                case 'release-current':
+                    return allIssues.filter(i =>
+                        i.project === 'release-current' && i.currentStep?.stepId === 'planned');
+                case 'release-next':
+                    return allIssues.filter(i =>
+                        i.project === 'release-next' && i.currentStep?.stepId === 'planned');
+                case 'in-dev':
+                    return allIssues.filter(i =>
+                        ['work', 'review', 'check'].includes(i.currentStep?.stepId));
+                default:
+                    return [];
+            }
+        }
+
+        // ── Collapse / Expand ──────────────────────────────────────────────────
+        function toggleSection(header) {
+            header.classList.toggle('collapsed');
+            const body = header.nextElementSibling;
+            body.style.display = header.classList.contains('collapsed') ? 'none' : '';
+        }
+
+        // ── Per-Section Text Filter ────────────────────────────────────────────
+        function filterSection(input, sectionId) {
+            const query = input.value.trim().toLowerCase();
+            const body = document.getElementById('body-' + sectionId);
+            body.querySelectorAll('.issue-row').forEach(row => {
+                const text = row.textContent.toLowerCase();
+                row.style.display = text.includes(query) ? '' : 'none';
+            });
+        }
+
+        // ── Action Buttons ─────────────────────────────────────────────────────
+        async function triggerAction(issueId, actionType) {
+            const btn = event.currentTarget;
+            btn.disabled = true;
+            const originalText = btn.textContent;
+            btn.textContent = '⏳ Sending...';
+            const commands = {
+                triage:  `Start triage on issue #${issueId}`,
+                release: `Start release planning for issue #${issueId}`,
+                develop: `Continue development on issue #${issueId}`
+            };
+            try {
+                await fetch('/api/interact', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ message: commands[actionType], userName: 'Dashboard' })
+                });
+                btn.textContent = '✅ Sent!';
+                setTimeout(() => { btn.textContent = originalText; btn.disabled = false; }, 2000);
+            } catch (err) {
+                btn.textContent = '❌ Error';
+                setTimeout(() => { btn.textContent = originalText; btn.disabled = false; }, 2000);
+            }
+        }
+
+        // ── Live Indicator ─────────────────────────────────────────────────────
+        function updateLiveIndicator() {
+            const recentSessions = activeSessions.filter(s =>
+                (new Date() - new Date(s.lastActivity)) < 5 * 60 * 1000);
+            const dot = document.getElementById('status-dot');
+            const text = document.getElementById('status-text');
+            if (recentSessions.length > 0) {
+                dot.className = 'live';
+                text.textContent = `Live (${recentSessions.length} agent${recentSessions.length > 1 ? 's' : ''})`;
+            } else {
+                dot.className = '';
+                text.textContent = 'No active agents';
+            }
+        }
+
+        // ── Summary Cards ──────────────────────────────────────────────────────
+        function updateSummaryCards() {
+            const requested = getIssuesForSection('requested');
+            const current = getIssuesForSection('release-current');
+            const inDev = getIssuesForSection('in-dev');
+            const activeAgents = activeSessions.filter(s =>
+                (new Date() - new Date(s.lastActivity)) < 5 * 60 * 1000);
+            document.getElementById('card-requested').textContent = requested.length;
+            document.getElementById('card-current').textContent = current.length;
+            document.getElementById('card-indev').textContent = inDev.length;
+            document.getElementById('card-agents').textContent = activeAgents.length;
+        }
+
+        // ── Render All Sections ────────────────────────────────────────────────
+        function renderAllSections() {
+            ['requested', 'release-current', 'release-next', 'in-dev'].forEach(sectionId => {
+                renderSection(sectionId, getIssuesForSection(sectionId));
+            });
+            renderLiveAgentsSection();
+        }
+
+        function renderSection(sectionId, issues) {
+            const body = document.getElementById('body-' + sectionId);
+            const countEl = document.getElementById('count-' + sectionId);
+            if (countEl) countEl.textContent = issues.length;
+            if (issues.length === 0) {
+                body.innerHTML = '<div class="empty-state"><p>No issues.</p></div>';
+                return;
+            }
+            const actionMap = {
+                'requested':       { label: 'Start Triage',           type: 'triage' },
+                'release-current': { label: 'Start Release Planning',  type: 'release' },
+                'in-dev':          { label: 'Continue Development',    type: 'develop' }
+            };
+            const action = actionMap[sectionId];
+            body.innerHTML = issues.map(i => {
+                const btn = action
+                    ? `<button class="action-btn" onclick="triggerAction('${escapeHtml(i.id)}', '${action.type}')">${action.label}</button>`
+                    : '';
+                return `
+                <div class="issue-row">
+                  <span class="issue-id">#${escapeHtml(i.id)}</span>
+                  <div class="issue-info">
+                    <span class="issue-title">${escapeHtml(i.title)}</span>
+                    <div class="issue-meta">
+                      ${i.environmentName ? `<span class="env-tag">${escapeHtml(i.environmentName)}</span>` : ''}
+                      ${i.currentStep?.stepId ? `<span class="step-badge">${escapeHtml(i.currentStep.stepId)}</span>` : ''}
+                    </div>
+                  </div>
+                  ${btn}
+                </div>`;
+            }).join('');
+        }
+
+        function renderLiveAgentsSection() {
+            const body = document.getElementById('body-live-agents');
+            const countEl = document.getElementById('count-live-agents');
+            const recentSessions = activeSessions.filter(s =>
+                (new Date() - new Date(s.lastActivity)) < 5 * 60 * 1000);
+            if (countEl) countEl.textContent = recentSessions.length;
+            if (recentSessions.length === 0) {
+                body.innerHTML = '<div class="empty-state"><p>No active agent sessions.</p></div>';
+                return;
+            }
+            body.innerHTML = recentSessions.map(s => `
+                <div class="issue-row">
+                  <span class="issue-id" style="color:#a5b4fc; font-family:monospace;">${escapeHtml(s.sessionId)}</span>
+                  <div class="issue-info">
+                    <span class="issue-title">${escapeHtml(s.sessionId)}</span>
+                    <div class="issue-meta">
+                      <span class="step-badge">${s.messageCount} messages</span>
+                      <span class="env-tag">active ${formatRelativeTime(s.lastActivity)}</span>
+                    </div>
+                  </div>
+                </div>`).join('');
+        }
+
+        // ── Helpers ────────────────────────────────────────────────────────────
+        function escapeHtml(str) {
+            if (!str) return '';
+            return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        }
+
+        function formatRelativeTime(ts) {
+            if (!ts) return '—';
+            const diffMs = new Date() - new Date(ts);
+            const diffMin = Math.floor(diffMs / 60000);
+            const diffSec = Math.floor(diffMs / 1000);
+            if (diffSec < 60) return `${diffSec}s ago`;
+            if (diffMin < 60) return `${diffMin}m ago`;
+            return `${Math.floor(diffMin / 60)}h ago`;
+        }
+    </script>
+</body>
+</html>
