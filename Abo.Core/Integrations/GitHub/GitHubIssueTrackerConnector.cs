@@ -16,8 +16,12 @@ public class GitHubIssueTrackerConnector : IIssueTrackerConnector
     private static readonly Dictionary<string, string> _projectNodeIds = new(StringComparer.OrdinalIgnoreCase);
     private static readonly Dictionary<string, Dictionary<string, (string fieldId, string optionId)>> _projectStatuses = new(StringComparer.OrdinalIgnoreCase);
 
-    // Enrichment result cache: key = issue number (string), value = (Project, StepId, CachedAt)
-    private static readonly Dictionary<string, (string Project, string StepId, DateTime CachedAt)> _enrichmentCache
+    // Stores per-project: (TypeFieldId, Dictionary<typeName, optionId>)
+    private static readonly Dictionary<string, (string TypeFieldId, Dictionary<string, string> TypeOptions)> _projectTypeFields
+        = new(StringComparer.OrdinalIgnoreCase);
+
+    // Enrichment result cache: key = issue number (string), value = (Project, StepId, Type, CachedAt)
+    private static readonly Dictionary<string, (string Project, string StepId, string Type, DateTime CachedAt)> _enrichmentCache
         = new(StringComparer.OrdinalIgnoreCase);
     private static readonly TimeSpan _enrichmentCacheTtl = TimeSpan.FromSeconds(60);
 
@@ -249,19 +253,31 @@ query($owner: String!) {
                     labelsList.Add($"env: {_environmentName}");
                 }
 
-                // Parse StepId from Status field value
+                // Parse StepId and Type from field values
                 var stepId = "";
+                var typeStr = "";
                 if (item.TryGetProperty("fieldValues", out var fVals))
                 {
                     foreach (var fv in fVals.GetProperty("nodes").EnumerateArray())
                     {
                         if (fv.TryGetProperty("field", out var fNode) &&
-                            fNode.TryGetProperty("name", out var fName) &&
-                            string.Equals(fName.GetString(), "Status", StringComparison.OrdinalIgnoreCase))
+                            fNode.TryGetProperty("name", out var fName))
                         {
-                            if (fv.TryGetProperty("name", out var optName))
+                            if (string.Equals(fName.GetString(), "Status", StringComparison.OrdinalIgnoreCase))
                             {
-                                stepId = optName.GetString() ?? "";
+                                if (fv.TryGetProperty("name", out var optName))
+                                {
+                                    stepId = optName.GetString() ?? "";
+                                }
+                            }
+                            else if (string.Equals(fName.GetString(), "Type", StringComparison.OrdinalIgnoreCase))
+                            {
+                                if (fv.TryGetProperty("name", out var typeOptName))
+                                {
+                                    var tv = typeOptName.GetString();
+                                    if (!string.IsNullOrWhiteSpace(tv))
+                                        typeStr = tv;
+                                }
                             }
                         }
                     }
@@ -276,6 +292,7 @@ query($owner: String!) {
                     State = state,
                     Project = logicalKey ?? "",
                     StepId = stepId,
+                    Type = typeStr,
                     Labels = labelsList
                 };
 
@@ -283,7 +300,7 @@ query($owner: String!) {
                 results[numStr] = record;
 
                 // Pre-warm enrichment cache to avoid redundant GraphQL calls in the same session
-                _enrichmentCache[numStr] = (record.Project, record.StepId, DateTime.UtcNow);
+                _enrichmentCache[numStr] = (record.Project, record.StepId, record.Type, DateTime.UtcNow);
             }
         }
 
@@ -373,7 +390,7 @@ query($owner: String!) {
     public async Task<IssueRecord> CreateIssueAsync(string title, string body, string type, string size, string[]? additionalLabels = null, string? project = null, string? stepId = null)
     {
         var labelsList = new List<string>();
-        if (!string.IsNullOrWhiteSpace(type)) labelsList.Add($"type: {type}");
+        // Note: type is NOT added as a label — it is written to the Projects V2 Type field via SyncProjectV2Async
         if (!string.IsNullOrWhiteSpace(size)) labelsList.Add($"size: {size}");
         if (additionalLabels != null) labelsList.AddRange(additionalLabels);
         if (!string.IsNullOrWhiteSpace(project)) labelsList.Add($"project: {project}");
@@ -395,6 +412,7 @@ query($owner: String!) {
         if (!string.IsNullOrWhiteSpace(record.NodeId)) {
             record.Project = project ?? string.Empty;
             record.StepId = stepId ?? string.Empty;
+            record.Type = type;
             await SyncProjectV2Async(record);
             // Invalidate cache entry so the next fetch reflects the new project state
             _enrichmentCache.Remove(record.Id);
@@ -402,7 +420,7 @@ query($owner: String!) {
         return record;
     }
 
-    public async Task<IssueRecord> UpdateIssueAsync(string issueId, string? title = null, string? body = null, string? state = null, string[]? labels = null, string? project = null, string? stepId = null)
+    public async Task<IssueRecord> UpdateIssueAsync(string issueId, string? title = null, string? body = null, string? state = null, string[]? labels = null, string? project = null, string? stepId = null, string? type = null)
     {
         var reqObj = new Dictionary<string, object>();
         if (title != null) reqObj["title"] = title;
@@ -450,8 +468,13 @@ query($owner: String!) {
             if (stepId != null) {
                 record.StepId = stepId;
             }
+
+            if (type != null) {
+                record.Type = type;
+            }
+
             await SyncProjectV2Async(record);
-            // Invalidate cache so the next fetch reflects the updated project/step state
+            // Invalidate cache so the next fetch reflects the updated project/step/type state
             _enrichmentCache.Remove(issueId);
         }
         return record;
@@ -571,15 +594,30 @@ query($owner: String!) {
 
             var statusDict = new Dictionary<string, (string, string)>(StringComparer.OrdinalIgnoreCase);
 
+            string? typeFieldId = null;
+            var typeOptions = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
             if (pNode.TryGetProperty("fields", out var fields)) {
                 foreach (var fNode in fields.GetProperty("nodes").EnumerateArray()) {
-                    if (fNode.TryGetProperty("name", out var fName) && string.Equals(fName.GetString(), "Status", StringComparison.OrdinalIgnoreCase)) {
+                    if (!fNode.TryGetProperty("name", out var fName)) continue;
+
+                    if (string.Equals(fName.GetString(), "Status", StringComparison.OrdinalIgnoreCase)) {
                         var fieldId = fNode.GetProperty("id").GetString();
                         if (fNode.TryGetProperty("options", out var options) && fieldId != null) {
                             foreach (var opt in options.EnumerateArray()) {
                                 var oName = opt.GetProperty("name").GetString();
                                 var oId = opt.GetProperty("id").GetString();
                                 if (oName != null && oId != null) statusDict[oName] = (fieldId, oId);
+                            }
+                        }
+                    }
+                    else if (string.Equals(fName.GetString(), "Type", StringComparison.OrdinalIgnoreCase)) {
+                        typeFieldId = fNode.GetProperty("id").GetString();
+                        if (fNode.TryGetProperty("options", out var typeOptsEl) && typeFieldId != null) {
+                            foreach (var opt in typeOptsEl.EnumerateArray()) {
+                                var oName = opt.GetProperty("name").GetString();
+                                var oId = opt.GetProperty("id").GetString();
+                                if (oName != null && oId != null) typeOptions[oName] = oId;
                             }
                         }
                     }
@@ -591,10 +629,12 @@ query($owner: String!) {
                 if (statusDict.Count > existingDict.Count) {
                     _projectNodeIds[title] = id;
                     _projectStatuses[title] = statusDict;
+                    if (typeFieldId != null) _projectTypeFields[title] = (typeFieldId, typeOptions);
                 }
             } else {
                 _projectNodeIds[title] = id;
                 _projectStatuses[title] = statusDict;
+                if (typeFieldId != null) _projectTypeFields[title] = (typeFieldId, typeOptions);
             }
         }
     }
@@ -616,6 +656,7 @@ query($owner: String!) {
                 var cached = _enrichmentCache[issue.Id];
                 if (string.IsNullOrEmpty(issue.Project)) issue.Project = cached.Project;
                 if (string.IsNullOrEmpty(issue.StepId))  issue.StepId  = cached.StepId;
+                if (string.IsNullOrEmpty(issue.Type))    issue.Type    = cached.Type;
             }
             return;
         }
@@ -665,14 +706,26 @@ query($owner: String!) {
                         var logicalKey = _config.ProjectTitles.FirstOrDefault(kv => string.Equals(kv.Value, pTitle, StringComparison.OrdinalIgnoreCase)).Key;
                         if (logicalKey != null) issue.Project = logicalKey;
                         
-                        // Parse status mapped to step
+                        // Parse Status and Type from field values
                         if (item.TryGetProperty("fieldValues", out var fVals)) {
                             foreach (var fv in fVals.GetProperty("nodes").EnumerateArray()) {
-                                if (fv.TryGetProperty("field", out var fNode) && fNode.TryGetProperty("name", out var fName) && string.Equals(fName.GetString(), "Status", StringComparison.OrdinalIgnoreCase)) {
-                                    if (fv.TryGetProperty("name", out var optName)) {
-                                        var statusStr = optName.GetString();
-                                        if (!string.IsNullOrWhiteSpace(statusStr)) {
-                                            issue.StepId = statusStr;
+                                if (fv.TryGetProperty("field", out var fNode) &&
+                                    fNode.TryGetProperty("name", out var fName))
+                                {
+                                    if (string.Equals(fName.GetString(), "Status", StringComparison.OrdinalIgnoreCase)) {
+                                        if (fv.TryGetProperty("name", out var optName)) {
+                                            var statusStr = optName.GetString();
+                                            if (!string.IsNullOrWhiteSpace(statusStr)) {
+                                                issue.StepId = statusStr;
+                                            }
+                                        }
+                                    }
+                                    else if (string.Equals(fName.GetString(), "Type", StringComparison.OrdinalIgnoreCase)) {
+                                        if (fv.TryGetProperty("name", out var typeOptName)) {
+                                            var typeStr = typeOptName.GetString();
+                                            if (!string.IsNullOrWhiteSpace(typeStr)) {
+                                                issue.Type = typeStr;
+                                            }
                                         }
                                     }
                                 }
@@ -685,7 +738,7 @@ query($owner: String!) {
             // Write back all enriched issues to the cache
             foreach (var issue in issues)
             {
-                _enrichmentCache[issue.Id] = (issue.Project, issue.StepId, DateTime.UtcNow);
+                _enrichmentCache[issue.Id] = (issue.Project, issue.StepId, issue.Type, DateTime.UtcNow);
             }
         } catch { /* Ignore enrichment failure gracefully */ }
     }
@@ -749,11 +802,38 @@ query($nodeId: ID!) {
             }
         }
 
+        // Sync Status field
         var stepId = issue.StepId;
         if (targetItemNodeId != null && !string.IsNullOrWhiteSpace(targetGithubTitle) && !string.IsNullOrWhiteSpace(stepId)) {
             if (_projectStatuses.TryGetValue(targetGithubTitle, out var statusOptions) && statusOptions.TryGetValue(stepId, out var statusIds)) {
                 var updateMut = @"mutation($projectId: ID!, $itemId: ID!, $fieldId: ID!, $optionId: String!) { updateProjectV2ItemFieldValue(input: {projectId: $projectId, itemId: $itemId, fieldId: $fieldId, value: { singleSelectOptionId: $optionId }}) { projectV2Item { id } } }";
                 await SendGraphQLRequestAsync(new { query = updateMut, variables = new { projectId = _projectNodeIds[targetGithubTitle], itemId = targetItemNodeId, fieldId = statusIds.fieldId, optionId = statusIds.optionId } }, throwGraphQLErrors: true);
+            }
+        }
+
+        // Sync Type field
+        if (targetItemNodeId != null
+            && !string.IsNullOrWhiteSpace(targetGithubTitle)
+            && !string.IsNullOrWhiteSpace(issue.Type))
+        {
+            if (_projectTypeFields.TryGetValue(targetGithubTitle, out var typeField)
+                && typeField.TypeOptions.TryGetValue(issue.Type, out var typeOptionId))
+            {
+                var updateTypeMut = @"mutation($projectId: ID!, $itemId: ID!, $fieldId: ID!, $optionId: String!) {
+                    updateProjectV2ItemFieldValue(input: {
+                        projectId: $projectId, itemId: $itemId, fieldId: $fieldId,
+                        value: { singleSelectOptionId: $optionId }
+                    }) { projectV2Item { id } }
+                }";
+                await SendGraphQLRequestAsync(new {
+                    query = updateTypeMut,
+                    variables = new {
+                        projectId = _projectNodeIds[targetGithubTitle],
+                        itemId = targetItemNodeId,
+                        fieldId = typeField.TypeFieldId,
+                        optionId = typeOptionId
+                    }
+                }, throwGraphQLErrors: false);
             }
         }
     }
