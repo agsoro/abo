@@ -139,8 +139,190 @@ public class GitHubIssueTrackerConnector : IIssueTrackerConnector
         return null;
     }
 
+    /// <summary>
+    /// Queries all configured project titles via GraphQL (Projects V2) and returns all issue items
+    /// mapped to <see cref="IssueRecord"/>, keyed by issue number (deduplicated).
+    /// Pre-warms <c>_enrichmentCache</c> as a side effect to avoid redundant enrichment calls.
+    /// Emits a yellow console warning when a project has more than 100 items (pagination not yet implemented).
+    /// </summary>
+    private async Task<List<IssueRecord>> FetchProjectItemsAsync()
+    {
+        await EnsureProjectsCachedAsync();
+
+        var query = @"
+query($owner: String!) {
+  organization(login: $owner) {
+    projectsV2(first: 20) {
+      nodes {
+        title
+        items(first: 100) {
+          pageInfo { hasNextPage }
+          nodes {
+            content {
+              ... on Issue {
+                number
+                title
+                body
+                state
+                id
+                labels(first: 20) {
+                  nodes { name }
+                }
+              }
+            }
+            fieldValues(first: 10) {
+              nodes {
+                ... on ProjectV2ItemFieldSingleSelectValue {
+                  name
+                  field { ... on ProjectV2FieldCommon { name } }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}";
+
+        var results = new Dictionary<string, IssueRecord>(StringComparer.OrdinalIgnoreCase);
+
+        var orgNode = await QueryOrgOrUserAsync(query, new { owner = _config.Owner });
+        if (orgNode == null || !orgNode.Value.TryGetProperty("projectsV2", out var pV2))
+            return new List<IssueRecord>();
+
+        foreach (var pNode in pV2.GetProperty("nodes").EnumerateArray())
+        {
+            var pTitle = pNode.GetProperty("title").GetString();
+
+            // Only process configured projects
+            if (pTitle == null || !_config.ProjectTitles.Values.Contains(pTitle, StringComparer.OrdinalIgnoreCase))
+                continue;
+
+            var logicalKey = _config.ProjectTitles
+                .FirstOrDefault(kv => string.Equals(kv.Value, pTitle, StringComparison.OrdinalIgnoreCase)).Key;
+
+            if (!pNode.TryGetProperty("items", out var items)) continue;
+
+            // Warn on pagination truncation
+            if (items.TryGetProperty("pageInfo", out var pi) &&
+                pi.TryGetProperty("hasNextPage", out var hn) && hn.GetBoolean())
+            {
+                Console.ForegroundColor = ConsoleColor.Yellow;
+                Console.WriteLine($"[GitHub Connector Warning] Project '{pTitle}' has >100 items. Results may be truncated. Pagination not yet implemented.");
+                Console.ResetColor();
+            }
+
+            foreach (var item in items.GetProperty("nodes").EnumerateArray())
+            {
+                if (!item.TryGetProperty("content", out var content) || content.ValueKind == JsonValueKind.Null)
+                    continue;
+                if (!content.TryGetProperty("number", out var numEl))
+                    continue;
+
+                var numStr = numEl.GetInt32().ToString();
+                var title = content.TryGetProperty("title", out var titleEl) ? titleEl.GetString() ?? "" : "";
+                var body = content.TryGetProperty("body", out var bodyEl) ? bodyEl.GetString() ?? "" : "";
+                var state = content.TryGetProperty("state", out var stateEl)
+                    ? (stateEl.GetString() ?? "OPEN").ToLowerInvariant()
+                    : "open";
+                var nodeId = content.TryGetProperty("id", out var nidEl) ? nidEl.GetString() ?? "" : "";
+
+                var labelsList = new List<string>();
+                if (content.TryGetProperty("labels", out var labelsEl) &&
+                    labelsEl.TryGetProperty("nodes", out var labelNodes))
+                {
+                    foreach (var ln in labelNodes.EnumerateArray())
+                    {
+                        if (ln.TryGetProperty("name", out var lnName))
+                        {
+                            var lv = lnName.GetString();
+                            if (!string.IsNullOrWhiteSpace(lv)) labelsList.Add(lv);
+                        }
+                    }
+                }
+
+                // Inject environment label (mirrors GitHubIssue.ToRecord logic)
+                if (!string.IsNullOrWhiteSpace(_environmentName))
+                {
+                    labelsList.RemoveAll(l => l.StartsWith("env: ", StringComparison.OrdinalIgnoreCase));
+                    labelsList.Add($"env: {_environmentName}");
+                }
+
+                // Parse StepId from Status field value
+                var stepId = "";
+                if (item.TryGetProperty("fieldValues", out var fVals))
+                {
+                    foreach (var fv in fVals.GetProperty("nodes").EnumerateArray())
+                    {
+                        if (fv.TryGetProperty("field", out var fNode) &&
+                            fNode.TryGetProperty("name", out var fName) &&
+                            string.Equals(fName.GetString(), "Status", StringComparison.OrdinalIgnoreCase))
+                        {
+                            if (fv.TryGetProperty("name", out var optName))
+                            {
+                                stepId = optName.GetString() ?? "";
+                            }
+                        }
+                    }
+                }
+
+                var record = new IssueRecord
+                {
+                    Id = numStr,
+                    NodeId = nodeId,
+                    Title = title,
+                    Body = body,
+                    State = state,
+                    Project = logicalKey ?? "",
+                    StepId = stepId,
+                    Labels = labelsList
+                };
+
+                // Deduplicate by issue number (last-write wins for cross-project issues)
+                results[numStr] = record;
+
+                // Pre-warm enrichment cache to avoid redundant GraphQL calls in the same session
+                _enrichmentCache[numStr] = (record.Project, record.StepId, DateTime.UtcNow);
+            }
+        }
+
+        return results.Values.ToList();
+    }
+
     public async Task<IEnumerable<IssueRecord>> ListIssuesAsync(string? state = null, string[]? labels = null)
     {
+        // When ProjectTitles are configured, use GraphQL project items as the primary data source
+        if (_config.ProjectTitles != null && _config.ProjectTitles.Any())
+        {
+            try
+            {
+                var allItems = await FetchProjectItemsAsync();
+
+                // Apply state filter locally (GraphQL returns state as OPEN/CLOSED; already normalized to lowercase)
+                if (!string.IsNullOrWhiteSpace(state))
+                    allItems = allItems
+                        .Where(i => string.Equals(i.State, state, StringComparison.OrdinalIgnoreCase))
+                        .ToList();
+
+                // Apply label filter locally (all requested labels must be present)
+                if (labels != null && labels.Any())
+                    allItems = allItems
+                        .Where(i => labels.All(l => i.Labels.Contains(l, StringComparer.OrdinalIgnoreCase)))
+                        .ToList();
+
+                return allItems;
+            }
+            catch (Exception ex)
+            {
+                Console.ForegroundColor = ConsoleColor.Yellow;
+                Console.WriteLine($"[GitHub Connector Warning] GraphQL project-scoped list failed: {ex.Message}. Falling back to REST.");
+                Console.ResetColor();
+                // Fall through to REST fallback below
+            }
+        }
+
+        // Fallback: REST-based listing (no ProjectTitles configured, or GraphQL failed)
         var path = "issues?per_page=30";
         if (!string.IsNullOrWhiteSpace(state)) path += $"&state={Uri.EscapeDataString(state)}";
         if (labels != null && labels.Any()) path += $"&labels={Uri.EscapeDataString(string.Join(",", labels))}";
