@@ -397,9 +397,10 @@ query($owner: String!) {
 
         var restLabels = labelsList.Where(l => !l.StartsWith("project: ", StringComparison.OrdinalIgnoreCase)).ToList();
 
+        var taggedTitle = $"[abo] {title}";
         var reqObj = new
         {
-            title,
+            title = taggedTitle,
             body,
             labels = restLabels.Any() ? restLabels : null
         };
@@ -497,7 +498,8 @@ query($owner: String!) {
 
     public async Task<string> AddIssueCommentAsync(string issueId, string body)
     {
-        using var req = CreateGitHubRequest(HttpMethod.Post, $"issues/{Uri.EscapeDataString(issueId)}/comments", new { body });
+        var taggedBody = $"[abo]\n{body}";
+        using var req = CreateGitHubRequest(HttpMethod.Post, $"issues/{Uri.EscapeDataString(issueId)}/comments", new { body = taggedBody });
         return await SendGitHubRequestAsync(req);
     }
 
