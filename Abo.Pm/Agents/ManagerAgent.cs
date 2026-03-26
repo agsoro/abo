@@ -4,6 +4,8 @@ using Abo.Contracts.OpenAI;
 using Abo.Core;
 using Abo.Tools;
 using Abo.Integrations.XpectoLive;
+using Abo.Integrations.Mattermost;
+using Microsoft.Extensions.Options;
 
 namespace Abo.Agents;
 
@@ -28,19 +30,30 @@ public class ManagerAgent : IAgent
     private readonly IConfiguration _configuration;
     private readonly ILogger<ManagerAgent> _logger;
     private readonly IXpectoLiveWikiClient _wikiClient;
+    private readonly MattermostClient _mattermostClient;
+    private readonly IOptions<MattermostOptions> _mattermostOptionsWrapper;
 
     public string Name => "ManagerAgent";
     public string Description => "The Project Lead / Manager. Identifies open tasks from active projects and delegates them to specialized agents who do the actual work.";
     public bool RequiresCapableModel => false;
     public bool RequiresReviewModel => false;
 
-    public ManagerAgent(IEnumerable<IAboTool> globalTools, Orchestrator orchestrator, IConfiguration configuration, ILogger<ManagerAgent> logger, IXpectoLiveWikiClient wikiClient)
+    public ManagerAgent(
+        IEnumerable<IAboTool> globalTools,
+        Orchestrator orchestrator,
+        IConfiguration configuration,
+        ILogger<ManagerAgent> logger,
+        IXpectoLiveWikiClient wikiClient,
+        MattermostClient mattermostClient,
+        IOptions<MattermostOptions> mattermostOptions)
     {
         _globalTools = globalTools;
         _orchestrator = orchestrator;
         _configuration = configuration;
         _logger = logger;
         _wikiClient = wikiClient;
+        _mattermostClient = mattermostClient;
+        _mattermostOptionsWrapper = mattermostOptions;
     }
 
     public string SystemPrompt =>
@@ -51,7 +64,10 @@ public class ManagerAgent : IAgent
         "3. **Completion**: The `delegate_task` tool will synchronously execute the specialist. Calling this tool will terminate your current manager assignment, since you have successfully handed the work off.\n\n" +
         "### RULES:\n" +
         "- You must use `delegate_task` to get the actual work done.\n" +
-        "- **PRIORITY RULE**: Process all `open` issues first. When no `open` issues remain, pick the in-progress issue closest to completion: prefer `review` over `check` over `work` over `planned`. The `get_open_work` tool returns issues sorted by priority — pick the first actionable one.";
+        "- **PRIORITY RULE**: Process all `open` issues first. Then all `release-planning` issues. " +
+        "When no `open` or `release-planning` issues remain, pick the in-progress issue closest to completion: " +
+        "prefer `review` over `check` over `work` over `planned` (release-current only). " +
+        "The `get_open_work` tool returns issues sorted by priority — pick the first actionable one.";
 
     public List<ToolDefinition> GetToolDefinitions()
     {
@@ -209,8 +225,17 @@ public class ManagerAgent : IAgent
 
                 try
                 {
-                    // Instantiate SpecialistAgent
-                    var specialist = new SpecialistAgent(_globalTools, role.Title, role.SystemPrompt, role.AllowedTools, _configuration, issueId, _wikiClient);
+                    // Instantiate SpecialistAgent, passing Mattermost dependencies for release completion alerts
+                    var specialist = new SpecialistAgent(
+                        _globalTools,
+                        role.Title,
+                        role.SystemPrompt,
+                        role.AllowedTools,
+                        _configuration,
+                        issueId,
+                        _wikiClient,
+                        _mattermostClient,
+                        _mattermostOptionsWrapper.Value);
                     var initResult = await specialist.InitializeWorkspaceAsync();
                     if (initResult.StartsWith("Error")) return $"Task delegation failed during environment setup: {initResult}";
 
