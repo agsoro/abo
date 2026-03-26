@@ -6,11 +6,13 @@ using Abo.Tools;
 using Abo.Services;
 using Microsoft.AspNetCore.Mvc;
 using System.Text.Json;
+using Microsoft.Extensions.Caching.Memory;
 
 var builder = WebApplication.CreateBuilder(args);
 
 // Register Core Components
 builder.Services.AddHttpClient();
+builder.Services.AddMemoryCache();
 builder.Services.AddSingleton<SessionService>();
 builder.Services.AddSingleton<UserService>();
 builder.Services.AddHttpClient<Orchestrator>(client => client.Timeout = TimeSpan.FromSeconds(600));
@@ -61,8 +63,14 @@ app.MapGet("/api/status", (IConfiguration config) =>
 
 
 // Helper to get all issues across environments
-async Task<List<Abo.Contracts.Models.IssueRecord>> GetAllIssuesAsync(IConfiguration config)
+async Task<List<Abo.Contracts.Models.IssueRecord>> GetAllIssuesAsync(IConfiguration config, IMemoryCache cache)
 {
+    var cacheKey = "AllActiveIssues";
+    if (cache.TryGetValue(cacheKey, out object? cachedObject) && cachedObject is List<Abo.Contracts.Models.IssueRecord> cachedIssues)
+    {
+        return cachedIssues;
+    }
+
     var environmentsFile = Path.Combine(AppContext.BaseDirectory, "Data", "Environments", "environments.json");
     var envs = new List<Abo.Core.Connectors.ConnectorEnvironment>();
     if (File.Exists(environmentsFile))
@@ -90,27 +98,31 @@ async Task<List<Abo.Contracts.Models.IssueRecord>> GetAllIssuesAsync(IConfigurat
             try
             {
                 var issues = await tracker.ListIssuesAsync();
-                foreach(var issue in issues) {
+                foreach (var issue in issues)
+                {
                     if (!activeIssues.Any(i => i.Id == issue.Id && i.Title == issue.Title)) activeIssues.Add(issue);
                 }
             }
             catch { /* Ignore tracker errors */ }
         }
     }
+
+    cache.Set(cacheKey, activeIssues, TimeSpan.FromSeconds(60));
     return activeIssues;
 }
 
 // API: Issues – list all active issues
-app.MapGet("/api/issues", async (IConfiguration config) =>
+app.MapGet("/api/issues", async (IConfiguration config, Microsoft.Extensions.Caching.Memory.IMemoryCache cache) =>
 {
-    var issues = await GetAllIssuesAsync(config);
+    var issues = await GetAllIssuesAsync(config, cache);
     var mapped = issues.Select(issue => new
     {
         Id = issue.Id,
         Title = issue.Title,
         TypeId = issue.Labels.FirstOrDefault(l => l.StartsWith("type: ", StringComparison.OrdinalIgnoreCase))?.Substring(6).Trim() ?? "",
         Project = issue.Project,   // Issue #205: expose project field for dashboard grouping
-        CurrentStep = new {
+        CurrentStep = new
+        {
             StepId = Abo.Core.WorkflowEngine.ResolveStepIdFallback(issue),
             StepName = Abo.Core.WorkflowEngine.GetStepInfo(Abo.Core.WorkflowEngine.ResolveStepIdFallback(issue))?.StepName ?? "",
             RequiredRole = Abo.Core.WorkflowEngine.GetStepInfo(Abo.Core.WorkflowEngine.ResolveStepIdFallback(issue))?.RequiredRole ?? ""
@@ -124,13 +136,14 @@ app.MapGet("/api/issues", async (IConfiguration config) =>
 });
 
 // API: Issues – fetch the status of a specific issue by ID
-app.MapGet("/api/issues/{id}/status", async (string id, IConfiguration config) =>
+app.MapGet("/api/issues/{id}/status", async (string id, IConfiguration config, Microsoft.Extensions.Caching.Memory.IMemoryCache cache) =>
 {
-    var issues = await GetAllIssuesAsync(config);
+    var issues = await GetAllIssuesAsync(config, cache);
     var issue = issues.FirstOrDefault(i => i.Id == id);
     if (issue == null) return Results.NotFound($"No status found for issue '{id}'.");
-    
-    return Results.Ok(new {
+
+    return Results.Ok(new
+    {
         Status = issue.State,
         LastUpdated = DateTime.UtcNow.ToString("O") // We don't have exact last updated on issue easily
     });
@@ -144,15 +157,16 @@ app.MapGet("/api/sessions", (SessionService sessionService) =>
 });
 
 // API: Open Work – list all issues with their current step and open tasks
-app.MapGet("/api/open-work", async (IConfiguration config) =>
+app.MapGet("/api/open-work", async (IConfiguration config, Microsoft.Extensions.Caching.Memory.IMemoryCache cache) =>
 {
-    var issues = await GetAllIssuesAsync(config);
+    var issues = await GetAllIssuesAsync(config, cache);
     var mapped = issues.Where(i => i.State != "closed").Select(issue => new
     {
         IssueId = issue.Id,
         Title = issue.Title,
         TypeId = issue.Labels.FirstOrDefault(l => l.StartsWith("type: ", StringComparison.OrdinalIgnoreCase))?.Substring(6).Trim() ?? "",
-        CurrentStep = new {
+        CurrentStep = new
+        {
             StepId = Abo.Core.WorkflowEngine.ResolveStepIdFallback(issue),
             StepName = Abo.Core.WorkflowEngine.GetStepInfo(Abo.Core.WorkflowEngine.ResolveStepIdFallback(issue))?.StepName ?? "",
             RequiredRole = Abo.Core.WorkflowEngine.GetStepInfo(Abo.Core.WorkflowEngine.ResolveStepIdFallback(issue))?.RequiredRole ?? ""
@@ -309,31 +323,39 @@ app.Lifetime.ApplicationStarted.Register(() =>
             {
                 var startupStatus = scope.ServiceProvider.GetRequiredService<StartupStatusService>();
                 var config = scope.ServiceProvider.GetRequiredService<IConfiguration>();
-                
+
                 var sb = new System.Text.StringBuilder();
                 sb.AppendLine("Hello CEO! ABO has successfully started.");
-                
-                if (startupStatus.Errors.Any()) {
+
+                if (startupStatus.Errors.Any())
+                {
                     sb.AppendLine("\n**⚠ Startup Configuration Errors:**");
-                    foreach (var err in startupStatus.Errors) {
+                    foreach (var err in startupStatus.Errors)
+                    {
                         sb.AppendLine($"- {err}");
                     }
                 }
-                
+
                 sb.AppendLine("\n**📊 Open Work & Projects:**");
-                var issues = await GetAllIssuesAsync(config);
-                if (issues.Any()) {
+                var cache = scope.ServiceProvider.GetRequiredService<Microsoft.Extensions.Caching.Memory.IMemoryCache>();
+                var issues = await GetAllIssuesAsync(config, cache);
+                if (issues.Any())
+                {
                     var byProject = issues.GroupBy(i => string.IsNullOrWhiteSpace(i.Project) ? "Unassigned" : i.Project);
-                    foreach (var group in byProject) {
+                    foreach (var group in byProject)
+                    {
                         sb.AppendLine($"\n*{group.Key}*:");
-                        foreach (var issue in group) {
+                        foreach (var issue in group)
+                        {
                             var step = Abo.Core.WorkflowEngine.ResolveStepIdFallback(issue);
                             var role = Abo.Core.WorkflowEngine.GetStepInfo(step)?.RequiredRole ?? "Any";
                             var envName = issue.Labels.FirstOrDefault(l => l.StartsWith("env: ", StringComparison.OrdinalIgnoreCase))?.Substring(5).Trim() ?? "?";
                             sb.AppendLine($"- [{issue.Id}] {issue.Title} (Env: {envName}, Step: {step}, Role: {role})");
                         }
                     }
-                } else {
+                }
+                else
+                {
                     sb.AppendLine("- No open issues found.");
                 }
 
