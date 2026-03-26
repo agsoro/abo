@@ -53,7 +53,8 @@ public class GitHubIssueTrackerConnectorIntegrationTests
             // 2. Refresh issue to verify Creation project bindings
             var refreshed = await _connector.GetIssueAsync(createdIssue.Id);
             Assert.NotNull(refreshed);
-            Assert.Equal(testTitle, refreshed.Title);
+            // CreateIssueAsync prepends "[abo] " to the title before sending to GitHub
+            Assert.Equal($"[abo] {testTitle}", refreshed.Title);
             
             // Allow a tiny delay because GitHub Projects V2 GraphQL indexes asynchronously sometimes.
             await Task.Delay(2000);
