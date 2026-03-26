@@ -12,30 +12,8 @@
             "ProjectTitles": {
                 "planned": "planned",
                 "requested": "requested",
-                "release-current": "release 1.1",
-                "release-next": "release 1.2"
-            }
-        },
-        "Wiki": {
-            "Type": "github",
-            "RootPath": "agsoro/abo"
-        }
-    },
-    {
-        "Name": "abo-linux",
-        "Type": "local",
-        "Os": "linux",
-        "Technology": "dotnet",
-        "Dir": "/home/user/repos/abo",
-        "IssueTracker": {
-            "Type": "github",
-            "Owner": "agsoro",
-            "Repository": "abo",
-            "ProjectTitles": {
-                "planned": "planned",
-                "requested": "requested",
-                "release-current": "release 1.1",
-                "release-next": "release 1.2"
+                "release-current": "abo-release-1.3",
+                "release-next": "abo-release-1.4"
             }
         },
         "Wiki": {
