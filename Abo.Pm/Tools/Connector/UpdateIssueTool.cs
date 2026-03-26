@@ -49,7 +49,6 @@ public class UpdateIssueTool : IAboTool
 
             string? title = null;
             string? body = null;
-            string[]? labels = null;
 
             if (args.TryGetValue("title", out var titleElement) && titleElement.ValueKind == JsonValueKind.String)
                 title = titleElement.GetString();
@@ -57,22 +56,16 @@ public class UpdateIssueTool : IAboTool
             if (args.TryGetValue("body", out var bodyElement) && bodyElement.ValueKind == JsonValueKind.String)
                 body = bodyElement.GetString();
 
+            string? typeToSet = null;
             if (args.TryGetValue("type", out var typeElement) && typeElement.ValueKind == JsonValueKind.String)
             {
                 var newType = typeElement.GetString();
                 if (!IssueType.IsValid(newType))
                     return $"Error: Invalid type '{newType}'. Allowed values: {string.Join(", ", IssueType.AllowedValues)}.";
-
-                var existing = await _connector.GetIssueAsync(issueId);
-                if (existing != null)
-                {
-                    existing.Labels.RemoveAll(l => l.StartsWith("type: ", StringComparison.OrdinalIgnoreCase));
-                    existing.Labels.Add($"type: {newType}");
-                    labels = existing.Labels.ToArray();
-                }
+                typeToSet = newType;
             }
 
-            var updated = await _connector.UpdateIssueAsync(issueId, title: title, body: body, labels: labels);
+            var updated = await _connector.UpdateIssueAsync(issueId, title: title, body: body, type: typeToSet);
             return JsonSerializer.Serialize(updated);
         }
         catch (Exception ex)
