@@ -128,7 +128,7 @@ public class OpenRouterModelSelector
                     PriceCompletion = allModelsInfo[x.Id].Completion,
                     Vendor = x.Id.Split('/')[0]
                 })
-                .Where(m => m.Score > 0 && (m.PricePrompt > 0 || m.PriceCompletion > 0))
+                .Where(m => m.Score > 0 && (m.PricePrompt > 0 || m.PriceCompletion > 0)) // Exclude free models
                 .ToList();
 
             if (rankedModels.Count == 0) 
