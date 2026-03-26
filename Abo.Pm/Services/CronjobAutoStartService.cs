@@ -195,8 +195,8 @@ public class CronjobAutoStartService : BackgroundService
                 {
                     var initialMessage =
                         "Start working on open issues now. " +
-                        "IMPORTANT: Prioritize newly triaged issues (step: 'open') first. " +
-                        "When no 'open' issues remain, pick the in-progress issue closest to completion: prefer 'review' > 'check' > 'work' > 'planned'. " +
+                        "IMPORTANT: Prioritize newly triaged issues (step: 'open') first, then 'release-planning' issues second. " +
+                        "When no 'open' or 'release-planning' issues remain, pick the in-progress issue closest to completion: prefer 'review' > 'check' > 'work' > 'planned' (release-current only). " +
                         "Pick the highest-priority issue from `get_open_work` and delegate it.";
 
                     await orchestrator.RunAgentLoopAsync(

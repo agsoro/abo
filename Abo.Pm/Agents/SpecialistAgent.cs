@@ -9,6 +9,7 @@ using Abo.Tools;
 using Abo.Tools.Connector;
 using Abo.Integrations.GitHub;
 using Abo.Integrations.XpectoLive;
+using Abo.Integrations.Mattermost;
 using Microsoft.Extensions.Configuration;
 
 namespace Abo.Agents;
@@ -23,6 +24,8 @@ public class SpecialistAgent : IAgent
     private readonly string? _issueTrackerToken;
     private readonly IXpectoLiveWikiClient _wikiClient;
     private readonly IConfiguration _config;
+    private readonly MattermostClient? _mattermostClient;
+    private readonly MattermostOptions? _mattermostOptions;
 
     // State for the currently checked-out issue
     private string? _currentIssueId;
@@ -38,7 +41,16 @@ public class SpecialistAgent : IAgent
     public bool RequiresCapableModel => true;
     public bool RequiresReviewModel => _isValidationTask;
 
-    public SpecialistAgent(IEnumerable<IAboTool> globalTools, string roleTitle, string systemPrompt, List<string> allowedTools, IConfiguration configuration, string issueId, IXpectoLiveWikiClient? wikiClient = null)
+    public SpecialistAgent(
+        IEnumerable<IAboTool> globalTools,
+        string roleTitle,
+        string systemPrompt,
+        List<string> allowedTools,
+        IConfiguration configuration,
+        string issueId,
+        IXpectoLiveWikiClient? wikiClient = null,
+        MattermostClient? mattermostClient = null,
+        MattermostOptions? mattermostOptions = null)
     {
         _globalTools = globalTools;
         _roleTitle = roleTitle;
@@ -48,6 +60,8 @@ public class SpecialistAgent : IAgent
         _currentIssueId = issueId;
         _issueTrackerToken = configuration["Integrations:GitHub:Token"];
         _wikiClient = wikiClient!;
+        _mattermostClient = mattermostClient;
+        _mattermostOptions = mattermostOptions;
         _dataDir = Path.Combine(AppContext.BaseDirectory, "Data");
     }
 
@@ -436,6 +450,12 @@ public class SpecialistAgent : IAgent
                 }
             }
 
+            // Post-completion: check if all release-current issues are done → alert CEO
+            if (reachedEndEvent && string.Equals(nextStepInfo.StepId, "done", StringComparison.OrdinalIgnoreCase))
+            {
+                await TryNotifyReleaseCompletionAsync();
+            }
+
             // Capture issueId before clearing state (needed for sentinel return value context)
             var completedIssueId = _currentIssueId;
 
@@ -453,6 +473,43 @@ public class SpecialistAgent : IAgent
         catch (Exception ex)
         {
             return $"Error completing task: {ex.Message}";
+        }
+    }
+
+    private async Task TryNotifyReleaseCompletionAsync()
+    {
+        if (_mattermostClient == null || _mattermostOptions == null ||
+            string.IsNullOrWhiteSpace(_mattermostOptions.CeoUserName)) return;
+
+        if (_currentIssueTracker == null) return;
+
+        try
+        {
+            var allIssues = await _currentIssueTracker.ListIssuesAsync(state: "open");
+            var releaseCurrentIssues = allIssues
+                .Where(i => string.Equals(i.Project, "release-current", StringComparison.OrdinalIgnoreCase))
+                .ToList();
+
+            // If there are no open release-current issues (all done or none exist),
+            // also check for any that are closed/done
+            if (!releaseCurrentIssues.Any())
+            {
+                // Get all issues (including closed) to verify there was at least one release-current issue
+                var allIssuesIncludingClosed = await _currentIssueTracker.ListIssuesAsync();
+                var anyReleaseCurrent = allIssuesIncludingClosed
+                    .Any(i => string.Equals(i.Project, "release-current", StringComparison.OrdinalIgnoreCase));
+
+                if (anyReleaseCurrent)
+                {
+                    var message = "🚀 **Release Ready!**\n\nAll `release-current` issues are now in `done` state. The current release is ready to ship!";
+                    await _mattermostClient.SendDirectMessageAsync(_mattermostOptions.CeoUserName, message);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            // Non-blocking: log but don't fail the completion
+            _ = ex;
         }
     }
 
