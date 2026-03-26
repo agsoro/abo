@@ -101,6 +101,29 @@ public class SpecialistAgent : IAgent
             Type = "function",
             Function = new FunctionDefinition
             {
+                Name = "postpone_task",
+                Description = "Suspends work on the current task without advancing the workflow. Posts a context comment on the issue and exits the agent session gracefully. Use when approaching the loop limit and the task cannot be fully completed. The issue remains in its current workflow step so the next agent session can resume.",
+                Parameters = new
+                {
+                    type = "object",
+                    properties = new
+                    {
+                        contextNotes = new
+                        {
+                            type = "string",
+                            description = "Detailed summary posted as an issue comment. Must include: what work was completed, what sub-issues were created (with IDs), and what work remains with guidance for the next agent."
+                        }
+                    },
+                    required = new[] { "contextNotes" }
+                }
+            }
+        });
+
+        definitions.Add(new ToolDefinition
+        {
+            Type = "function",
+            Function = new FunctionDefinition
+            {
                 Name = "request_ceo_help",
                 Description = "Stops work and asks the human CEO for help or clarification.",
                 Parameters = new { type = "object", properties = new { message = new { type = "string" } }, required = new[] { "message" } }
@@ -130,6 +153,7 @@ public class SpecialistAgent : IAgent
         var args = toolCall.Function?.Arguments ?? "{}";
 
         if (name == "complete_task") return await HandleCompleteTaskAsync(args);
+        if (name == "postpone_task") return await HandlePostponeTaskAsync(args);
         if (name == "request_ceo_help") return HandleRequestCeoHelp(args);
 
         var globalTool = _globalTools.FirstOrDefault(t => t.Name == name);
@@ -429,6 +453,42 @@ public class SpecialistAgent : IAgent
         catch (Exception ex)
         {
             return $"Error completing task: {ex.Message}";
+        }
+    }
+
+    private async Task<string> HandlePostponeTaskAsync(string argsJson)
+    {
+        if (string.IsNullOrEmpty(_currentIssueId) || _currentIssueTracker == null || _currentIssue == null)
+            return "Error: No checked-out issue to postpone.";
+
+        try
+        {
+            var args = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(argsJson);
+            if (args == null || !args.TryGetValue("contextNotes", out var contextNotesElement))
+                return "Error: 'contextNotes' is required for postpone_task.";
+
+            var contextNotes = contextNotesElement.GetString();
+            if (string.IsNullOrWhiteSpace(contextNotes))
+                return "Error: 'contextNotes' must not be empty.";
+
+            // Post context comment on the issue — intentionally the ONLY tracker operation
+            // (issue state/step/labels are left completely unchanged)
+            var commentPrefix = "## ⏸️ Task Postponed — Context for Next Agent Session\n\n";
+            await _currentIssueTracker.AddIssueCommentAsync(_currentIssueId, commentPrefix + contextNotes);
+
+            // Clear agent state
+            _currentIssueId = null;
+            _currentWorkspace = null;
+            _currentIssueTracker = null;
+            _currentIssue = null;
+            _connectorTools.Clear();
+
+            // Return sentinel so Orchestrator can terminate the loop immediately
+            return $"{AgentSentinels.PostponeTaskResult}{contextNotes}";
+        }
+        catch (Exception ex)
+        {
+            return $"Error postponing task: {ex.Message}";
         }
     }
 
