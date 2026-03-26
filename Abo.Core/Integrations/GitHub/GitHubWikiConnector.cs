@@ -33,7 +33,7 @@ public class GitHubWikiConnector : IWikiConnector
     private async Task CommitAndPushAsync(string message)
     {
         await RunGitCommandAsync(_cloneDir, "add", ".");
-        await RunGitCommandAsync(_cloneDir, "commit", "-m", $"\"{message}\"");
+        await RunGitCommandAsync(_cloneDir, "commit", "-m", $"\"[abo] {message}\"");
         await RunGitCommandAsync(_cloneDir, "push", "origin", "master");
     }
 
