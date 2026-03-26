@@ -111,6 +111,37 @@ async Task<List<Abo.Contracts.Models.IssueRecord>> GetAllIssuesAsync(IConfigurat
     return activeIssues;
 }
 
+// Helper to get a single issue tracker by environment name
+async Task<Abo.Core.Connectors.IIssueTrackerConnector?> GetTrackerForEnvironmentAsync(string? environmentName, IConfiguration config)
+{
+    var environmentsFile = Path.Combine(AppContext.BaseDirectory, "Data", "Environments", "environments.json");
+    var envs = new List<Abo.Core.Connectors.ConnectorEnvironment>();
+    if (File.Exists(environmentsFile))
+    {
+        var envJson = await File.ReadAllTextAsync(environmentsFile);
+        envs = JsonSerializer.Deserialize<List<Abo.Core.Connectors.ConnectorEnvironment>>(envJson, new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? new();
+    }
+
+    // If no environment specified, use the first one with an issue tracker
+    var env = string.IsNullOrWhiteSpace(environmentName)
+        ? envs.FirstOrDefault(e => e.IssueTracker != null)
+        : envs.FirstOrDefault(e => e.Name.Equals(environmentName, StringComparison.OrdinalIgnoreCase) && e.IssueTracker != null);
+
+    if (env?.IssueTracker == null)
+        return null;
+
+    if (env.IssueTracker.Type.Equals("github", StringComparison.OrdinalIgnoreCase))
+    {
+        return new Abo.Integrations.GitHub.GitHubIssueTrackerConnector(env.IssueTracker, config["Integrations:GitHub:Token"], env.Name);
+    }
+    else if (env.IssueTracker.Type.Equals("filesystem", StringComparison.OrdinalIgnoreCase))
+    {
+        return new Abo.Core.Connectors.FileSystemIssueTrackerConnector(env.Name);
+    }
+
+    return null;
+}
+
 // API: Issues – list all active issues
 app.MapGet("/api/issues", async (IConfiguration config, Microsoft.Extensions.Caching.Memory.IMemoryCache cache) =>
 {
@@ -147,6 +178,74 @@ app.MapGet("/api/issues/{id}/status", async (string id, IConfiguration config, M
         Status = issue.State,
         LastUpdated = DateTime.UtcNow.ToString("O") // We don't have exact last updated on issue easily
     });
+});
+
+// API: Issues – create a new issue (Issue #287)
+app.MapPost("/api/issues/create", async ([FromBody] CreateIssueRequest req, IConfiguration config, Microsoft.Extensions.Caching.Memory.IMemoryCache cache) =>
+{
+    // Validation
+    if (string.IsNullOrWhiteSpace(req.Title))
+        return Results.BadRequest(new { error = "Title is required" });
+
+    if (string.IsNullOrWhiteSpace(req.Description))
+        return Results.BadRequest(new { error = "Description is required" });
+
+    if (string.IsNullOrWhiteSpace(req.Type))
+        return Results.BadRequest(new { error = "Type is required" });
+
+    if (string.IsNullOrWhiteSpace(req.Size))
+        return Results.BadRequest(new { error = "Size is required" });
+
+    // Sanitize inputs
+    var title = req.Title.Trim().Substring(0, Math.Min(req.Title.Length, 200));
+    var description = req.Description.Trim().Substring(0, Math.Min(req.Description.Length, 2000));
+    var type = req.Type.Trim().ToLower();
+    var size = req.Size.Trim().ToUpper();
+
+    // Validate type and size values
+    var validTypes = new[] { "bug", "feature", "improvement", "task", "chore" };
+    var validSizes = new[] { "S", "M", "L", "XL" };
+
+    if (!validTypes.Contains(type))
+        return Results.BadRequest(new { error = $"Invalid type. Must be one of: {string.Join(", ", validTypes)}" });
+
+    if (!validSizes.Contains(size))
+        return Results.BadRequest(new { error = $"Invalid size. Must be one of: {string.Join(", ", validSizes)}" });
+
+    try
+    {
+        // Get the issue tracker for the specified environment (or default)
+        var tracker = await GetTrackerForEnvironmentAsync(null, config);
+        if (tracker == null)
+            return Results.InternalServerError();
+
+        // Create the issue with the connector
+        var newIssue = await tracker.CreateIssueAsync(
+            title: title,
+            body: description,
+            type: type,
+            size: size,
+            additionalLabels: null,
+            project: req.Project,
+            stepId: "open"
+        );
+
+        // Invalidate the issues cache so fresh data is fetched next time
+        cache.Remove("AllActiveIssues");
+
+        return Results.Ok(new
+        {
+            Id = newIssue.Id,
+            Title = newIssue.Title,
+            Status = "created"
+        });
+    }
+    catch (Exception ex)
+    {
+        var logger = app.Services.GetRequiredService<ILogger<Program>>();
+        logger.LogError(ex, "Error creating issue via /api/issues/create");
+        return Results.InternalServerError();
+    }
 });
 
 // API: Active Sessions – list currently active agent sessions
@@ -382,6 +481,15 @@ if (app.Services.GetRequiredService<IConfiguration>() is IConfigurationRoot conf
 }
 
 app.Run();
+
+public class CreateIssueRequest
+{
+    public string Title { get; set; } = string.Empty;
+    public string Description { get; set; } = string.Empty;
+    public string Type { get; set; } = string.Empty;
+    public string Size { get; set; } = string.Empty;
+    public string? Project { get; set; }
+}
 
 public class InteractRequest
 {
