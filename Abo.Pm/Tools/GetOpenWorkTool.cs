@@ -95,6 +95,18 @@ public class GetOpenWorkTool : IAboTool
                 }
             }
 
+            // Filter: For 'planned' step, only surface issues with project = 'release-current'
+            // Issues with project 'planned' or 'release-next' at 'planned' step are deferred/backlog.
+            activeIssues = activeIssues
+                .Where(i =>
+                {
+                    var step = Abo.Core.WorkflowEngine.ResolveStepIdFallback(i).ToLower();
+                    if (step == "planned")
+                        return string.Equals(i.Project, "release-current", StringComparison.OrdinalIgnoreCase);
+                    return true; // all other steps are always surfaced
+                })
+                .ToList();
+
             // Filter out blocked parents from the actionable work queue
             activeIssues = activeIssues
                 .Where(i => !blockedIssueIds.Contains(i.Id))
@@ -111,8 +123,8 @@ public class GetOpenWorkTool : IAboTool
             output.AppendLine("# Open Work Items\n");
 
             // Priority rule banner
-            output.AppendLine("> ⚠️ **PRIORITY RULE**: Pick the first listed issue. Issues are sorted: `open` > `review` > `check` > `work` > `planned`.");
-            output.AppendLine("> Always process open (newly triaged) issues first. Among in-progress issues, prefer those closest to completion: review first, then check, work, planned.");
+            output.AppendLine("> ⚠️ **PRIORITY RULE**: Pick the first listed issue. Issues are sorted: `open` > `release-planning` > `review` > `check` > `work` > `planned` (release-current only).");
+            output.AppendLine("> Always process open (newly triaged) issues first, then release-planning. Among in-progress issues, prefer those closest to completion: review first, then check, work, planned.");
             if (blockedIssueIds.Any())
             {
                 output.AppendLine($"> 🔒 **{blockedIssueIds.Count} parent issue(s) are hidden** because they have open sub-issues that must be completed first.");
@@ -138,10 +150,11 @@ public class GetOpenWorkTool : IAboTool
                 var priorityLabel = priority switch
                 {
                     0 => "🔴 Highest — New Request (open)",
-                    1 => "🟠 High — In QA Review (almost done)",
-                    2 => "🟡 Medium-High — Awaiting Release Documentation",
-                    3 => "🟡 Medium — In Development",
-                    4 => "🟢 Low — Planned (not yet in dev)",
+                    1 => "🟠 High — Awaiting Release Planning",
+                    2 => "🟡 Medium-High — In QA Review (almost done)",
+                    3 => "🟡 Medium — Awaiting Release Documentation",
+                    4 => "🟢 Medium-Low — In Development",
+                    5 => "🟢 Low — Planned (release-current, not yet in dev)",
                     _ => "⚪ Unknown"
                 };
 
@@ -189,18 +202,19 @@ public class GetOpenWorkTool : IAboTool
     /// <summary>
     /// Returns a sort priority for a given step ID.
     /// Lower number = higher priority (should be worked on first).
-    /// Open (newly triaged) issues are processed first.
+    /// Open (newly triaged) issues are processed first, then release-planning.
     /// Among in-progress issues, prefer those closest to completion:
-    ///   review (1) > check (2) > work (3) > planned (4).
+    ///   release-planning (1) > review (2) > check (3) > work (4) > planned (5).
     /// </summary>
     private static int GetStepPriority(string stepId) => stepId.ToLower() switch
     {
-        "open"    => 0,
-        "review"  => 1,
-        "check"   => 2,
-        "work"    => 3,
-        "planned" => 4,
-        _         => 5
+        "open"             => 0,
+        "release-planning" => 1,   // NEW
+        "review"           => 2,
+        "check"            => 3,
+        "work"             => 4,
+        "planned"          => 5,
+        _                  => 6
     };
 
     private string? ExtractLabelValue(IEnumerable<string> labels, string key)
