@@ -31,6 +31,7 @@ public static class WorkflowEngine
         return stepId.ToLower() switch
         {
             "open" => new ProcessStepInfo { StepId = "open", StepName = "Triage Request", RequiredRole = "Role_Productmanager" },
+            "release-planning" => new ProcessStepInfo { StepId = "release-planning", StepName = "Release Planning", RequiredRole = "Role_Releaseplanner" },
             "planned" => new ProcessStepInfo { StepId = "planned", StepName = "Solution Planning", RequiredRole = "Role_Architect" },
             "work" => new ProcessStepInfo { StepId = "work", StepName = "Implementation", RequiredRole = "Role_Developer" },
             "review" => new ProcessStepInfo { StepId = "review", StepName = "QA Review", RequiredRole = "Role_QA" },
@@ -49,9 +50,13 @@ public static class WorkflowEngine
             "open" => new List<WorkflowTransition>
             {
                 new WorkflowTransition { ConditionName = "Reject or Duplicate", NextStepId = "invalid", ApplyState = issue => SetProject(issue, "requested") },
-                new WorkflowTransition { ConditionName = "Must-have", NextStepId = "planned", ApplyState = issue => SetProject(issue, "release-current") },
-                new WorkflowTransition { ConditionName = "Should-have", NextStepId = "planned", ApplyState = issue => SetProject(issue, "release-next") },
-                new WorkflowTransition { ConditionName = "Backlog", NextStepId = "planned", ApplyState = issue => SetProject(issue, "planned") }
+                new WorkflowTransition { ConditionName = "Triage OK", NextStepId = "release-planning", ApplyState = issue => SetProject(issue, "planned") }
+            },
+            "release-planning" => new List<WorkflowTransition>
+            {
+                new WorkflowTransition { ConditionName = "Assign to current release", NextStepId = "planned", ApplyState = issue => SetProject(issue, "release-current") },
+                new WorkflowTransition { ConditionName = "Assign to next release", NextStepId = "planned", ApplyState = issue => SetProject(issue, "release-next") },
+                new WorkflowTransition { ConditionName = "Defer to backlog", NextStepId = "planned", ApplyState = issue => SetProject(issue, "planned") }
             },
             "planned" => new List<WorkflowTransition>
             {

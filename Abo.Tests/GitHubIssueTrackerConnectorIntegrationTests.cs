@@ -130,15 +130,26 @@ public class GitHubIssueTrackerConnectorIntegrationTests
         
         try
         {
-            // Step 1: open -> planned (Using 'Backlog' transition to route it to the planned GitHub board)
-            var t1 = Abo.Core.WorkflowEngine.GetTransitions(currentIssue.StepId).First(t => t.NextStepId == "planned" && t.ConditionName == "Backlog");
-            t1.ApplyState?.Invoke(currentIssue);
-            // ApplyState modifies currentIssue.Project to "planned".
+            // Step 1a: open -> release-planning (Triage OK)
+            currentIssue.StepId = "open";
+            currentIssue.Project = "requested";
+            var triage = Abo.Core.WorkflowEngine.GetTransitions(currentIssue.StepId)
+                .First(t => t.ConditionName == "Triage OK");
+            triage.ApplyState?.Invoke(currentIssue); // sets Project = "planned"
+            var updatedTriage = await _connector.UpdateIssueAsync(currentIssue.Id, project: currentIssue.Project, stepId: triage.NextStepId); // stepId = "release-planning"
+            Assert.NotNull(updatedTriage);
+            currentIssue.StepId = triage.NextStepId;
+            await Task.Delay(2000);
+
+            // Step 1b: release-planning -> planned (Defer to backlog)
+            var t1 = Abo.Core.WorkflowEngine.GetTransitions(currentIssue.StepId)
+                .First(t => t.NextStepId == "planned" && t.ConditionName == "Defer to backlog");
+            t1.ApplyState?.Invoke(currentIssue); // sets Project = "planned"
             var updated1 = await _connector.UpdateIssueAsync(currentIssue.Id, project: currentIssue.Project, stepId: t1.NextStepId);
             Assert.NotNull(updated1);
             currentIssue.StepId = t1.NextStepId; // now "planned"
             await Task.Delay(2000);
-            
+
             var verify1 = await _connector.GetIssueAsync(currentIssue.Id);
             Assert.NotNull(verify1);
             Assert.Equal("planned", verify1.Project);
