@@ -326,8 +326,24 @@
         }
 
         .action-btn:disabled {
-            opacity: 0.6;
+            opacity: 0.5;
             cursor: not-allowed;
+            background-color: var(--primary-color);
+            animation: pulse-btn 1.5s ease-in-out infinite;
+        }
+
+        @keyframes pulse-btn {
+            0%, 100% {
+                opacity: 0.5;
+            }
+            50% {
+                opacity: 0.7;
+            }
+        }
+
+        .action-btn:disabled:focus {
+            outline: 2px solid var(--primary-color);
+            outline-offset: 2px;
         }
 
         .empty-state {
@@ -591,6 +607,64 @@
         #toast-notification.error {
             border-left: 3px solid var(--red);
         }
+
+        /* Action Status Display ──────────────────────────────────────────── */
+        .action-status {
+            position: fixed;
+            top: 2rem;
+            right: 2rem;
+            background-color: var(--surface-color);
+            border: 1px solid var(--primary-color);
+            border-left: 3px solid var(--primary-color);
+            border-radius: 0.5rem;
+            padding: 1rem 1.25rem;
+            font-size: 0.875rem;
+            z-index: 250;
+            box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+            animation: statusSlideIn 0.3s ease-out;
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            white-space: nowrap;
+            max-width: 400px;
+        }
+
+        @keyframes statusSlideIn {
+            from {
+                transform: translateX(20px);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+
+        .action-status-spinner {
+            display: inline-block;
+            font-size: 1.25rem;
+            animation: spin 2s linear infinite;
+            flex-shrink: 0;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .action-status-message {
+            flex: 1;
+            min-width: 200px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            color: var(--text-color);
+        }
+
+        .action-status-elapsed {
+            color: var(--text-muted);
+            font-size: 0.75rem;
+            flex-shrink: 0;
+        }
     </style>
 </head>
 <body>
@@ -799,6 +873,311 @@
         let allIssues = [];
         let activeSessions = [];
 
+        // ── Action Status Tracking ────────────────────────────────────────────
+        let actionInProgress = {};  // { issueId: { actionType, sessionId, startTime, statusElement, pollInterval, elapsedInterval } }
+        let normalPollingInterval = null;
+        let aggressivePollingInterval = null;
+
+        /**
+         * Initialize or retrieve action tracking entry for an issue
+         * @param {string} issueId - Issue ID
+         * @returns {Object} Action tracking object
+         */
+        function getOrCreateActionEntry(issueId) {
+            if (!actionInProgress[issueId]) {
+                actionInProgress[issueId] = {
+                    actionType: null,
+                    sessionId: null,
+                    startTime: null,
+                    statusElement: null,
+                    pollInterval: null,
+                    elapsedInterval: null
+                };
+            }
+            return actionInProgress[issueId];
+        }
+
+        /**
+         * Clean up completed action entry
+         * @param {string} issueId - Issue ID to clean up
+         */
+        function cleanupActionEntry(issueId) {
+            const action = actionInProgress[issueId];
+            if (action) {
+                if (action.pollInterval) {
+                    clearInterval(action.pollInterval);
+                }
+                if (action.elapsedInterval) {
+                    clearInterval(action.elapsedInterval);
+                }
+                if (action.statusElement && action.statusElement.parentNode) {
+                    action.statusElement.remove();
+                }
+                delete actionInProgress[issueId];
+            }
+        }
+
+        /**
+         * Check if any actions are currently in progress
+         * @returns {boolean} True if any action is active
+         */
+        function hasActiveActions() {
+            return Object.keys(actionInProgress).length > 0;
+        }
+
+        /**
+         * Get list of currently active issueIds
+         * @returns {string[]} Array of issueIds with active actions
+         */
+        function getActiveIssueIds() {
+            return Object.keys(actionInProgress);
+        }
+
+        // ── Status Display Rendering ──────────────────────────────────────────
+
+        /**
+         * Create and render inline status display for an action
+         * @param {string} issueId - Issue ID being processed
+         * @param {string} issueTitle - Issue title for display
+         * @returns {HTMLElement} Status display element
+         */
+        function createStatusDisplay(issueId, issueTitle) {
+            // Create container
+            const statusDiv = document.createElement('div');
+            statusDiv.className = 'action-status';
+            statusDiv.setAttribute('aria-live', 'polite');
+            statusDiv.setAttribute('aria-label', `Action in progress for issue ${issueId}`);
+            
+            // Create spinner (using hourglass emoji)
+            const spinner = document.createElement('span');
+            spinner.className = 'action-status-spinner';
+            spinner.textContent = '⏳';
+            
+            // Create message text
+            const message = document.createElement('span');
+            message.className = 'action-status-message';
+            message.textContent = `Running – Issue #${escapeHtml(issueId)}: ${escapeHtml(issueTitle)}`;
+            
+            // Create elapsed time counter
+            const elapsed = document.createElement('span');
+            elapsed.className = 'action-status-elapsed';
+            elapsed.textContent = '(0s)';
+            
+            // Assemble
+            statusDiv.appendChild(spinner);
+            statusDiv.appendChild(message);
+            statusDiv.appendChild(elapsed);
+            
+            // Insert into document (positioned as toast/overlay)
+            document.body.appendChild(statusDiv);
+            
+            // Start elapsed time counter
+            const action = actionInProgress[issueId];
+            if (action) {
+                const startTime = Date.now();
+                const counterInterval = setInterval(() => {
+                    const elapsed_s = Math.floor((Date.now() - startTime) / 1000);
+                    elapsed.textContent = `(${elapsed_s}s)`;
+                    
+                    // Auto-cleanup after timeout (10 seconds of polling without updates)
+                    if (elapsed_s > 10) {
+                        clearInterval(counterInterval);
+                        cleanupActionEntry(issueId);
+                        
+                        // Re-enable the button
+                        const btn = document.querySelector(`button[onclick*="triggerAction('${escapeHtml(issueId)}"]`);
+                        if (btn) {
+                            btn.disabled = false;
+                            btn.textContent = btn.getAttribute('data-original-text') || 'Action';
+                        }
+                    }
+                }, 1000);
+                
+                action.elapsedInterval = counterInterval;
+            }
+            
+            return statusDiv;
+        }
+
+        /**
+         * Update status display with session polling results
+         * @param {string} issueId - Issue ID
+         * @param {Object} session - Session data from /api/sessions
+         */
+        function updateStatusDisplay(issueId, session) {
+            const action = actionInProgress[issueId];
+            if (!action || !action.statusElement) return;
+            
+            const elapsed = action.statusElement.querySelector('.action-status-elapsed');
+            if (elapsed && action.startTime) {
+                const elapsed_s = Math.floor((Date.now() - action.startTime) / 1000);
+                elapsed.textContent = `(${elapsed_s}s)`;
+            }
+        }
+
+        // ── Enhanced Action Trigger ───────────────────────────────────────────
+
+        /**
+         * Enhanced trigger action with status display and button locking
+         * Called from dashboard issue row buttons
+         * @param {string} issueId - Issue ID
+         * @param {string} actionType - Type of action (triage, release, develop)
+         */
+        async function triggerAction(issueId, actionType) {
+            const btn = event.currentTarget;
+            
+            // Prevent multiple simultaneous actions on same issue
+            if (actionInProgress[issueId]) {
+                console.warn(`Action already in progress for issue #${issueId}`);
+                return;
+            }
+            
+            // Find issue title from DOM
+            const issueRow = btn.closest('.issue-row');
+            const issueTitle = issueRow?.querySelector('.issue-title')?.textContent || `Issue #${issueId}`;
+            
+            // Store original button text
+            btn.setAttribute('data-original-text', btn.textContent);
+            
+            // Initialize action tracking
+            const action = getOrCreateActionEntry(issueId);
+            action.actionType = actionType;
+            action.startTime = Date.now();
+            
+            // Generate unique sessionId
+            const timestamp = Date.now();
+            action.sessionId = `dashboard-action-${issueId}-${timestamp}`;
+            
+            // Disable button immediately
+            btn.disabled = true;
+            btn.textContent = '⏳ Sending...';
+            
+            // Create and display status
+            action.statusElement = createStatusDisplay(issueId, issueTitle);
+            
+            // Build command message
+            const commands = {
+                triage:  `Start triage on issue #${issueId}`,
+                release: `Start release planning for issue #${issueId}`,
+                develop: `Continue development on issue #${issueId}`
+            };
+            
+            try {
+                // Send request to backend with sessionId and issueId
+                const response = await fetch('/api/interact', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        message: commands[actionType],
+                        sessionId: action.sessionId,  // NEW: pass sessionId to backend
+                        issueId: issueId,             // NEW: pass issueId to backend
+                        userName: 'Dashboard'
+                    })
+                });
+                
+                if (!response.ok) {
+                    throw new Error('Request failed');
+                }
+                
+                btn.textContent = '✅ Sent! Waiting...';
+                
+                // Start aggressive polling (2-5 second intervals) while action in progress
+                // Polling will continue until inactivity timeout or manual cleanup
+                startAggressivePolling();
+                
+            } catch (err) {
+                console.error('Error triggering action:', err);
+                btn.textContent = '❌ Error';
+                
+                // Show error toast
+                showToast(`Failed to start ${actionType} for issue #${issueId}`, 'error');
+                
+                // Clean up on error
+                setTimeout(() => {
+                    cleanupActionEntry(issueId);
+                    btn.disabled = false;
+                    btn.textContent = btn.getAttribute('data-original-text') || 'Action';
+                }, 2000);
+            }
+        }
+
+        // ── Enhanced Data Fetching with Aggressive Polling ────────────────────
+
+        /**
+         * Start aggressive polling (2-5 second intervals) when actions are in progress
+         */
+        function startAggressivePolling() {
+            if (aggressivePollingInterval) {
+                return;  // Already running
+            }
+            
+            aggressivePollingInterval = setInterval(async () => {
+                if (!hasActiveActions()) {
+                    // No more active actions, stop aggressive polling
+                    if (aggressivePollingInterval) {
+                        clearInterval(aggressivePollingInterval);
+                        aggressivePollingInterval = null;
+                    }
+                    return;
+                }
+                
+                // Poll sessions every 2-3 seconds while actions in progress
+                try {
+                    const sessionsRes = await fetch('/api/sessions');
+                    if (!sessionsRes.ok) return;
+                    
+                    activeSessions = await sessionsRes.json();
+                    
+                    // Match sessions to actions by sessionId
+                    const activeIssueIds = getActiveIssueIds();
+                    activeIssueIds.forEach(issueId => {
+                        const action = actionInProgress[issueId];
+                        if (!action) return;
+                        
+                        // Find session matching this action's sessionId
+                        const session = activeSessions.find(s => s.sessionId === action.sessionId);
+                        
+                        if (session) {
+                            // Session is still active, update elapsed time display
+                            updateStatusDisplay(issueId, session);
+                        }
+                    });
+                    
+                } catch (err) {
+                    console.error('Error in aggressive polling:', err);
+                }
+            }, 2500);  // Poll every 2.5 seconds
+        }
+
+        /**
+         * Enhanced fetchData with support for aggressive polling
+         */
+        async function fetchData() {
+            try {
+                const [issuesRes, sessionsRes] = await Promise.all([
+                    fetch('/api/issues'),
+                    fetch('/api/sessions')
+                ]);
+                allIssues = await issuesRes.json();
+                activeSessions = await sessionsRes.json();
+                renderAllSections();
+                updateSummaryCards();
+                updateLiveIndicator();
+                document.getElementById('last-updated').textContent =
+                    `Last updated: ${new Date().toLocaleTimeString('en-US')}`;
+                
+                // Start aggressive polling if there are active actions
+                if (hasActiveActions()) {
+                    startAggressivePolling();
+                }
+                
+            } catch (err) {
+                document.getElementById('status-dot').className = '';
+                document.getElementById('status-text').textContent = 'Error';
+                console.error('Error loading dashboard data:', err);
+            }
+        }
+
         // ── Keyboard Shortcuts ─────────────────────────────────────────────────
         document.addEventListener('keydown', (e) => {
             // Ctrl+N or Cmd+N to open modal
@@ -913,30 +1292,6 @@
             }
         }
 
-        // ── Data Fetching ──────────────────────────────────────────────────────
-        async function fetchData() {
-            try {
-                const [issuesRes, sessionsRes] = await Promise.all([
-                    fetch('/api/issues'),
-                    fetch('/api/sessions')
-                ]);
-                allIssues = await issuesRes.json();
-                activeSessions = await sessionsRes.json();
-                renderAllSections();
-                updateSummaryCards();
-                updateLiveIndicator();
-                document.getElementById('last-updated').textContent =
-                    `Last updated: ${new Date().toLocaleTimeString('en-US')}`;
-            } catch (err) {
-                document.getElementById('status-dot').className = '';
-                document.getElementById('status-text').textContent = 'Error';
-                console.error('Error loading dashboard data:', err);
-            }
-        }
-
-        fetchData();
-        setInterval(fetchData, 10000);
-
         // ── Section Filtering ──────────────────────────────────────────────────
         function getIssuesForSection(sectionId) {
             switch (sectionId) {
@@ -972,31 +1327,6 @@
                 const text = row.textContent.toLowerCase();
                 row.style.display = text.includes(query) ? '' : 'none';
             });
-        }
-
-        // ── Action Buttons ─────────────────────────────────────────────────────
-        async function triggerAction(issueId, actionType) {
-            const btn = event.currentTarget;
-            btn.disabled = true;
-            const originalText = btn.textContent;
-            btn.textContent = '⏳ Sending...';
-            const commands = {
-                triage:  `Start triage on issue #${issueId}`,
-                release: `Start release planning for issue #${issueId}`,
-                develop: `Continue development on issue #${issueId}`
-            };
-            try {
-                await fetch('/api/interact', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ message: commands[actionType], userName: 'Dashboard' })
-                });
-                btn.textContent = '✅ Sent!';
-                setTimeout(() => { btn.textContent = originalText; btn.disabled = false; }, 2000);
-            } catch (err) {
-                btn.textContent = '❌ Error';
-                setTimeout(() => { btn.textContent = originalText; btn.disabled = false; }, 2000);
-            }
         }
 
         // ── Live Indicator ─────────────────────────────────────────────────────
@@ -1106,6 +1436,19 @@
             if (diffMin < 60) return `${diffMin}m ago`;
             return `${Math.floor(diffMin / 60)}h ago`;
         }
+
+        // ── Initialize ─────────────────────────────────────────────────────────
+        fetchData();
+        normalPollingInterval = setInterval(fetchData, 10000);
+
+        // On page unload, clean up all intervals and actions
+        window.addEventListener('beforeunload', () => {
+            if (normalPollingInterval) clearInterval(normalPollingInterval);
+            if (aggressivePollingInterval) clearInterval(aggressivePollingInterval);
+            getActiveIssueIds().forEach(issueId => {
+                cleanupActionEntry(issueId);
+            });
+        });
     </script>
 </body>
 </html>
