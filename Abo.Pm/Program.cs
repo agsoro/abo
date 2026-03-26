@@ -347,6 +347,11 @@ app.Lifetime.ApplicationStarted.Register(() =>
     });
 });
 
+// Initialize OpenRouter models dynamically before starting the server
+var appSettingsPath = Path.Combine(AppContext.BaseDirectory, "appsettings.json");
+var modelSelector = app.Services.GetRequiredService<Abo.Core.OpenRouterModelSelector>();
+await modelSelector.UpdateModelsIfRequiredAsync(appSettingsPath);
+
 app.Run();
 
 public class InteractRequest
