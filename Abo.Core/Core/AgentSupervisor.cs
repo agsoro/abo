@@ -98,7 +98,7 @@ public class AgentSupervisor
             _logger.LogError(ex, "Error in AgentSupervisor selection.");
         }
 
-        _logger.LogWarning("Could not reliably select agent. Falling back to HelloWorldAgent.");
-        return _agents.First(a => a.Name == "HelloWorldAgent");
+        _logger.LogWarning("Could not reliably select agent. Falling back to ManagerAgent.");
+        return _agents.FirstOrDefault(a => a.Name == "ManagerAgent") ?? _agents.First();
     }
 }
