@@ -73,7 +73,7 @@ public class SpecialistAgent : IAgent
         "### WORKFLOW:\n" +
         "1. **Get Issue**: read the issue via `issueId` (Issue ID) from your instructions.\n" +
         "2. **Execute**: Use the tools to perform your work. All relative paths are automatically rooted in the checked-out issue's directory.\n" +
-        "3. **Complete**: When the task is done, use 'conclude_step' to signal completion. You MUST supply 'resultNotes' detailing your executed work, outputs, and any context needed by the next Role. (These notes will be automatically added as a comment to the issue, so DO NOT use 'add_issue_comment' to duplicate this information). You MUST supply a 'keyword'. If there are defined transition conditions, use the one matching your decision. Alternatively, you can always use the 'postpone' keyword to suspend the task safely, or 'request_ceo_help' if you are completely blocked.\n\n" +
+        "3. **Complete**: When the task is done, use 'conclude_step' to signal completion. You MUST supply 'notes' detailing your executed work, outputs, and any context needed by the next Role. (These notes will be automatically added as a comment to the issue, so DO NOT use 'add_issue_comment' to duplicate this information). You MUST supply a 'keyword'. If there are defined transition conditions, use the one matching your decision. Alternatively, you can always use the 'postpone' keyword to suspend the task safely, or 'request_ceo_help' if you are completely blocked.\n\n" +
         "### RULES:\n" +
         "- Do not attempt to bypass the relative path confinement.";
 
@@ -103,9 +103,9 @@ public class SpecialistAgent : IAgent
                             type = "string",
                             description = "Required. The routing outcome. Use the condition name of the path to take, or 'postpone' to safely suspend the task and preserve context, or 'request_ceo_help' to abort and request human assistance."
                         },
-                        resultNotes = new { type = "string", description = "A detailed summary of the parameters, context, or results generated during this step to store in notes.md for the next person/agent. DO NOT REPEAT STUFF ALREADY STATED IN THE ISSUE OR PREVIOUS NOTES. (Required)" }
+                        notes = new { type = "string", description = "A detailed summary of the parameters, context, or results generated during this step to store in notes.md for the next person/agent. DO NOT REPEAT STUFF ALREADY STATED IN THE ISSUE OR PREVIOUS NOTES. (Required)" }
                     },
-                    required = new[] { "keyword", "resultNotes" }
+                    required = new[] { "keyword", "notes" }
                 }
             }
         });
@@ -167,7 +167,7 @@ public class SpecialistAgent : IAgent
             var issueId = _currentIssueId;
             if (string.IsNullOrEmpty(issueId)) return "Error: issueId was not provided.";
 
-            var environmentsFile = Path.Combine(_dataDir, "Environments", "environments.json");
+            var environmentsFile = Path.Combine(_dataDir, "environments.json");
             var jsOptions = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
             var envs = new List<ConnectorEnvironment>();
             if (File.Exists(environmentsFile))
@@ -304,8 +304,8 @@ public class SpecialistAgent : IAgent
         try
         {
             var args = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(argsJson);
-            if (args == null || !args.TryGetValue("resultNotes", out var resultNotesElement)) return "Error: 'resultNotes' is required.";
-            var resultNotes = resultNotesElement.GetString();
+            if (args == null || !args.TryGetValue("notes", out var notesElement)) return "Error: 'notes' is required.";
+            var notes = notesElement.GetString();
 
             if (!args.TryGetValue("keyword", out var keywordElement) || keywordElement.ValueKind != JsonValueKind.String)
                 return "Error: 'keyword' is required.";
@@ -315,11 +315,11 @@ public class SpecialistAgent : IAgent
 
             if (keyword.Equals("postpone", StringComparison.OrdinalIgnoreCase))
             {
-                return await HandlePostponeTaskAsync($"{{\"contextNotes\": {JsonSerializer.Serialize(resultNotes)}}}");
+                return await HandlePostponeTaskAsync($"{{\"contextNotes\": {JsonSerializer.Serialize(notes)}}}");
             }
             if (keyword.Equals("request_ceo_help", StringComparison.OrdinalIgnoreCase))
             {
-                return HandleRequestCeoHelp($"{{\"message\": {JsonSerializer.Serialize(resultNotes)}}}");
+                return HandleRequestCeoHelp($"{{\"message\": {JsonSerializer.Serialize(notes)}}}");
             }
 
             var currentStatus = Abo.Core.WorkflowEngine.ResolveStatusFallback(_currentIssue);
@@ -357,9 +357,9 @@ public class SpecialistAgent : IAgent
 
             bool reachedEndEvent = matchedTransition?.IsEndEvent ?? false;
 
-            if (!string.IsNullOrWhiteSpace(resultNotes))
+            if (!string.IsNullOrWhiteSpace(notes))
             {
-                await _currentIssueTracker.AddIssueCommentAsync(_currentIssueId, resultNotes);
+                await _currentIssueTracker.AddIssueCommentAsync(_currentIssueId, notes);
             }
 
             var updatedLabels = _currentIssue.Labels.Where(l => !l.StartsWith("role: ") && !l.StartsWith("env: ")).ToList();
@@ -406,7 +406,7 @@ public class SpecialistAgent : IAgent
             }
 
             // Post-completion: check if all release-current issues are done → alert CEO
-            if (reachedEndEvent && string.Equals(nextStepInfo.Status, "done", StringComparison.OrdinalIgnoreCase))
+            if (reachedEndEvent && string.Equals(nextStepInfo.StepId, "done", StringComparison.OrdinalIgnoreCase))
             {
                 await TryNotifyReleaseCompletionAsync();
             }
@@ -420,10 +420,10 @@ public class SpecialistAgent : IAgent
             _currentIssue = null;
             _connectorTools.Clear();
 
-            // Return the sentinel prefix followed by the resultNotes so the Orchestrator can
+            // Return the sentinel prefix followed by the notes so the Orchestrator can
             // immediately surface the notes to the user without an extra LLM round-trip.
             // The Orchestrator detects AgentSentinels.ConcludeStepResult and short-circuits the loop.
-            return $"{AgentSentinels.ConcludeStepResult}{resultNotes}";
+            return $"{AgentSentinels.ConcludeStepResult}{notes}";
         }
         catch (Exception ex)
         {

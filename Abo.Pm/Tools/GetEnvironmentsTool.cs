@@ -10,8 +10,7 @@ public class GetEnvironmentsTool : IAboTool
     public GetEnvironmentsTool()
     {
         var dataDir = Path.Combine(AppContext.BaseDirectory, "Data");
-        var environmentsDir = Path.Combine(dataDir, "Environments");
-        _environmentsFile = Path.Combine(environmentsDir, "environments.json");
+        _environmentsFile = Path.Combine(dataDir, "environments.json");
     }
 
     public string Name => "get_environments";

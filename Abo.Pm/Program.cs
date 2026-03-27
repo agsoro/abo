@@ -71,7 +71,7 @@ async Task<List<Abo.Contracts.Models.IssueRecord>> GetAllIssuesAsync(IConfigurat
         return cachedIssues;
     }
 
-    var environmentsFile = Path.Combine(AppContext.BaseDirectory, "Data", "Environments", "environments.json");
+    var environmentsFile = Path.Combine(AppContext.BaseDirectory, "Data", "environments.json");
     var envs = new List<Abo.Core.Connectors.ConnectorEnvironment>();
     if (File.Exists(environmentsFile))
     {
@@ -114,7 +114,7 @@ async Task<List<Abo.Contracts.Models.IssueRecord>> GetAllIssuesAsync(IConfigurat
 // Helper to get a single issue tracker by environment name
 async Task<Abo.Core.Connectors.IIssueTrackerConnector?> GetTrackerForEnvironmentAsync(string? environmentName, IConfiguration config)
 {
-    var environmentsFile = Path.Combine(AppContext.BaseDirectory, "Data", "Environments", "environments.json");
+    var environmentsFile = Path.Combine(AppContext.BaseDirectory, "Data", "environments.json");
     var envs = new List<Abo.Core.Connectors.ConnectorEnvironment>();
     if (File.Exists(environmentsFile))
     {
@@ -203,11 +203,10 @@ app.MapPost("/api/issues/create", async ([FromBody] CreateIssueRequest req, ICon
     var size = req.Size.Trim().ToUpper();
 
     // Validate type and size values
-    var validTypes = new[] { "bug", "feature", "improvement", "task", "chore", "doc" };
     var validSizes = new[] { "S", "M", "L", "XL" };
 
-    if (!validTypes.Contains(type))
-        return Results.BadRequest(new { error = $"Invalid type. Must be one of: {string.Join(", ", validTypes)}" });
+    if (!Abo.Contracts.Models.IssueType.IsValid(type))
+        return Results.BadRequest(new { error = $"Invalid type. Must be one of: {string.Join(", ", Abo.Contracts.Models.IssueType.AllowedValues)}" });
 
     if (!validSizes.Contains(size))
         return Results.BadRequest(new { error = $"Invalid size. Must be one of: {string.Join(", ", validSizes)}" });

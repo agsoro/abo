@@ -30,7 +30,7 @@ public class ListActiveIssuesTool : IAboTool
     {
         try
         {
-            var environmentsFile = Path.Combine(AppContext.BaseDirectory, "Data", "Environments", "environments.json");
+            var environmentsFile = Path.Combine(AppContext.BaseDirectory, "Data", "environments.json");
             var jsOptions = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
             var envs = new List<ConnectorEnvironment>();
             
@@ -104,7 +104,7 @@ public class ListActiveIssuesTool : IAboTool
 
         var transitions = Abo.Core.WorkflowEngine.GetTransitions(issue);
         var nextSteps = transitions.Count > 0 
-            ? string.Join(", ", transitions.Select(kvp => $"{kvp.Key} -> {kvp.Value.NextStatus}"))
+            ? string.Join(", ", transitions.Select(kvp => $"{kvp.Key} -> {kvp.Value.NextStepId}"))
             : "None";
 
         output.AppendLine($"{indent}- **[Ref: {projRef} | Issue: {issue.Id}] {issue.Title}**");

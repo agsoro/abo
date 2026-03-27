@@ -14,7 +14,7 @@ public class UpdateIssueTool : IAboTool
     }
 
     public string Name => "update_issue";
-    public string Description => "Updates the title, body, and/or type of an existing issue. Use this to standardize issue titles to the format: 'type: component: reason' (5–15 words) and rephrase the body to a concise, technical description. Also used during triage to fill or correct the 'type' label. IMPORTANT: When rephrasing the title or body, the 'body' parameter MUST end with a preserved original submission section: '---\\n**Original submission:**\\n\\n*Original title:* <old title>\\n\\n*Original body:* <old body>'. Fetch the issue first via get_issue to capture the original text before overwriting.";
+    public string Description => "Updates the title, body and type of an existing issue. Use this to standardize issue titles to the format: 'type: component: reason' (5–15 words) and rephrase the body to a concise, technical description. Also used during triage to fill or correct the 'type' label. IMPORTANT: When rephrasing the title or body, the 'body' parameter MUST end with a preserved original submission section: '---\\n**Original submission:**\\n\\n*Original title:* <old title>\\n\\n*Original body:* <old body>'. Fetch the issue first via get_issue to capture the original text before overwriting.";
 
     public object ParametersSchema => new
     {
@@ -22,13 +22,13 @@ public class UpdateIssueTool : IAboTool
         properties = new
         {
             issueId = new { type = "string", description = "The ID or number of the issue to update." },
-            title = new { type = "string", description = "Optional. The new title for the issue. Should follow the format: 'type: component: reason' (5–15 words, type = feature/bug/improvement)." },
-            body = new { type = "string", description = "Optional. The new body/description for the issue. Should be rephrased to a clear, technical perspective with only necessary information. When rephrasing, always append the original submission at the bottom under '---\\n**Original submission:**\\n\\n*Original title:* <old title>\\n\\n*Original body:* <old body>'." },
+            title = new { type = "string", description = "The new title for the issue. Should follow the format: 'type: component: reason' (5–15 words, type = " + string.Join("/", IssueType.AllowedValues) + ")." },
+            body = new { type = "string", description = "The new body/description for the issue. Should be rephrased to a clear, technical perspective with only necessary information. When rephrasing, always append the original submission at the bottom under '---\\n**Original submission:**\\n\\n*Original title:* <old title>\\n\\n*Original body:* <old body>'." },
             type = new
             {
                 type = "string",
-                description = "Optional. Set or correct the issue type label. Used during triage to fill a missing or invalid type.",
-                @enum = new[] { "feature", "bug", "improvement", "task", "chore", "doc" }
+                description = "Set or correct the issue type.",
+                @enum = IssueType.AllowedValues
             },
         },
         required = new[] { "issueId" },

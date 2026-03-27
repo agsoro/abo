@@ -52,7 +52,7 @@ public class StartIssueTool : IAboTool
         if (args == null || string.IsNullOrWhiteSpace(args.IssueId) || string.IsNullOrWhiteSpace(args.Type) || string.IsNullOrWhiteSpace(args.EnvironmentName))
             return "Invalid arguments provided. Ensure issueId, type, and environmentName are not empty.";
 
-        var environmentsFile = Path.Combine(AppContext.BaseDirectory, "Data", "Environments", "environments.json");
+        var environmentsFile = Path.Combine(AppContext.BaseDirectory, "Data", "environments.json");
         ConnectorEnvironment? targetEnv = null;
         if (File.Exists(environmentsFile))
         {

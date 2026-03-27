@@ -30,7 +30,7 @@ public class GetOpenWorkTool : IAboTool
     {
         try
         {
-            var environmentsFile = Path.Combine(AppContext.BaseDirectory, "Data", "Environments", "environments.json");
+            var environmentsFile = Path.Combine(AppContext.BaseDirectory, "Data", "environments.json");
             var jsOptions = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
             var envs = new List<ConnectorEnvironment>();
 
@@ -181,7 +181,7 @@ public class GetOpenWorkTool : IAboTool
                 var transitions = Abo.Core.WorkflowEngine.GetTransitions(issue);
                 if (transitions.Count > 0)
                 {
-                    var stepsDesc = string.Join(", ", transitions.Select(kvp => $"{kvp.Key} -> {kvp.Value.NextStatus}"));
+                    var stepsDesc = string.Join(", ", transitions.Select(kvp => $"{kvp.Key} -> {kvp.Value.NextStepId}"));
                     output.AppendLine($"- **Next Steps**: {stepsDesc}");
                 }
                 output.AppendLine($"- **State**: {displayState}");

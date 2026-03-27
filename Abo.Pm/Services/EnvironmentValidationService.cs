@@ -35,7 +35,7 @@ public class EnvironmentValidationService : IHostedService
     {
         _logger.LogInformation("================== STARTUP ENVIRONMENT CHECKS ==================");
 
-        var envFile = Path.Combine(AppContext.BaseDirectory, "Data", "Environments", "environments.json");
+        var envFile = Path.Combine(AppContext.BaseDirectory, "Data", "environments.json");
         if (!File.Exists(envFile))
         {
             _logger.LogWarning($"[WARN] Environments configuration not found at {envFile}");

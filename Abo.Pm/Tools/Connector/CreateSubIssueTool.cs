@@ -40,7 +40,7 @@ public class CreateSubIssueTool : IAboTool
             {
                 type = "string",
                 description = "The type of the sub-issue.",
-                @enum = new[] { "feature", "bug", "improvement", "task", "chore", "doc" }
+                @enum = IssueType.AllowedValues
             },
             size = new { type = "string", description = "Optional relative size estimate, e.g. 'S', 'M', 'L'." }
         },

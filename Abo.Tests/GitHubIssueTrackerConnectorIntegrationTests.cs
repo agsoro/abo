@@ -23,7 +23,7 @@ public class GitHubIssueTrackerConnectorIntegrationTests
         var token = config["Integrations:GitHub:Token"];
         Assert.False(string.IsNullOrWhiteSpace(token), "GitHub token was not found in AppSettings or UserSecrets.");
 
-        var envFile = Path.Combine(Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, @"..\..\..\..\Abo.Pm")), "Data", "Environments", "environments.json");
+        var envFile = Path.Combine(Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, @"..\..\..\..\Abo.Pm")), "Data", "environments.json");
         var envJson = File.ReadAllText(envFile);
         var envs = JsonSerializer.Deserialize<List<ConnectorEnvironment>>(envJson, new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? new();
         var githubEnv = envs.First(e => e.IssueTracker != null && e.IssueTracker.Type.Equals("github", StringComparison.OrdinalIgnoreCase));
@@ -136,17 +136,15 @@ public class GitHubIssueTrackerConnectorIntegrationTests
             currentIssue.Project = "requested";
             var triage = Abo.Core.WorkflowEngine.GetTransitions(currentIssue)["triage_ok"];
             triage.ApplyState?.Invoke(currentIssue); // sets Project = "backlog"
-            var updatedTriage = await _connector.UpdateIssueAsync(currentIssue.Id, project: currentIssue.Project, status: triage.NextStatus); // status = "release-planning"
+            var updatedTriage = await _connector.UpdateIssueAsync(currentIssue.Id, project: currentIssue.Project, status: currentIssue.Status); // status = "planned"
             Assert.NotNull(updatedTriage);
-            currentIssue.Status = triage.NextStatus;
             await Task.Delay(2000);
 
-            // Step 1b: release-planning -> planned (assign to next release)
-            var t1 = Abo.Core.WorkflowEngine.GetTransitions(currentIssue)["assign_next"];
-            t1.ApplyState?.Invoke(currentIssue); // sets Project = "release-next"
-            var updated1 = await _connector.UpdateIssueAsync(currentIssue.Id, project: currentIssue.Project, status: t1.NextStatus);
+            // Step 1b: release-planning -> planned (assign to current release)
+            var t1 = Abo.Core.WorkflowEngine.GetTransitions(currentIssue)["assign_current"];
+            t1.ApplyState?.Invoke(currentIssue); // sets Project = "release-current"
+            var updated1 = await _connector.UpdateIssueAsync(currentIssue.Id, project: currentIssue.Project, status: currentIssue.Status);
             Assert.NotNull(updated1);
-            currentIssue.Status = t1.NextStatus; // now "planned"
             await Task.Delay(2000);
 
             var verify1 = await _connector.GetIssueAsync(currentIssue.Id);
@@ -157,9 +155,8 @@ public class GitHubIssueTrackerConnectorIntegrationTests
             // Step 2: planned -> work
             var t2 = Abo.Core.WorkflowEngine.GetTransitions(currentIssue)["solution_planned"];
             t2.ApplyState?.Invoke(currentIssue); 
-            var updated2 = await _connector.UpdateIssueAsync(currentIssue.Id, project: currentIssue.Project, status: t2.NextStatus);
+            var updated2 = await _connector.UpdateIssueAsync(currentIssue.Id, project: currentIssue.Project, status: currentIssue.Status);
             Assert.NotNull(updated2);
-            currentIssue.Status = t2.NextStatus; // now "work"
             await Task.Delay(2000);
             
             var verify2 = await _connector.GetIssueAsync(currentIssue.Id);
@@ -170,9 +167,8 @@ public class GitHubIssueTrackerConnectorIntegrationTests
             // Step 3: work -> review
             var t3 = Abo.Core.WorkflowEngine.GetTransitions(currentIssue)["implementation_completed"];
             t3.ApplyState?.Invoke(currentIssue);
-            var updated3 = await _connector.UpdateIssueAsync(currentIssue.Id, project: currentIssue.Project, status: t3.NextStatus);
+            var updated3 = await _connector.UpdateIssueAsync(currentIssue.Id, project: currentIssue.Project, status: currentIssue.Status);
             Assert.NotNull(updated3);
-            currentIssue.Status = t3.NextStatus; // now "review"
             await Task.Delay(2000);
             
             var verify3 = await _connector.GetIssueAsync(currentIssue.Id);
@@ -183,9 +179,8 @@ public class GitHubIssueTrackerConnectorIntegrationTests
             // Step 4: review -> check
             var t4 = Abo.Core.WorkflowEngine.GetTransitions(currentIssue)["solution_accepted"];
             t4.ApplyState?.Invoke(currentIssue);
-            var updated4 = await _connector.UpdateIssueAsync(currentIssue.Id, project: currentIssue.Project, status: t4.NextStatus);
+            var updated4 = await _connector.UpdateIssueAsync(currentIssue.Id, project: currentIssue.Project, status: currentIssue.Status);
             Assert.NotNull(updated4);
-            currentIssue.Status = t4.NextStatus; // now "check"
             await Task.Delay(2000);
             
             var verify4 = await _connector.GetIssueAsync(currentIssue.Id);
@@ -196,9 +191,8 @@ public class GitHubIssueTrackerConnectorIntegrationTests
             // Step 5: check -> done (AND explicitly close the issue RESTfully)
             var t5 = Abo.Core.WorkflowEngine.GetTransitions(currentIssue)["release_finished"];
             t5.ApplyState?.Invoke(currentIssue);
-            var updated5 = await _connector.UpdateIssueAsync(currentIssue.Id, project: currentIssue.Project, status: t5.NextStatus, state: "closed");
+            var updated5 = await _connector.UpdateIssueAsync(currentIssue.Id, project: currentIssue.Project, status: currentIssue.Status, state: "closed");
             Assert.NotNull(updated5);
-            currentIssue.Status = t5.NextStatus; // now "done"
             await Task.Delay(2000);
 
             // Verify final closed state natively via REST

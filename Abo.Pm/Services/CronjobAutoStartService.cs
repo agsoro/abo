@@ -229,7 +229,7 @@ public class CronjobAutoStartService : BackgroundService
     /// </summary>
     private static async Task<List<Abo.Contracts.Models.IssueRecord>> GetAllIssuesAsync(IConfiguration config)
     {
-        var environmentsFile = Path.Combine(AppContext.BaseDirectory, "Data", "Environments", "environments.json");
+        var environmentsFile = Path.Combine(AppContext.BaseDirectory, "Data", "environments.json");
         var envs = new List<ConnectorEnvironment>();
 
         if (File.Exists(environmentsFile))

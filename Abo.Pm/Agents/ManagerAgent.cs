@@ -152,7 +152,7 @@ public class ManagerAgent : IAgent
 
             try
             {
-                var environmentsFile = Path.Combine(AppContext.BaseDirectory, "Data", "Environments", "environments.json");
+                var environmentsFile = Path.Combine(AppContext.BaseDirectory, "Data", "environments.json");
                 var envs = new List<Abo.Core.Connectors.ConnectorEnvironment>();
                 if (File.Exists(environmentsFile))
                 {
