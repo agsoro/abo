@@ -63,7 +63,7 @@ public class Orchestrator
 
         var request = new ChatCompletionRequest
         {
-            Model = _configuration["Config:ModelName"] ?? "anthropic/claude-haiku-4.5",
+            Model = _configuration["Config:ModelName"],
             Messages = requestMessages,
             Tools = agent.GetToolDefinitions()
         };
@@ -98,7 +98,7 @@ public class Orchestrator
                 currentLoop++;
 
                 // Recalculate model in case agent state changed
-                currentModelName = _configuration["Config:ModelName"] ?? "anthropic/claude-haiku-4.5";
+                currentModelName = _configuration["Config:ModelName"];
                 if (agent.RequiresReviewModel && !string.IsNullOrEmpty(_configuration["Config:ReviewModelName"]))
                 {
                     currentModelName = _configuration["Config:ReviewModelName"]!;
