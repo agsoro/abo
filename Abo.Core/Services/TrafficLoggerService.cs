@@ -7,6 +7,8 @@ namespace Abo.Core.Services;
 /// <summary>
 /// Centralized service for logging LLM traffic and consumption data.
 /// Provides thread-safe, asynchronous access to log files with automatic trimming.
+/// All read and write operations are serialized via SemaphoreSlim to prevent
+/// concurrent file handle conflicts (IOException).
 /// </summary>
 public class TrafficLoggerService
 {
@@ -16,7 +18,9 @@ public class TrafficLoggerService
     private readonly string _consumptionLogPath;
     private readonly int _maxLogEntries;
 
+    // Serialize all traffic file access (reads and writes) to prevent IOException
     private static readonly SemaphoreSlim _trafficLogLock = new SemaphoreSlim(1, 1);
+    // Serialize all consumption file access (reads and writes) to prevent IOException
     private static readonly SemaphoreSlim _consumptionLogLock = new SemaphoreSlim(1, 1);
     private static readonly ConcurrentDictionary<string, SemaphoreSlim> _issueFileLocks = new();
 
@@ -144,6 +148,7 @@ public class TrafficLoggerService
     /// <summary>
     /// Retrieves traffic log entries, sorted newest-first with a stable secondary sort
     /// to ensure REQUEST appears before RESPONSE when timestamps match.
+    /// Thread-safe: acquires lock to prevent conflicts with concurrent writes.
     /// </summary>
     /// <param name="limit">Maximum number of entries to return.</param>
     /// <returns>List of traffic log entries as JsonElement.</returns>
@@ -154,50 +159,59 @@ public class TrafficLoggerService
             return new List<JsonElement>();
         }
 
-        var lines = await File.ReadAllLinesAsync(_trafficLogPath);
-        var entries = new List<JsonElement>();
-
-        foreach (var line in lines)
+        await _trafficLogLock.WaitAsync();
+        try
         {
-            if (string.IsNullOrWhiteSpace(line)) continue;
-            try
+            var lines = await File.ReadAllLinesAsync(_trafficLogPath);
+            var entries = new List<JsonElement>();
+
+            foreach (var line in lines)
             {
-                var entry = JsonSerializer.Deserialize<JsonElement>(line);
-                entries.Add(entry);
+                if (string.IsNullOrWhiteSpace(line)) continue;
+                try
+                {
+                    var entry = JsonSerializer.Deserialize<JsonElement>(line);
+                    entries.Add(entry);
+                }
+                catch
+                {
+                    // Skip malformed lines
+                }
             }
-            catch
-            {
-                // Skip malformed lines
-            }
+
+            // Return newest entries first with a stable secondary sort.
+            // Pair each entry with its original file line-index so we have a stable tiebreaker
+            // when two entries share the same Timestamp (e.g. REQUEST and RESPONSE written within
+            // the same millisecond). ThenBy(idx) preserves file-write order within a tied timestamp
+            // group, ensuring REQUEST (written first, lower idx) always appears before its paired
+            // RESPONSE (written second, higher idx) in the newest-first output.
+            var indexed = entries
+                .Select((entry, idx) => new { entry, idx })
+                .ToList();
+
+            var result = indexed
+                .OrderByDescending(x =>
+                {
+                    if (x.entry.TryGetProperty("Timestamp", out var ts))
+                        return ts.GetString() ?? "";
+                    return "";
+                })
+                .ThenBy(x => x.idx)   // preserve original write-order (REQUEST before RESPONSE) within same timestamp
+                .Take(limit)
+                .Select(x => x.entry)
+                .ToList();
+
+            return result;
         }
-
-        // Return newest entries first with a stable secondary sort.
-        // Pair each entry with its original file line-index so we have a stable tiebreaker
-        // when two entries share the same Timestamp (e.g. REQUEST and RESPONSE written within
-        // the same millisecond). ThenBy(idx) preserves file-write order within a tied timestamp
-        // group, ensuring REQUEST (written first, lower idx) always appears before its paired
-        // RESPONSE (written second, higher idx) in the newest-first output.
-        var indexed = entries
-            .Select((entry, idx) => new { entry, idx })
-            .ToList();
-
-        var result = indexed
-            .OrderByDescending(x =>
-            {
-                if (x.entry.TryGetProperty("Timestamp", out var ts))
-                    return ts.GetString() ?? "";
-                return "";
-            })
-            .ThenBy(x => x.idx)   // preserve original write-order (REQUEST before RESPONSE) within same timestamp
-            .Take(limit)
-            .Select(x => x.entry)
-            .ToList();
-
-        return result;
+        finally
+        {
+            _trafficLogLock.Release();
+        }
     }
 
     /// <summary>
     /// Retrieves consumption log entries, sorted newest-first.
+    /// Thread-safe: acquires lock to prevent conflicts with concurrent writes.
     /// </summary>
     /// <param name="limit">Maximum number of entries to return.</param>
     /// <returns>List of consumption log entries as JsonElement.</returns>
@@ -208,26 +222,34 @@ public class TrafficLoggerService
             return new List<JsonElement>();
         }
 
-        var lines = await File.ReadAllLinesAsync(_consumptionLogPath);
-        var entries = new List<JsonElement>();
-
-        foreach (var line in lines)
+        await _consumptionLogLock.WaitAsync();
+        try
         {
-            if (string.IsNullOrWhiteSpace(line)) continue;
-            try
-            {
-                var entry = JsonSerializer.Deserialize<JsonElement>(line);
-                entries.Add(entry);
-            }
-            catch
-            {
-                // Skip malformed lines
-            }
-        }
+            var lines = await File.ReadAllLinesAsync(_consumptionLogPath);
+            var entries = new List<JsonElement>();
 
-        // Return newest entries first, limited by the limit parameter
-        var result = entries.AsEnumerable().Reverse().Take(limit).ToList();
-        return result;
+            foreach (var line in lines)
+            {
+                if (string.IsNullOrWhiteSpace(line)) continue;
+                try
+                {
+                    var entry = JsonSerializer.Deserialize<JsonElement>(line);
+                    entries.Add(entry);
+                }
+                catch
+                {
+                    // Skip malformed lines
+                }
+            }
+
+            // Return newest entries first, limited by the limit parameter
+            var result = entries.AsEnumerable().Reverse().Take(limit).ToList();
+            return result;
+        }
+        finally
+        {
+            _consumptionLogLock.Release();
+        }
     }
 
     private static async Task TrimLogFileIfNeededAsync(string filePath, int maxEntries)
