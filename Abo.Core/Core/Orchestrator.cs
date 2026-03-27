@@ -63,7 +63,7 @@ public class Orchestrator
 
         var request = new ChatCompletionRequest
         {
-            Model = _configuration["Config:ModelName"],
+            Model = _configuration["Config:ModelName"] ?? string.Empty,
             Messages = requestMessages,
             Tools = agent.GetToolDefinitions()
         };
@@ -83,7 +83,7 @@ public class Orchestrator
         int totalInputTokens = 0;
         int totalOutputTokens = 0;
         double totalCost = 0.0;
-        string currentModelName = request.Model;
+        string currentModelName = request.Model ?? string.Empty;
         bool terminateAfterSynthesis = false;
         bool loopLimitWarningInjected = false; // Change A: guard flag for one-time warning injection
 
@@ -98,7 +98,7 @@ public class Orchestrator
                 currentLoop++;
 
                 // Recalculate model in case agent state changed
-                currentModelName = _configuration["Config:ModelName"];
+                currentModelName = _configuration["Config:ModelName"] ?? string.Empty;
                 if (agent.RequiresReviewModel && !string.IsNullOrEmpty(_configuration["Config:ReviewModelName"]))
                 {
                     currentModelName = _configuration["Config:ReviewModelName"]!;
