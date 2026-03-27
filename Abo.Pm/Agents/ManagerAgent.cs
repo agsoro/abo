@@ -195,7 +195,7 @@ public class ManagerAgent : IAgent
 
                 var stepId = Abo.Core.WorkflowEngine.ResolveStepIdFallback(targetIssue);
 
-                var stepInfo = Abo.Core.WorkflowEngine.GetStepInfo(stepId);
+                var stepInfo = Abo.Core.WorkflowEngine.GetStepInfo(targetIssue);
                 if (stepInfo?.Role == null) return $"Error: Could not determine Role for step '{stepId}'.";
 
                 var role = stepInfo.Role;
@@ -203,7 +203,7 @@ public class ManagerAgent : IAgent
 
                 // Re-validate step hasn't changed since get_open_work was called (best-effort secondary guard)
                 var freshStepId = Abo.Core.WorkflowEngine.ResolveStepIdFallback(targetIssue);
-                var freshStepInfo = Abo.Core.WorkflowEngine.GetStepInfo(freshStepId);
+                var freshStepInfo = Abo.Core.WorkflowEngine.GetStepInfo(targetIssue);
                 if (freshStepInfo?.Role == null || !string.Equals(freshStepInfo.Role.RoleId, roleId, StringComparison.OrdinalIgnoreCase))
                 {
                     return $"Issue '{issueId}' step has changed (now: '{freshStepId}', role: '{freshStepInfo?.Role?.RoleId}'). " +

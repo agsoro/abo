@@ -99,10 +99,10 @@ public class ListActiveIssuesTool : IAboTool
         var projRef = ExtractLabelValue(issue.Labels, "ref") ?? issue.Id;
         var project = issue.Project;
 
-        var stepInfo = Abo.Core.WorkflowEngine.GetStepInfo(stepId);
+        var stepInfo = Abo.Core.WorkflowEngine.GetStepInfo(issue);
         var roleToShow = stepInfo?.Role?.RoleId ?? "Unknown";
 
-        var transitions = Abo.Core.WorkflowEngine.GetTransitions(stepId);
+        var transitions = Abo.Core.WorkflowEngine.GetTransitions(issue);
         var nextSteps = transitions.Count > 0 
             ? string.Join(", ", transitions.Select(kvp => $"{kvp.Key} -> {kvp.Value.NextStepId}"))
             : "None";

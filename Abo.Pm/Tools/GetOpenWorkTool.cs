@@ -138,7 +138,7 @@ public class GetOpenWorkTool : IAboTool
                 var envName = ExtractLabelValue(issue.Labels, "env") ?? "Unknown";
                 var projRef = ExtractLabelValue(issue.Labels, "ref") ?? issue.Id;
 
-                var stepInfo = Abo.Core.WorkflowEngine.GetStepInfo(stepId);
+                var stepInfo = Abo.Core.WorkflowEngine.GetStepInfo(issue);
                 string nodeName = stepInfo?.StepName ?? stepId;
                 string status = stepInfo != null ? "Ready for work" : "Unknown State";
                 if (string.Equals(stepId, "done", StringComparison.OrdinalIgnoreCase) || string.Equals(stepId, "invalid", StringComparison.OrdinalIgnoreCase))
@@ -178,7 +178,7 @@ public class GetOpenWorkTool : IAboTool
                 if (!string.IsNullOrWhiteSpace(roleToShow))
                     output.AppendLine($"- **Required Role**: `{roleToShow}`");
 
-                var transitions = Abo.Core.WorkflowEngine.GetTransitions(stepId);
+                var transitions = Abo.Core.WorkflowEngine.GetTransitions(issue);
                 if (transitions.Count > 0)
                 {
                     var stepsDesc = string.Join(", ", transitions.Select(kvp => $"{kvp.Key} -> {kvp.Value.NextStepId}"));

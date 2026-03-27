@@ -329,7 +329,7 @@ public class SpecialistAgent : IAgent
 
             if (!string.IsNullOrWhiteSpace(currentStepId))
             {
-                var transitions = Abo.Core.WorkflowEngine.GetTransitions(currentStepId);
+                var transitions = Abo.Core.WorkflowEngine.GetTransitions(_currentIssue);
 
                 if (transitions.Count > 0)
                 {
@@ -344,11 +344,11 @@ public class SpecialistAgent : IAgent
                         return $"Error: The provided keyword '{keyword}' did not match any routing conditions. Valid expected condition matches are: {options}";
                     }
 
-                    var stepInfo = Abo.Core.WorkflowEngine.GetStepInfo(matchedTransition.NextStepId);
+                    matchedTransition.ApplyState?.Invoke(_currentIssue);
+                    var stepInfo = Abo.Core.WorkflowEngine.GetStepInfo(_currentIssue);
                     if (stepInfo != null)
                     {
                         nextStepInfo = stepInfo;
-                        matchedTransition.ApplyState?.Invoke(_currentIssue);
                     }
                 }
             }

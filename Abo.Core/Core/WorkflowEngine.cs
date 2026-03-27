@@ -11,7 +11,7 @@ public static class WorkflowEngine
         var stepId = issue.StepId ?? string.Empty;
 
         // If the step is recognized natively, accept it immediately
-        if (!string.IsNullOrWhiteSpace(stepId) && GetStepInfo(stepId) != null) return stepId;
+        if (!string.IsNullOrWhiteSpace(stepId) && GetStepInfo(issue) != null) return stepId;
 
         // If the step is blank OR unrecognized (e.g. 'Open', 'Todo') but within the 'requested' project, force it
         if (string.Equals(issue.Project, "requested", StringComparison.OrdinalIgnoreCase)) return "open";
@@ -19,8 +19,11 @@ public static class WorkflowEngine
         return stepId;
     }
 
-    public static ProcessStepInfo? GetStepInfo(string stepId)
+    public static ProcessStepInfo? GetStepInfo(IssueRecord issue)
     {
+        var stepId = ResolveStepIdFallback(issue).ToLower();
+
+        bool isDoc = string.Equals(issue.Type, "doc", StringComparison.OrdinalIgnoreCase);
         return stepId.ToLower() switch
         {
             "open" => new ProcessStepInfo
@@ -85,15 +88,44 @@ public static class WorkflowEngine
                     { "reject_duplicate", new WorkflowTransition { NextStepId = "invalid", IsEndEvent = true, ApplyState = issue => ApplyTransitionAndState(issue, "invalid", "requested", "closed") } }
                 }
             },
-            "planned" => new ProcessStepInfo
-            {
-                StepId = "planned",
-                StepName = "Solution Planning",
-                Role = new RoleDefinition
+            "planned" => isDoc
+                ? new ProcessStepInfo // --- NEW: INFORMATION ARCHITECT (DOCS) ---
                 {
-                    RoleId = "Role_Architect",
-                    Title = "Software Architect",
-                    SystemPrompt = @"You are the Software Architect. You receive triaged requests and plan technical solutions. Your responsibilities include:
+                    StepId = "planned",
+                    StepName = "Documentation Planning",
+                    Role = new RoleDefinition
+                    {
+                        RoleId = "Role_InformationArchitect",
+                        Title = "Information Architect",
+                        SystemPrompt = @"You are the Information Architect. You receive triaged documentation requests and plan the macro-level structure of the knowledge base or wiki. Your responsibilities include:
+                        1. Outlining Structure: Provide a high-level outline of the documentation that needs to be written or updated.
+                        2. Task Breakdown: If the documentation request is massive (e.g., documenting an entire new feature set or overhauling the wiki), use `create_sub_issue` to break the work down into smaller, manageable documentation tickets for the Technical Writers.
+                        3. Strategic Guidance: Define the target audience and tone for the Writers. 
+                        Do NOT write the step-by-step content or final markdown yourself; leave that to the Technical Writer.
+                        ### TASK COMPLETION:
+                        Call `conclude_step` with one of these keywords:
+                        - 'solution_planned' -> Outline is ready and/or sub-issues are created, moves to execution (work).
+                        - 'pause_work' -> Pauses the workflow for this issue, and it will be resumed later.
+                        - 'need_help' -> Moves to waiting customer.",
+                        AllowedTools = new List<string> { "conclude_step", "read_file", "list_dir", "get_issue", "add_issue_comment", "get_wiki_page", "search_wiki", "create_sub_issue" }
+                    },
+                    Transitions = new Dictionary<string, WorkflowTransition>(StringComparer.OrdinalIgnoreCase)
+                    {
+                        { "need_help", new WorkflowTransition { NextStepId = "waiting customer", IsEndEvent = true, ApplyState = i => ApplyTransitionAndState(i, "waiting customer", null, "open") } },
+                        { "pause_work", new WorkflowTransition { NextStepId = "planned", ApplyState = i => ApplyTransitionAndState(i, "planned", null, "open") } },
+                        { "solution_planned", new WorkflowTransition { NextStepId = "work", ApplyState = i => ApplyTransitionAndState(i, "work", null, "open") } }
+                    }
+                }
+                :
+                new ProcessStepInfo
+                {
+                    StepId = "planned",
+                    StepName = "Solution Planning",
+                    Role = new RoleDefinition
+                    {
+                        RoleId = "Role_Architect",
+                        Title = "Software Architect",
+                        SystemPrompt = @"You are the Software Architect. You receive triaged requests and plan technical solutions. Your responsibilities include:
                     Claiming Tickets: Take ownership of architectural tasks.
                     Outlining Changes: Provide a high-level roadmap of required modifications.
                     Ignore routine implementation details or boilerplate.
@@ -104,24 +136,57 @@ public static class WorkflowEngine
                     - 'solution_planned' -> Moves to implementation (work).
                     - 'pause_work' -> Pauses the workflow for this issue, and it will be resumed later.
                     - 'need_help' -> Moves to waiting customer.",
-                    AllowedTools = new List<string> { "conclude_step", "read_file", "list_dir", "search_regex", "get_issue", "add_issue_comment", "get_wiki_page", "create_wiki_page", "update_wiki_page", "search_wiki", "create_sub_issue" }
-                },
-                Transitions = new Dictionary<string, WorkflowTransition>(StringComparer.OrdinalIgnoreCase)
+                        AllowedTools = new List<string> { "conclude_step", "read_file", "list_dir", "search_regex", "get_issue", "add_issue_comment", "get_wiki_page", "create_wiki_page", "update_wiki_page", "search_wiki", "create_sub_issue" }
+                    },
+                    Transitions = new Dictionary<string, WorkflowTransition>(StringComparer.OrdinalIgnoreCase)
                 {
                     { "need_help", new WorkflowTransition { NextStepId = "waiting customer", IsEndEvent = true, ApplyState = issue => ApplyTransitionAndState(issue, "waiting customer", null, "open") } },
                     { "pause_work", new WorkflowTransition { NextStepId = "planned", ApplyState = issue => ApplyTransitionAndState(issue, "planned", null, "open") } },
                     { "solution_planned", new WorkflowTransition { NextStepId = "work", ApplyState = issue => ApplyTransitionAndState(issue, "work", null, "open") } }
                 }
-            },
-            "work" => new ProcessStepInfo
-            {
-                StepId = "work",
-                StepName = "Implementation",
-                Role = new RoleDefinition
+                },
+            "work" => isDoc
+                ? new ProcessStepInfo // --- NEW DOC BRANCH ---
                 {
-                    RoleId = "Role_Developer",
-                    Title = "Developer",
-                    SystemPrompt = @"You are a Software Developer. Your role is to transform architectural plans into high-quality code. You implement solutions, create files, compile, test, and perform technical refactorings. You do not push to production or release code.
+                    StepId = "work",
+                    StepName = "Documentation Updates",
+                    Role = new RoleDefinition
+                    {
+                        RoleId = "Role_TechnicalWriter",
+                        Title = "Technical Writer",
+                        SystemPrompt = @"You are a Technical Writer. Your role is to transform requirements into clear, concise, and accurate documentation. You write and update wikis, markdown files, and user guides. You DO NOT write or modify application source code.
+                        ### OPERATIONAL GUIDELINES:
+                        * **Clarity & Style:** Adhere to project styling guidelines. Keep documentation accessible but technically precise.
+                        * **Scope Control:** Focus strictly on the documentation requested in the ticket.
+                        ### GIT WORKFLOW:
+                        1. **Sync:** git checkout main && git pull origin main
+                        2. **Branch:** git checkout -b feature/doc-{issueId}-{short-description}
+                        3. **Write:** Make all changes on this branch.
+                        4. **Handoff:** git push origin feature/doc-{issueId}-{short-description}
+                        5. **Report:** Include the exact branch name in your resultNotes for the Release Engineer.
+                        ### TASK COMPLETION:
+                        Call `conclude_step` with:
+                        - 'docs_completed' -> Writing successfully completed, moves to review.
+                        - 'pause_work' -> Pauses the workflow for this issue, and it will be resumed later.
+                        - 'need_help' -> Moves to waiting customer.",
+                        AllowedTools = new List<string> { "conclude_step", "read_file", "write_file", "list_dir", "mkdir", "git", "get_issue", "add_issue_comment", "get_wiki_page", "create_wiki_page", "update_wiki_page", "search_wiki" }
+                    },
+                    Transitions = new Dictionary<string, WorkflowTransition>(StringComparer.OrdinalIgnoreCase)
+                    {
+                        { "need_help", new WorkflowTransition { NextStepId = "waiting customer", IsEndEvent = true, ApplyState = i => ApplyTransitionAndState(i, "waiting customer", null, "open") } },
+                        { "pause_work", new WorkflowTransition { NextStepId = "work", ApplyState = i => ApplyTransitionAndState(i, "work", null, "open") } },
+                        { "docs_completed", new WorkflowTransition { NextStepId = "review", ApplyState = i => ApplyTransitionAndState(i, "review", null, "open") } }
+                    }
+                }
+                : new ProcessStepInfo
+                {
+                    StepId = "work",
+                    StepName = "Implementation",
+                    Role = new RoleDefinition
+                    {
+                        RoleId = "Role_Developer",
+                        Title = "Developer",
+                        SystemPrompt = @"You are a Software Developer. Your role is to transform architectural plans into high-quality code. You implement solutions, create files, compile, test, and perform technical refactorings. You do not push to production or release code.
                     ### OPERATIONAL GUIDELINES:
                     * **Plan Adherence:** Strictly follow the technical approach defined by the Architect. Do not deviate from the macro-level structure or documented 'Big Picture' patterns.
                     * **Code Integrity:** Ensure all code is modular, tested, and follows the project's established styling.
@@ -140,15 +205,15 @@ public static class WorkflowEngine
                     - 'implementation_completed' -> Development successfully completed, moves to review.
                     - 'pause_work' -> Pauses the workflow for this issue, and it will be resumed later.
                     - 'need_help' -> Moves to waiting customer.",
-                    AllowedTools = new List<string> { "conclude_step", "read_file", "write_file", "delete_file", "list_dir", "mkdir", "git", "dotnet", "python", "shell", "search_regex", "http_get", "get_issue", "add_issue_comment", "get_wiki_page", "update_wiki_page", "search_wiki" }
-                },
-                Transitions = new Dictionary<string, WorkflowTransition>(StringComparer.OrdinalIgnoreCase)
+                        AllowedTools = new List<string> { "conclude_step", "read_file", "write_file", "delete_file", "list_dir", "mkdir", "git", "dotnet", "python", "shell", "search_regex", "http_get", "get_issue", "add_issue_comment", "get_wiki_page", "update_wiki_page", "search_wiki" }
+                    },
+                    Transitions = new Dictionary<string, WorkflowTransition>(StringComparer.OrdinalIgnoreCase)
                 {
                     { "need_help", new WorkflowTransition { NextStepId = "waiting customer", IsEndEvent = true, ApplyState = issue => ApplyTransitionAndState(issue, "waiting customer", null, "open") } },
                     { "pause_work", new WorkflowTransition { NextStepId = "work", ApplyState = issue => ApplyTransitionAndState(issue, "work", null, "open") } },
                     { "implementation_completed", new WorkflowTransition { NextStepId = "review", ApplyState = issue => ApplyTransitionAndState(issue, "review", null, "open") } }
                 }
-            },
+                },
             "review" => new ProcessStepInfo
             {
                 StepId = "review",
@@ -210,9 +275,9 @@ public static class WorkflowEngine
         };
     }
 
-    public static Dictionary<string, WorkflowTransition> GetTransitions(string stepId)
+    public static Dictionary<string, WorkflowTransition> GetTransitions(IssueRecord issue)
     {
-        return GetStepInfo(stepId)?.Transitions ?? new Dictionary<string, WorkflowTransition>(StringComparer.OrdinalIgnoreCase);
+        return GetStepInfo(issue)?.Transitions ?? new Dictionary<string, WorkflowTransition>(StringComparer.OrdinalIgnoreCase);
     }
 
     private static void ApplyTransitionAndState(IssueRecord issue, string stepId, string? project, string state = "open")

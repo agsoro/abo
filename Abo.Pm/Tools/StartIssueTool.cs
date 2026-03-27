@@ -70,7 +70,8 @@ public class StartIssueTool : IAboTool
 
         try
         {
-            var initialStepInfo = Abo.Core.WorkflowEngine.GetStepInfo(args.InitialStepId);
+            var dummyIssue = new IssueRecord { Type = args.TypeId, StepId = args.InitialStepId };
+            var initialStepInfo = Abo.Core.WorkflowEngine.GetStepInfo(dummyIssue);
             if (initialStepInfo == null)
             {
                 return $"Error: The initial step '{args.InitialStepId}' is not recognized by the WorkflowEngine.";
