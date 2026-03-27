@@ -1,6 +1,7 @@
 using Xunit;
 using Moq;
 using Abo.Services;
+using Abo.Core;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Configuration;
 using System.Collections.Generic;
@@ -303,7 +304,7 @@ namespace Abo.Tests
             var sessions = _sessionService.GetActiveSessions();
 
             // Assert - Should only have one session (updated, not duplicated)
-            Assert.Single(sessions.Where(s => s.SessionId == sessionId));
+            Assert.Single(sessions, s => s.SessionId == sessionId);
             
             // Latest data should be from second call
             var session = sessions.First(s => s.SessionId == sessionId);
@@ -463,7 +464,6 @@ namespace Abo.Tests
                 Assert.NotNull(session.SessionId);
                 Assert.NotNull(session.CurrentIssueId);
                 Assert.NotNull(session.CurrentIssueTitle);
-                Assert.NotNull(session.LastActivity);
                 Assert.True(session.MessageCount >= 0);
                 
                 // Verify format expectations

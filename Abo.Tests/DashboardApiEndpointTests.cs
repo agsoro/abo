@@ -1,5 +1,6 @@
 using Xunit;
 using Abo.Services;
+using Abo.Core;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
@@ -32,7 +33,7 @@ namespace Abo.Tests
 
             // Assert
             Assert.NotNull(sessions);
-            Assert.IsType<List<dynamic>>(sessions);
+            Assert.IsType<List<SessionInfo>>(sessions);
         }
 
         [Fact]
@@ -266,7 +267,6 @@ namespace Abo.Tests
             Assert.NotNull(session.SessionId);
             Assert.NotNull(session.CurrentIssueId);
             Assert.NotNull(session.CurrentIssueTitle);
-            Assert.NotNull(session.LastActivity);
             Assert.True(session.MessageCount >= 0);
         }
 
@@ -282,7 +282,7 @@ namespace Abo.Tests
             var sessions = _sessionService.GetActiveSessions();
 
             // Assert
-            Assert.IsType<List<dynamic>>(sessions);
+            Assert.IsType<List<SessionInfo>>(sessions);
             Assert.Equal(3, sessions.Count);
             
             // Each session should have required fields
@@ -304,7 +304,6 @@ namespace Abo.Tests
             var session = sessions[0];
 
             // Assert
-            Assert.NotNull(session.LastActivity);
             Assert.IsType<System.DateTime>(session.LastActivity);
             
             // Should be recent (within last minute)
@@ -414,7 +413,7 @@ namespace Abo.Tests
             }
 
             // Simulate aggressive polling (2.5s interval)
-            var pollResults = new List<List<dynamic>>();
+            var pollResults = new List<List<SessionInfo>>();
             for (int i = 0; i < 3; i++)
             {
                 var poll = _sessionService.GetActiveSessions();

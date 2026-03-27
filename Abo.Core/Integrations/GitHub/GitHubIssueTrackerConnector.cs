@@ -16,9 +16,9 @@ public class GitHubIssueTrackerConnector : IIssueTrackerConnector
     private static readonly Dictionary<string, string> _projectNodeIds = new(StringComparer.OrdinalIgnoreCase);
     private static readonly Dictionary<string, Dictionary<string, (string fieldId, string optionId)>> _projectStatuses = new(StringComparer.OrdinalIgnoreCase);
 
-    // Stores per-project: (TypeFieldId, Dictionary<typeName, optionId>)
-    private static readonly Dictionary<string, (string TypeFieldId, Dictionary<string, string> TypeOptions)> _projectTypeFields
-        = new(StringComparer.OrdinalIgnoreCase);
+    // Stores repository-level built-in issue types: (typeName -> typeNodeId)
+    private static readonly Dictionary<string, string> _repoIssueTypes = new(StringComparer.OrdinalIgnoreCase);
+    private static bool _repoIssueTypesCached = false;
 
     // Enrichment result cache: key = issue number (string), value = (Project, Status, Type, CachedAt)
     private static readonly Dictionary<string, (string Project, string Status, string Type, DateTime CachedAt)> _enrichmentCache
@@ -169,6 +169,7 @@ query($owner: String!) {
                 body
                 state
                 id
+                issueType { name }
                 labels(first: 20) {
                   nodes { name }
                 }
@@ -256,6 +257,15 @@ query($owner: String!) {
                 // Parse Status and Type from field values
                 var status = "";
                 var typeStr = "";
+                
+                if (content.TryGetProperty("issueType", out var typeEl) && typeEl.ValueKind == JsonValueKind.Object)
+                {
+                    if (typeEl.TryGetProperty("name", out var typeNameEl)) {
+                        var tv = typeNameEl.GetString();
+                        if (!string.IsNullOrWhiteSpace(tv)) typeStr = tv;
+                    }
+                }
+
                 if (item.TryGetProperty("fieldValues", out var fVals))
                 {
                     foreach (var fv in fVals.GetProperty("nodes").EnumerateArray())
@@ -270,19 +280,9 @@ query($owner: String!) {
                                     status = optName.GetString() ?? "";
                                 }
                             }
-                            else if (string.Equals(fName.GetString(), "Type", StringComparison.OrdinalIgnoreCase))
-                            {
-                                if (fv.TryGetProperty("name", out var typeOptName))
-                                {
-                                    var tv = typeOptName.GetString();
-                                    if (!string.IsNullOrWhiteSpace(tv))
-                                        typeStr = tv;
-                                }
-                            }
                         }
                     }
                 }
-
                 var record = new IssueRecord
                 {
                     Id = numStr,
@@ -397,7 +397,12 @@ query($owner: String!) {
 
         var restLabels = labelsList.Where(l => !l.StartsWith("project: ", StringComparison.OrdinalIgnoreCase)).ToList();
 
-        var taggedTitle = $"[abo] {title}";
+        var cleanedTitle = title;
+        if (cleanedTitle.StartsWith("[abo] ", StringComparison.OrdinalIgnoreCase)) {
+            cleanedTitle = cleanedTitle.Substring(6).TrimStart();
+        }
+
+        var taggedTitle = $"[abo] {cleanedTitle}";
         var reqObj = new
         {
             title = taggedTitle,
@@ -433,7 +438,7 @@ query($owner: String!) {
         {
             updatedLabels = labels.ToList();
         }
-        else if (project != null || size != null)
+        else if (project != null || size != null || type != null || status != null)
         {
             var existingIssue = await GetIssueAsync(issueId);
             if (existingIssue != null) 
@@ -484,8 +489,8 @@ query($owner: String!) {
             }
 
             await SyncProjectV2Async(record);
-            // Invalidate cache so the next fetch reflects the updated project/step/type state
-            _enrichmentCache.Remove(issueId);
+            // Proactively warm the cache so the next immediate fetch is consistent, avoiding GitHub's indexing delays
+            _enrichmentCache[issueId] = (record.Project, record.Status, record.Type, DateTime.UtcNow);
         }
         return record;
     }
@@ -593,6 +598,120 @@ query($owner: String!) {
                 ParseProjectsV2(entity.Value);
             }
         } catch { /* Ignore cache failures */ }
+
+        await EnsureRepoIssueTypesCachedAsync();
+    }
+
+    private async Task EnsureRepoIssueTypesCachedAsync()
+    {
+        if (_repoIssueTypesCached) return;
+
+        var query = @"
+query($owner: String!, $repo: String!) {
+  repository(owner: $owner, name: $repo) {
+    owner { id }
+    issueTypes(first: 20) {
+      nodes {
+        id
+        name
+      }
+    }
+  }
+}";
+        try {
+            var json = await SendGraphQLRequestAsync(new { query, variables = new { owner = _config.Owner, repo = _config.Repository } });
+            var doc = JsonDocument.Parse(json);
+            if (doc.RootElement.TryGetProperty("data", out var data) && 
+                data.TryGetProperty("repository", out var repoNode))
+            {
+                var ownerId = repoNode.TryGetProperty("owner", out var ownerEl) ? ownerEl.GetProperty("id").GetString() : null;
+                
+                if (repoNode.TryGetProperty("issueTypes", out var issueTypesNode) &&
+                    issueTypesNode.TryGetProperty("nodes", out var nodes))
+                {
+                    foreach (var node in nodes.EnumerateArray())
+                    {
+                        var id = node.GetProperty("id").GetString();
+                        var name = node.GetProperty("name").GetString();
+                        if (!string.IsNullOrEmpty(id) && !string.IsNullOrEmpty(name))
+                        {
+                            _repoIssueTypes[name] = id;
+                        }
+                    }
+                }
+
+                // Check and auto-provision missing allowed types mapped from Abo.Contracts
+                if (!string.IsNullOrEmpty(ownerId))
+                {
+                    bool addedAny = false;
+                    foreach (var requiredType in Abo.Contracts.Models.IssueType.AllowedValues)
+                    {
+                        var exists = _repoIssueTypes.Keys.Any(k => string.Equals(k, requiredType, StringComparison.OrdinalIgnoreCase));
+                        if (!exists)
+                        {
+                            // Natively capitalize types ("bug" -> "Bug")
+                            var formattedName = char.ToUpperInvariant(requiredType[0]) + requiredType.Substring(1);
+                            var mut = @"
+mutation($ownerId: ID!, $name: String!) {
+  createIssueType(input: { ownerId: $ownerId, name: $name, isEnabled: true }) {
+    issueType { id name }
+  }
+}";
+                            try
+                            {
+                                var mutJson = await SendGraphQLRequestAsync(new { 
+                                    query = mut, 
+                                    variables = new { ownerId, name = formattedName } 
+                                });
+                                var mutDoc = JsonDocument.Parse(mutJson);
+                                if (mutDoc.RootElement.TryGetProperty("errors", out var errs))
+                                {
+                                    Console.ForegroundColor = ConsoleColor.Red;
+                                    Console.WriteLine($"[GitHub Connector Error] GraphQL errors provisioning '{formattedName}': {errs.GetRawText()}");
+                                    Console.ResetColor();
+                                }
+                                
+                                if (mutDoc.RootElement.TryGetProperty("data", out var mData) &&
+                                    mData.ValueKind == JsonValueKind.Object &&
+                                    mData.TryGetProperty("createIssueType", out var cIt) &&
+                                    cIt.ValueKind == JsonValueKind.Object &&
+                                    cIt.TryGetProperty("issueType", out var itNode) &&
+                                    itNode.ValueKind == JsonValueKind.Object)
+                                {
+                                    var newId = itNode.GetProperty("id").GetString();
+                                    var newName = itNode.GetProperty("name").GetString();
+                                    if (!string.IsNullOrEmpty(newId) && !string.IsNullOrEmpty(newName))
+                                    {
+                                        _repoIssueTypes[newName] = newId;
+                                        addedAny = true;
+                                        Console.ForegroundColor = ConsoleColor.Green;
+                                        Console.WriteLine($"[GitHub Connector] Auto-provisioned native Issue Type: '{newName}'");
+                                        Console.ResetColor();
+                                    }
+                                }
+                                else
+                                {
+                                    Console.ForegroundColor = ConsoleColor.Red;
+                                    Console.WriteLine($"[GitHub Connector Error] Unexpected response for '{formattedName}': {mutJson}");
+                                    Console.ResetColor();
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                Console.ForegroundColor = ConsoleColor.Red;
+                                Console.WriteLine($"[GitHub Connector Error] Failed to auto-provision native Issue Type '{formattedName}': {ex.Message}");
+                                Console.ResetColor();
+                            }
+                        }
+                    }
+                    if (addedAny)
+                    {
+                        Console.WriteLine("[GitHub Connector] Repo Issue Types auto-provisioning complete.");
+                    }
+                }
+            }
+            _repoIssueTypesCached = true;
+        } catch { /* Ignore cache failures */ }
     }
 
     private void ParseProjectsV2(JsonElement entity)
@@ -604,9 +723,6 @@ query($owner: String!) {
             if (string.IsNullOrWhiteSpace(title) || string.IsNullOrWhiteSpace(id)) continue;
 
             var statusDict = new Dictionary<string, (string, string)>(StringComparer.OrdinalIgnoreCase);
-
-            string? typeFieldId = null;
-            var typeOptions = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
             if (pNode.TryGetProperty("fields", out var fields)) {
                 foreach (var fNode in fields.GetProperty("nodes").EnumerateArray()) {
@@ -622,16 +738,6 @@ query($owner: String!) {
                             }
                         }
                     }
-                    else if (string.Equals(fName.GetString(), "Type", StringComparison.OrdinalIgnoreCase)) {
-                        typeFieldId = fNode.GetProperty("id").GetString();
-                        if (fNode.TryGetProperty("options", out var typeOptsEl) && typeFieldId != null) {
-                            foreach (var opt in typeOptsEl.EnumerateArray()) {
-                                var oName = opt.GetProperty("name").GetString();
-                                var oId = opt.GetProperty("id").GetString();
-                                if (oName != null && oId != null) typeOptions[oName] = oId;
-                            }
-                        }
-                    }
                 }
             }
             
@@ -640,12 +746,10 @@ query($owner: String!) {
                 if (statusDict.Count > existingDict.Count) {
                     _projectNodeIds[title] = id;
                     _projectStatuses[title] = statusDict;
-                    if (typeFieldId != null) _projectTypeFields[title] = (typeFieldId, typeOptions);
                 }
             } else {
                 _projectNodeIds[title] = id;
                 _projectStatuses[title] = statusDict;
-                if (typeFieldId != null) _projectTypeFields[title] = (typeFieldId, typeOptions);
             }
         }
     }
@@ -682,7 +786,7 @@ query($owner: String!) {
         title
         items(first: 100) {
           nodes {
-            content { ... on Issue { number } }
+            content { ... on Issue { number issueType { name } } }
             fieldValues(first: 10) {
               nodes {
                 ... on ProjectV2ItemFieldSingleSelectValue {
@@ -717,7 +821,14 @@ query($owner: String!) {
                         var logicalKey = _config.ProjectTitles.FirstOrDefault(kv => string.Equals(kv.Value, pTitle, StringComparison.OrdinalIgnoreCase)).Key;
                         if (logicalKey != null) issue.Project = logicalKey;
                         
-                        // Parse Status and Type from field values
+                        if (content.TryGetProperty("issueType", out var typeEl) && typeEl.ValueKind == JsonValueKind.Object) {
+                            if (typeEl.TryGetProperty("name", out var typeNameEl)) {
+                                var typeStr = typeNameEl.GetString();
+                                if (!string.IsNullOrWhiteSpace(typeStr)) issue.Type = typeStr;
+                            }
+                        }
+                        
+                        // Parse Status from field values
                         if (item.TryGetProperty("fieldValues", out var fVals)) {
                             foreach (var fv in fVals.GetProperty("nodes").EnumerateArray()) {
                                 if (fv.TryGetProperty("field", out var fNode) &&
@@ -731,14 +842,6 @@ query($owner: String!) {
                                             }
                                         }
                                     }
-                                    else if (string.Equals(fName.GetString(), "Type", StringComparison.OrdinalIgnoreCase)) {
-                                        if (fv.TryGetProperty("name", out var typeOptName)) {
-                                            var typeStr = typeOptName.GetString();
-                                            if (!string.IsNullOrWhiteSpace(typeStr)) {
-                                                issue.Type = typeStr;
-                                            }
-                                        }
-                                    }
                                 }
                             }
                         }
@@ -747,9 +850,9 @@ query($owner: String!) {
             }
 
             // Write back all enriched issues to the cache
-            foreach (var issue in issues)
+            foreach (var rec in issues)
             {
-                _enrichmentCache[issue.Id] = (issue.Project, issue.Status, issue.Type, DateTime.UtcNow);
+                _enrichmentCache[rec.Id] = (rec.Project, rec.Status, rec.Type, DateTime.UtcNow);
             }
         } catch { /* Ignore enrichment failure gracefully */ }
     }
@@ -822,27 +925,22 @@ query($nodeId: ID!) {
             }
         }
 
-        // Sync Type field
-        if (targetItemNodeId != null
-            && !string.IsNullOrWhiteSpace(targetGithubTitle)
-            && !string.IsNullOrWhiteSpace(issue.Type))
+        // Sync Type field via repository built-in Issue Types
+        if (!string.IsNullOrWhiteSpace(issue.Type))
         {
-            if (_projectTypeFields.TryGetValue(targetGithubTitle, out var typeField)
-                && typeField.TypeOptions.TryGetValue(issue.Type, out var typeOptionId))
+            await EnsureRepoIssueTypesCachedAsync();
+            if (_repoIssueTypes.TryGetValue(issue.Type, out var issueTypeId))
             {
-                var updateTypeMut = @"mutation($projectId: ID!, $itemId: ID!, $fieldId: ID!, $optionId: String!) {
-                    updateProjectV2ItemFieldValue(input: {
-                        projectId: $projectId, itemId: $itemId, fieldId: $fieldId,
-                        value: { singleSelectOptionId: $optionId }
-                    }) { projectV2Item { id } }
+                var updateTypeMut = @"mutation($issueId: ID!, $typeId: ID!) {
+                    updateIssue(input: { id: $issueId, issueTypeId: $typeId }) {
+                        issue { id }
+                    }
                 }";
                 await SendGraphQLRequestAsync(new {
                     query = updateTypeMut,
                     variables = new {
-                        projectId = _projectNodeIds[targetGithubTitle],
-                        itemId = targetItemNodeId,
-                        fieldId = typeField.TypeFieldId,
-                        optionId = typeOptionId
+                        issueId = issue.NodeId,
+                        typeId = issueTypeId
                     }
                 }, throwGraphQLErrors: false);
             }
@@ -872,14 +970,32 @@ query($nodeId: ID!) {
             var projectLabel = labelsList.FirstOrDefault(l => l.StartsWith(projectPrefix, StringComparison.OrdinalIgnoreCase));
             string projectValue = projectLabel != null ? projectLabel.Substring(projectPrefix.Length).Trim() : string.Empty;
 
+            var rawTitle = title ?? string.Empty;
+            string extractedType = string.Empty;
+
+            var titleWithoutAbo = rawTitle.StartsWith("[abo] ", StringComparison.OrdinalIgnoreCase) 
+                ? rawTitle.Substring(6).TrimStart() 
+                : rawTitle;
+
+            var colonIdx = titleWithoutAbo.IndexOf(':');
+            if (colonIdx > 0)
+            {
+                var potentialType = titleWithoutAbo.Substring(0, colonIdx).Trim().ToLowerInvariant();
+                if (IssueType.IsValid(potentialType))
+                {
+                    extractedType = potentialType;
+                }
+            }
+
             return new IssueRecord
             {
                 Id = number.ToString(),
                 NodeId = node_id ?? string.Empty,
-                Title = title ?? string.Empty,
+                Title = rawTitle,
                 Body = body ?? string.Empty,
                 State = state ?? string.Empty,
                 Project = projectValue,
+                Type = extractedType,
                 Labels = labelsList
             };
         }

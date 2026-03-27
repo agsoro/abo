@@ -210,4 +210,58 @@ public class GitHubIssueTrackerConnectorIntegrationTests
             }
         }
     }
+
+    [Fact]
+    public async Task E2E_NativeTypeField_Update_PersistsSuccessfully()
+    {
+        // 1. Create a raw issue without a type and without a project (simulating StartIssueTool output)
+        var testTitle = $"INT-TEST-TYPE: {Guid.NewGuid().ToString().Substring(0, 8)}";
+        var createdIssue = await _connector.CreateIssueAsync(
+            title: testTitle,
+            body: "Testing native Type field persistence.",
+            type: "", 
+            size: "1",
+            project: "" 
+        );
+
+        Assert.NotNull(createdIssue);
+        
+        try
+        {
+            // 2. Native Github Title should not contain any type-hacks
+            var refreshed = await _connector.GetIssueAsync(createdIssue.Id);
+            Assert.NotNull(refreshed);
+            Assert.Equal($"[abo] {testTitle}", refreshed!.Title);
+            Assert.True(string.IsNullOrWhiteSpace(refreshed.Type));
+            
+            // Allow indexing delay
+            await Task.Delay(2000);
+
+            // 3. ManagerAgent logic: Update type to 'task' and project to 'requested'
+            await _connector.UpdateIssueAsync(createdIssue.Id, type: "task", project: "requested");
+            await Task.Delay(2000);
+
+            var verify1 = await _connector.GetIssueAsync(createdIssue.Id);
+            Assert.NotNull(verify1);
+            Assert.Equal("requested", verify1.Project);
+            Assert.Equal("task", verify1.Type); // The core requirement
+            
+            // 4. Update ONLY the status, type should NOT be lost (testing project eviction bug fix)
+            await _connector.UpdateIssueAsync(createdIssue.Id, status: "open");
+            await Task.Delay(2000);
+            
+            var verify2 = await _connector.GetIssueAsync(createdIssue.Id);
+            Assert.NotNull(verify2);
+            Assert.Equal("requested", verify2.Project);
+            Assert.Equal("task", verify2.Type);
+            Assert.Equal("open", verify2.Status);
+        }
+        finally
+        {
+            if (!string.IsNullOrWhiteSpace(createdIssue.Id))
+            {
+                await _connector.DeleteIssueAsync(createdIssue.Id);
+            }
+        }
+    }
 }
