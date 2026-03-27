@@ -35,13 +35,13 @@ public static class WorkflowEngine
                 return Invalid;
 
             if (AllowedValues.Contains(issue.Status + "_" + issue.Project + "_" + issue.Type, StringComparer.OrdinalIgnoreCase))
-                return issue.Status + "_" + issue.Project + "_" + issue.Type;
+                return (issue.Status + "_" + issue.Project + "_" + issue.Type).ToLower();
 
             if (AllowedValues.Contains(issue.Status + "_" + issue.Project, StringComparer.OrdinalIgnoreCase))
-                return issue.Status + "_" + issue.Project;
+                return (issue.Status + "_" + issue.Project).ToLower();
 
             if (AllowedValues.Contains(issue.Status, StringComparer.OrdinalIgnoreCase))
-                return issue.Status;
+                return issue.Status.ToLower();
 
             return Invalid;
         }
@@ -72,7 +72,7 @@ public static class WorkflowEngine
         var status = ResolveStatusFallback(issue).ToLower();
         var project = ResolveProjectFallback(issue).ToLower();
 
-        var stepId = StepId.ToStepId(new IssueRecord { Status = status, Project = project, Type = issue.Type });
+        var stepId = StepId.ToStepId(new IssueRecord { Status = status, Project = project, Type = issue.Type.ToLower() });
 
         return stepId switch
         {
