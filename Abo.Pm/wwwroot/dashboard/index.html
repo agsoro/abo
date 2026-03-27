@@ -63,6 +63,8 @@
         .issue-meta { display: flex; gap: 0.5rem; flex-wrap: wrap; }
         .step-badge { display: inline-block; padding: 0.15rem 0.5rem; border-radius: 9999px; font-size: 0.75rem; background-color: rgba(148, 163, 184, 0.1); color: var(--text-muted); border: 1px solid var(--border-color); }
         .env-tag { display: inline-block; padding: 0.15rem 0.5rem; border-radius: var(--tag-radius); font-size: 0.75rem; background-color: rgba(59, 130, 246, 0.1); color: #60a5fa; border: 1px solid rgba(59, 130, 246, 0.3); font-family: monospace; }
+        .issue-link { display: inline-block; padding: 0.15rem 0.5rem; border-radius: var(--tag-radius); font-size: 0.75rem; background-color: var(--green-bg); color: var(--green-text); border: 1px solid rgba(22, 163, 74, 0.4); font-family: monospace; cursor: pointer; text-decoration: none; transition: all 0.2s; }
+        .issue-link:hover { background-color: rgba(22, 163, 74, 0.25); text-decoration: underline; }
         .action-btn { background-color: var(--primary-color); color: #fff; border: none; border-radius: var(--tag-radius); padding: 0.35rem 0.85rem; font-size: 0.8rem; cursor: pointer; white-space: nowrap; transition: background-color 0.2s, opacity 0.2s; flex-shrink: 0; }
         .action-btn:hover:not(:disabled) { background-color: var(--primary-hover); }
         .action-btn:disabled { opacity: 0.5; cursor: not-allowed; background-color: var(--primary-color); animation: pulse-btn 1.5s ease-in-out infinite; }
@@ -566,6 +568,35 @@
             renderLiveAgentsSection();
         }
 
+        // ── Navigate to Issue ─────────────────────────────────────────────────
+        function navigateToIssue(issueId) {
+            // Find and expand the section containing the issue, then scroll to it
+            const issueIdLower = issueId.toLowerCase();
+            const allIssueRows = document.querySelectorAll('.issue-row');
+            
+            for (const row of allIssueRows) {
+                const rowIssueId = row.querySelector('.issue-id')?.textContent?.replace('#', '').trim().toLowerCase();
+                if (rowIssueId === issueIdLower) {
+                    // Expand the parent section if collapsed
+                    const sectionHeader = row.closest('.section-card')?.querySelector('.section-header');
+                    if (sectionHeader?.classList.contains('collapsed')) {
+                        toggleSection(sectionHeader);
+                    }
+                    // Scroll to the row
+                    row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    // Highlight the row briefly
+                    row.style.backgroundColor = 'rgba(59, 130, 246, 0.2)';
+                    setTimeout(() => {
+                        row.style.backgroundColor = '';
+                    }, 1500);
+                    return;
+                }
+            }
+            
+            // If not found, show a toast message
+            showToast(`Issue #${issueId} not found in current view`, 'error');
+        }
+
         function renderLiveAgentsSection() {
             const body = document.getElementById('body-live-agents');
             const countEl = document.getElementById('count-live-agents');
@@ -575,16 +606,23 @@
                 body.innerHTML = '<div class="empty-state"><p>No active agent sessions.</p></div>';
                 return;
             }
-            body.innerHTML = recentSessions.map(s => `<div class="issue-row">
+            body.innerHTML = recentSessions.map(s => {
+                const issueLinkHtml = s.currentIssueId 
+                    ? `<span class="issue-link" onclick="navigateToIssue('${escapeHtml(s.currentIssueId)}')" title="Click to view issue #${escapeHtml(s.currentIssueId)}${s.currentIssueTitle ? ': ' + escapeHtml(s.currentIssueTitle) : ''}">#${escapeHtml(s.currentIssueId)}</span>`
+                    : '';
+                
+                return `<div class="issue-row">
                   <span class="issue-id" style="color:#a5b4fc; font-family:monospace;">${escapeHtml(s.sessionId)}</span>
                   <div class="issue-info">
                     <span class="issue-title">${escapeHtml(s.sessionId)}</span>
                     <div class="issue-meta">
+                      ${issueLinkHtml}
                       <span class="step-badge">${s.messageCount} messages</span>
                       <span class="env-tag">active ${formatRelativeTime(s.lastActivity)}</span>
                     </div>
                   </div>
-                </div>`).join('');
+                </div>`;
+            }).join('');
         }
 
         function escapeHtml(str) {

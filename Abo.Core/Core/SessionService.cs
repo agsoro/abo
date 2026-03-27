@@ -102,13 +102,13 @@ public class SessionService
 
     /// <summary>
     /// Returns a list of currently active sessions with their message counts and last activity timestamps.
-    /// Sessions with no activity in the last 24 hours are considered inactive.
+    /// Sessions with no activity in the last 30 minutes are considered inactive.
     /// Iterates over _lastActivity to include sessions that have context but no chat history yet
     /// (e.g., delegated specialist sessions).
     /// </summary>
     public List<SessionInfo> GetActiveSessions()
     {
-        var cutoff = DateTime.UtcNow.AddHours(-24);
+        var cutoff = DateTime.UtcNow.AddMinutes(-30);
         var result = new List<SessionInfo>();
 
         // Iterate over _lastActivity to include sessions that were set up via SetCurrentIssue
