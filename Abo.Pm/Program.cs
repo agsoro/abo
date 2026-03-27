@@ -156,7 +156,7 @@ app.MapGet("/api/issues", async (IConfiguration config, Microsoft.Extensions.Cac
         {
             StepId = Abo.Core.WorkflowEngine.ResolveStepIdFallback(issue),
             StepName = Abo.Core.WorkflowEngine.GetStepInfo(Abo.Core.WorkflowEngine.ResolveStepIdFallback(issue))?.StepName ?? "",
-            RequiredRole = Abo.Core.WorkflowEngine.GetStepInfo(Abo.Core.WorkflowEngine.ResolveStepIdFallback(issue))?.RequiredRole ?? ""
+            RequiredRole = Abo.Core.WorkflowEngine.GetStepInfo(Abo.Core.WorkflowEngine.ResolveStepIdFallback(issue))?.Role?.RoleId ?? ""
         },
         EnvironmentName = issue.Labels.FirstOrDefault(l => l.StartsWith("env: ", StringComparison.OrdinalIgnoreCase))?.Substring(5).Trim() ?? "",
         Status = issue.State,
@@ -268,7 +268,7 @@ app.MapGet("/api/open-work", async (IConfiguration config, Microsoft.Extensions.
         {
             StepId = Abo.Core.WorkflowEngine.ResolveStepIdFallback(issue),
             StepName = Abo.Core.WorkflowEngine.GetStepInfo(Abo.Core.WorkflowEngine.ResolveStepIdFallback(issue))?.StepName ?? "",
-            RequiredRole = Abo.Core.WorkflowEngine.GetStepInfo(Abo.Core.WorkflowEngine.ResolveStepIdFallback(issue))?.RequiredRole ?? ""
+            RequiredRole = Abo.Core.WorkflowEngine.GetStepInfo(Abo.Core.WorkflowEngine.ResolveStepIdFallback(issue))?.Role?.RoleId ?? ""
         },
         EnvironmentName = issue.Labels.FirstOrDefault(l => l.StartsWith("env: ", StringComparison.OrdinalIgnoreCase))?.Substring(5).Trim() ?? "",
         Status = issue.State,
@@ -453,7 +453,7 @@ app.Lifetime.ApplicationStarted.Register(() =>
                         foreach (var issue in group)
                         {
                             var step = Abo.Core.WorkflowEngine.ResolveStepIdFallback(issue);
-                            var role = Abo.Core.WorkflowEngine.GetStepInfo(step)?.RequiredRole ?? "Any";
+                            var role = Abo.Core.WorkflowEngine.GetStepInfo(step)?.Role?.RoleId ?? "Any";
                             var envName = issue.Labels.FirstOrDefault(l => l.StartsWith("env: ", StringComparison.OrdinalIgnoreCase))?.Substring(5).Trim() ?? "?";
                             sb.AppendLine($"- [{issue.Id}] {issue.Title} (Env: {envName}, Step: {step}, Role: {role})");
                         }

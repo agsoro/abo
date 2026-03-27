@@ -196,23 +196,19 @@ public class ManagerAgent : IAgent
                 var stepId = Abo.Core.WorkflowEngine.ResolveStepIdFallback(targetIssue);
 
                 var stepInfo = Abo.Core.WorkflowEngine.GetStepInfo(stepId);
-                if (stepInfo == null || string.IsNullOrWhiteSpace(stepInfo.RequiredRole)) return $"Error: Could not determine RequiredRole for step '{stepId}'.";
+                if (stepInfo?.Role == null) return $"Error: Could not determine Role for step '{stepId}'.";
 
-                var roleId = stepInfo.RequiredRole;
+                var role = stepInfo.Role;
+                var roleId = role.RoleId;
 
                 // Re-validate step hasn't changed since get_open_work was called (best-effort secondary guard)
                 var freshStepId = Abo.Core.WorkflowEngine.ResolveStepIdFallback(targetIssue);
                 var freshStepInfo = Abo.Core.WorkflowEngine.GetStepInfo(freshStepId);
-                if (freshStepInfo == null || !string.Equals(freshStepInfo.RequiredRole, roleId, StringComparison.OrdinalIgnoreCase))
+                if (freshStepInfo?.Role == null || !string.Equals(freshStepInfo.Role.RoleId, roleId, StringComparison.OrdinalIgnoreCase))
                 {
-                    return $"Issue '{issueId}' step has changed (now: '{freshStepId}', role: '{freshStepInfo?.RequiredRole}'). " +
+                    return $"Issue '{issueId}' step has changed (now: '{freshStepId}', role: '{freshStepInfo?.Role?.RoleId}'). " +
                            $"Another agent may have already advanced this issue. Skipping delegation.";
                 }
-
-                var roles = Abo.Core.Core.AvailableRoles.AllRoles;
-
-                var role = roles?.FirstOrDefault(r => r.RoleId.Equals(roleId, StringComparison.OrdinalIgnoreCase));
-                if (role == null) return $"Error: Role '{roleId}' not found.";
 
                 // Prevent parallel work on the same environment (guards against concurrent git workspace conflicts)
                 var envName = targetEnv!.Name;

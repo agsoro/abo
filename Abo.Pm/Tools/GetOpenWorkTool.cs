@@ -173,7 +173,7 @@ public class GetOpenWorkTool : IAboTool
                 output.AppendLine($"- **Issue Status**: `{issue.State}`");
                 output.AppendLine($"- **Current Step**: {nodeName} (`{stepId}`)");
 
-                var roleToShow = stepInfo?.RequiredRole ?? "Unknown";
+                var roleToShow = stepInfo?.Role?.RoleId ?? "Unknown";
 
                 if (!string.IsNullOrWhiteSpace(roleToShow))
                     output.AppendLine($"- **Required Role**: `{roleToShow}`");

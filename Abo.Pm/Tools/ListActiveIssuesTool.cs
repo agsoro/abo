@@ -100,7 +100,7 @@ public class ListActiveIssuesTool : IAboTool
         var project = issue.Project;
 
         var stepInfo = Abo.Core.WorkflowEngine.GetStepInfo(stepId);
-        var roleToShow = stepInfo?.RequiredRole ?? "Unknown";
+        var roleToShow = stepInfo?.Role?.RoleId ?? "Unknown";
 
         var transitions = Abo.Core.WorkflowEngine.GetTransitions(stepId);
         var nextSteps = transitions.Any() 

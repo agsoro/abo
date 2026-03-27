@@ -75,7 +75,7 @@ public class StartIssueTool : IAboTool
             {
                 return $"Error: The initial step '{args.InitialStepId}' is not recognized by the WorkflowEngine.";
             }
-            var requiredRole = initialStepInfo.RequiredRole;
+            var requiredRole = initialStepInfo.Role?.RoleId;
 
             // Setup Issue Tracker
             IIssueTrackerConnector? tracker = null;

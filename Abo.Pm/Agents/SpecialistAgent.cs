@@ -396,7 +396,7 @@ public class SpecialistAgent : IAgent
 
             bool reachedEndEvent = string.Equals(nextStepInfo.StepId, "invalid", StringComparison.OrdinalIgnoreCase) ||
                                    string.Equals(nextStepInfo.StepId, "done", StringComparison.OrdinalIgnoreCase) ||
-                                   string.IsNullOrWhiteSpace(nextStepInfo.RequiredRole);
+                                   nextStepInfo.Role == null;
 
             if (!string.IsNullOrWhiteSpace(resultNotes))
             {
