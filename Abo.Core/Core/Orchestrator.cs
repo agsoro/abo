@@ -40,6 +40,13 @@ public class Orchestrator
         var apiKey = _configuration["Config:ApiKey"] ?? string.Empty;
         var defaultLanguage = _configuration["Config:DefaultLanguage"] ?? "en-us";
 
+        // Link this session to the issue for dashboard visibility.
+        // This ensures delegated specialist sessions are tracked alongside the ManagerAgent.
+        if (!string.IsNullOrWhiteSpace(issueId))
+        {
+            _sessionService.SetCurrentIssue(sessionId, issueId, null);
+        }
+
         // Retrieve existing history
         var history = _sessionService.GetHistory(sessionId);
 
