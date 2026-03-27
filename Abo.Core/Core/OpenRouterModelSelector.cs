@@ -56,19 +56,19 @@ public class OpenRouterModelSelector
             }
 
             _logger.LogInformation("Updating OpenRouter model selections based on Artificial Analysis coding index scores & Combinatorial Cost Optimization...");
-            
+
             using var httpClient = new HttpClient();
             httpClient.DefaultRequestHeaders.Add("User-Agent", "Abo-Agent");
 
             var modelsResponseString = await httpClient.GetStringAsync("https://openrouter.ai/api/v1/models");
             var modelsDoc = JsonDocument.Parse(modelsResponseString);
-            
+
             var allModelsInfo = new Dictionary<string, (double Prompt, double Completion)>();
             foreach (var element in modelsDoc.RootElement.GetProperty("data").EnumerateArray())
             {
                 var id = element.GetProperty("id").GetString()!;
                 double promptPrice = 0.0, completionPrice = 0.0;
-                
+
                 if (element.TryGetProperty("pricing", out var pricingEl))
                 {
                     if (pricingEl.TryGetProperty("prompt", out var pEl) && pEl.GetString() is string pStr)
@@ -81,17 +81,14 @@ public class OpenRouterModelSelector
             }
 
             var candidateIds = allModelsInfo.Keys
-                .Where(k => k.StartsWith("openai/") || k.StartsWith("anthropic/") || 
-                            k.StartsWith("google/") || k.StartsWith("meta-llama/") || 
-                            k.StartsWith("mistralai/") || k.StartsWith("deepseek/") ||
-                            k.StartsWith("cohere/") || k.StartsWith("x-ai/") || k.StartsWith("qwen/"))
+                .Where(k => !k.StartsWith("openai/"))
                 .ToList();
 
             var benchmarkResults = new ConcurrentBag<(string Id, double Score)>();
             var semaphore = new SemaphoreSlim(20);
             using var internalClient = new HttpClient();
             internalClient.DefaultRequestHeaders.Add("User-Agent", "Abo-Agent");
-            
+
             var tasks = candidateIds.Select(async id =>
             {
                 await semaphore.WaitAsync();
@@ -100,7 +97,7 @@ public class OpenRouterModelSelector
                     var url = $"https://openrouter.ai/api/internal/v1/artificial-analysis-benchmarks?slug={id}";
                     var responseStr = await internalClient.GetStringAsync(url);
                     var doc = JsonDocument.Parse(responseStr);
-                    
+
                     if (doc.RootElement.TryGetProperty("data", out var dataArr) && dataArr.GetArrayLength() > 0)
                     {
                         if (dataArr[0].TryGetProperty("benchmark_data", out var bData) && bData.TryGetProperty("evaluations", out var evals))
@@ -128,10 +125,10 @@ public class OpenRouterModelSelector
                     PriceCompletion = allModelsInfo[x.Id].Completion,
                     Vendor = x.Id.Split('/')[0]
                 })
-                .Where(m => m.Score > 0 && (m.PricePrompt > 0 || m.PriceCompletion > 0)) // Exclude free models
+                .Where(m => m.Score > 0 && (m.PricePrompt > 0 || m.PriceCompletion > 0) && m.Vendor != "openai") // Exclude free models and OpenAI
                 .ToList();
 
-            if (rankedModels.Count == 0) 
+            if (rankedModels.Count == 0)
             {
                 _logger.LogWarning("No benchmark data returned from OpenRouter. Cannot update models.");
                 return;
@@ -156,13 +153,14 @@ public class OpenRouterModelSelector
 
                     foreach (var gen in top10Generic)
                     {
-                        double cost = (rev.PricePrompt * 1000000.0 * reviewUsageM) + 
+                        double cost = (rev.PricePrompt * 1000000.0 * reviewUsageM) +
                                       (cap.PricePrompt * 1000000.0 * capableUsageM) +
                                       (gen.PricePrompt * 1000000.0 * modelUsageM);
 
                         double score = rev.Score + cap.Score + gen.Score;
 
-                        combinations.Add(new ModelCombination {
+                        combinations.Add(new ModelCombination
+                        {
                             Review = rev,
                             Capable = cap,
                             Generic = gen,
@@ -208,7 +206,7 @@ public class OpenRouterModelSelector
                     configNode["ModelName"] = modelNameCandidate.Id;
                     configNode["CapableModelName"] = capableModel.Id;
                     configNode["ReviewModelName"] = reviewModel.Id;
-                    
+
                     var options = new JsonSerializerOptions { WriteIndented = true };
                     await File.WriteAllTextAsync(appSettingsPath, jNode.ToJsonString(options));
                     _logger.LogInformation("Successfully updated appsettings.json with combinatorial models.");
@@ -218,7 +216,7 @@ public class OpenRouterModelSelector
             {
                 _logger.LogWarning($"Could not find appsettings.json at path: {appSettingsPath}");
             }
-            
+
             _lastUpdate = DateTime.UtcNow;
         }
         catch (Exception ex)
