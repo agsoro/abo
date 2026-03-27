@@ -25,865 +25,154 @@
             --red: #dc2626;
             --red-hover: #b91c1c;
         }
-
         * { box-sizing: border-box; }
-
-        body {
-            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
-            background-color: var(--bg-color);
-            color: var(--text-color);
-            margin: 0;
-            padding: 0;
-            min-height: 100vh;
-        }
-
-        header {
-            background-color: var(--surface-color);
-            padding: 1rem 2rem;
-            border-bottom: 1px solid var(--border-color);
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            flex-wrap: wrap;
-            gap: 0.75rem;
-        }
-
-        header h1 {
-            margin: 0;
-            font-size: 1.5rem;
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-        }
-
-        .header-nav {
-            display: flex;
-            align-items: center;
-            gap: 0.75rem;
-            flex-wrap: wrap;
-        }
-
-        .header-nav a {
-            color: var(--text-muted);
-            text-decoration: none;
-            font-size: 0.875rem;
-            padding: 0.35rem 0.75rem;
-            border-radius: var(--tag-radius);
-            border: 1px solid var(--border-color);
-            transition: all 0.2s;
-            white-space: nowrap;
-        }
-
-        .header-nav a:hover {
-            color: var(--text-color);
-            border-color: var(--primary-color);
-        }
-
-        .header-nav a.active {
-            color: var(--text-color);
-            border-color: var(--primary-color);
-            background-color: rgba(59, 130, 246, 0.1);
-        }
-
-        #status-indicator {
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-            font-size: 0.875rem;
-            color: var(--text-muted);
-        }
-
-        #status-dot {
-            width: 8px;
-            height: 8px;
-            border-radius: 50%;
-            background-color: #94a3b8;
-            transition: background-color 0.3s;
-        }
-
-        #status-dot.live {
-            background-color: var(--green);
-            box-shadow: 0 0 6px var(--green);
-            animation: pulse 2s infinite;
-        }
-
-        @keyframes pulse {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.5; }
-        }
-
-        main {
-            max-width: 1100px;
-            margin: 0 auto;
-            padding: 1.5rem 1rem;
-        }
-
-        /* Summary Cards */
-        .summary-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-            gap: 1rem;
-            margin-bottom: 1.5rem;
-        }
-
-        .summary-card {
-            background-color: var(--surface-color);
-            border: 1px solid var(--border-color);
-            border-radius: 0.5rem;
-            padding: 1.25rem 1.5rem;
-            display: flex;
-            flex-direction: column;
-            gap: 0.25rem;
-        }
-
-        .summary-card .label {
-            font-size: 0.8rem;
-            color: var(--text-muted);
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
-        }
-
-        .summary-card .value {
-            font-size: 1.75rem;
-            font-weight: 700;
-            color: var(--text-color);
-        }
-
-        .summary-card .sub {
-            font-size: 0.75rem;
-            color: var(--text-muted);
-        }
-
-        /* Section Cards */
-        .section-card {
-            background-color: var(--surface-color);
-            border: 1px solid var(--border-color);
-            border-radius: 0.5rem;
-            margin-bottom: 1rem;
-            overflow: hidden;
-        }
-
-        .section-header {
-            display: flex;
-            align-items: center;
-            gap: 0.75rem;
-            padding: 0.85rem 1.25rem;
-            cursor: pointer;
-            user-select: none;
-            background-color: var(--surface-color);
-            border-bottom: 1px solid var(--border-color);
-            transition: background-color 0.15s;
-        }
-
-        .section-header:hover {
-            background-color: rgba(255, 255, 255, 0.03);
-        }
-
-        .section-title {
-            font-size: 0.95rem;
-            font-weight: 600;
-            color: var(--text-color);
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-            flex: 1;
-        }
-
-        .section-count {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            background-color: rgba(59, 130, 246, 0.15);
-            color: var(--blue-text);
-            border: 1px solid rgba(59, 130, 246, 0.3);
-            border-radius: 9999px;
-            font-size: 0.72rem;
-            font-weight: 700;
-            min-width: 1.4rem;
-            height: 1.4rem;
-            padding: 0 0.4rem;
-        }
-
-        .section-filter {
-            background-color: var(--bg-color);
-            border: 1px solid var(--border-color);
-            color: var(--text-color);
-            padding: 0.3rem 0.6rem;
-            border-radius: var(--tag-radius);
-            font-size: 0.8rem;
-            width: 180px;
-            transition: border-color 0.2s;
-        }
-
-        .section-filter:focus {
-            outline: none;
-            border-color: var(--primary-color);
-        }
-
-        .collapse-icon {
-            font-size: 0.75rem;
-            color: var(--text-muted);
-            transition: transform 0.2s;
-            flex-shrink: 0;
-        }
-
-        .section-header.collapsed .collapse-icon {
-            transform: rotate(-90deg);
-        }
-
-        .section-header.collapsed {
-            border-bottom: none;
-        }
-
-        .section-body {
-            padding: 0.5rem 0;
-        }
-
-        /* Issue Rows */
-        .issue-row {
-            display: flex;
-            align-items: center;
-            gap: 1rem;
-            padding: 0.65rem 1.25rem;
-            border-bottom: 1px solid rgba(51, 65, 85, 0.5);
-            transition: background-color 0.15s;
-        }
-
-        .issue-row:last-child {
-            border-bottom: none;
-        }
-
-        .issue-row:hover {
-            background-color: rgba(255, 255, 255, 0.02);
-        }
-
-        .issue-id {
-            font-family: monospace;
-            font-size: 0.85rem;
-            color: var(--text-muted);
-            white-space: nowrap;
-            min-width: 3.5rem;
-        }
-
-        .issue-info {
-            flex: 1;
-            display: flex;
-            flex-direction: column;
-            gap: 0.25rem;
-            min-width: 0;
-        }
-
-        .issue-title {
-            font-size: 0.9rem;
-            color: var(--text-color);
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }
-
-        .issue-meta {
-            display: flex;
-            gap: 0.5rem;
-            flex-wrap: wrap;
-        }
-
-        .step-badge {
-            display: inline-block;
-            padding: 0.15rem 0.5rem;
-            border-radius: 9999px;
-            font-size: 0.75rem;
-            background-color: rgba(148, 163, 184, 0.1);
-            color: var(--text-muted);
-            border: 1px solid var(--border-color);
-        }
-
-        .env-tag {
-            display: inline-block;
-            padding: 0.15rem 0.5rem;
-            border-radius: var(--tag-radius);
-            font-size: 0.75rem;
-            background-color: rgba(59, 130, 246, 0.1);
-            color: #60a5fa;
-            border: 1px solid rgba(59, 130, 246, 0.3);
-            font-family: monospace;
-        }
-
-        .action-btn {
-            background-color: var(--primary-color);
-            color: #fff;
-            border: none;
-            border-radius: var(--tag-radius);
-            padding: 0.35rem 0.85rem;
-            font-size: 0.8rem;
-            cursor: pointer;
-            white-space: nowrap;
-            transition: background-color 0.2s, opacity 0.2s;
-            flex-shrink: 0;
-        }
-
-        .action-btn:hover:not(:disabled) {
-            background-color: var(--primary-hover);
-        }
-
-        .action-btn:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-            background-color: var(--primary-color);
-            animation: pulse-btn 1.5s ease-in-out infinite;
-        }
-
-        @keyframes pulse-btn {
-            0%, 100% {
-                opacity: 0.5;
-            }
-            50% {
-                opacity: 0.7;
-            }
-        }
-
-        .action-btn:disabled:focus {
-            outline: 2px solid var(--primary-color);
-            outline-offset: 2px;
-        }
-
-        .empty-state {
-            padding: 2rem;
-            text-align: center;
-            color: var(--text-muted);
-            font-size: 0.85rem;
-        }
-
-        #last-updated {
-            font-size: 0.75rem;
-            color: var(--text-muted);
-            text-align: right;
-            margin-top: 0.5rem;
-        }
-
-        /* FAB (Floating Action Button) */
-        #fab-create-issue {
-            position: fixed;
-            bottom: 2rem;
-            right: 2rem;
-            width: 3.5rem;
-            height: 3.5rem;
-            border-radius: 50%;
-            background-color: var(--primary-color);
-            border: none;
-            color: white;
-            font-size: 1.5rem;
-            cursor: pointer;
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            transition: background-color 0.3s, transform 0.2s, box-shadow 0.3s;
-            z-index: 100;
-        }
-
-        #fab-create-issue:hover {
-            background-color: var(--primary-hover);
-            transform: scale(1.1);
-            box-shadow: 0 6px 16px rgba(0, 0, 0, 0.5);
-        }
-
-        #fab-create-issue:active {
-            transform: scale(0.95);
-        }
-
-        /* Modal Overlay */
-        #modal-overlay {
-            display: none;
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background-color: rgba(0, 0, 0, 0.7);
-            z-index: 200;
-            animation: fadeIn 0.2s ease-out;
-        }
-
-        @keyframes fadeIn {
-            from { opacity: 0; }
-            to { opacity: 1; }
-        }
-
-        #modal-overlay.open {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-
-        /* Modal Dialog */
-        #modal-dialog {
-            background-color: var(--surface-color);
-            border: 1px solid var(--border-color);
-            border-radius: 0.75rem;
-            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
-            width: 90%;
-            max-width: 500px;
-            max-height: 90vh;
-            display: flex;
-            flex-direction: column;
-            animation: slideUp 0.3s ease-out;
-        }
-
-        @keyframes slideUp {
-            from { transform: translateY(20px); opacity: 0; }
-            to { transform: translateY(0); opacity: 1; }
-        }
-
-        .modal-header {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            padding: 1.25rem 1.5rem;
-            border-bottom: 1px solid var(--border-color);
-        }
-
-        .modal-title {
-            font-size: 1.25rem;
-            font-weight: 700;
-            color: var(--text-color);
-        }
-
-        .modal-close-btn {
-            background: none;
-            border: none;
-            color: var(--text-muted);
-            font-size: 1.5rem;
-            cursor: pointer;
-            transition: color 0.2s;
-            padding: 0;
-            width: 2rem;
-            height: 2rem;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-
-        .modal-close-btn:hover {
-            color: var(--text-color);
-        }
-
-        .modal-body {
-            padding: 1.5rem;
-            overflow-y: auto;
-        }
-
-        .form-group {
-            margin-bottom: 1.25rem;
-        }
-
-        .form-group:last-child {
-            margin-bottom: 0;
-        }
-
-        .form-label {
-            display: block;
-            margin-bottom: 0.5rem;
-            font-size: 0.875rem;
-            font-weight: 600;
-            color: var(--text-color);
-        }
-
-        .form-label .required {
-            color: var(--red);
-            margin-left: 0.25rem;
-        }
-
-        .form-input,
-        .form-select,
-        .form-textarea {
-            width: 100%;
-            background-color: var(--bg-color);
-            border: 1px solid var(--border-color);
-            color: var(--text-color);
-            padding: 0.5rem 0.75rem;
-            border-radius: var(--tag-radius);
-            font-family: inherit;
-            font-size: 0.875rem;
-            transition: border-color 0.2s;
-        }
-
-        .form-input:focus,
-        .form-select:focus,
-        .form-textarea:focus {
-            outline: none;
-            border-color: var(--primary-color);
-        }
-
-        .form-textarea {
-            resize: vertical;
-            min-height: 100px;
-            max-height: 200px;
-        }
-
-        .modal-footer {
-            display: flex;
-            gap: 0.75rem;
-            padding: 1.25rem 1.5rem;
-            border-top: 1px solid var(--border-color);
-            justify-content: flex-end;
-        }
-
-        .modal-btn {
-            padding: 0.5rem 1rem;
-            border-radius: var(--tag-radius);
-            font-size: 0.875rem;
-            font-weight: 600;
-            cursor: pointer;
-            border: none;
-            transition: background-color 0.2s, opacity 0.2s;
-            white-space: nowrap;
-        }
-
-        .modal-btn-primary {
-            background-color: var(--primary-color);
-            color: white;
-        }
-
-        .modal-btn-primary:hover:not(:disabled) {
-            background-color: var(--primary-hover);
-        }
-
-        .modal-btn-secondary {
-            background-color: transparent;
-            color: var(--text-muted);
-            border: 1px solid var(--border-color);
-        }
-
-        .modal-btn-secondary:hover {
-            border-color: var(--text-color);
-            color: var(--text-color);
-        }
-
-        .modal-btn:disabled {
-            opacity: 0.6;
-            cursor: not-allowed;
-        }
-
-        .form-error {
-            color: var(--red);
-            font-size: 0.75rem;
-            margin-top: 0.25rem;
-            display: none;
-        }
-
-        .form-error.show {
-            display: block;
-        }
-
-        /* Toast Notification */
-        #toast-notification {
-            display: none;
-            position: fixed;
-            bottom: 2rem;
-            left: 2rem;
-            background-color: var(--surface-color);
-            border: 1px solid var(--border-color);
-            border-radius: 0.5rem;
-            padding: 1rem 1.25rem;
-            font-size: 0.875rem;
-            z-index: 300;
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
-            animation: slideIn 0.3s ease-out;
-        }
-
-        @keyframes slideIn {
-            from { transform: translateX(-20px); opacity: 0; }
-            to { transform: translateX(0); opacity: 1; }
-        }
-
-        #toast-notification.show {
-            display: block;
-        }
-
-        #toast-notification.success {
-            border-left: 3px solid var(--green);
-        }
-
-        #toast-notification.error {
-            border-left: 3px solid var(--red);
-        }
-
-        /* Action Status Display ──────────────────────────────────────────── */
-        .action-status {
-            position: fixed;
-            top: 2rem;
-            right: 2rem;
-            background-color: var(--surface-color);
-            border: 1px solid var(--primary-color);
-            border-left: 3px solid var(--primary-color);
-            border-radius: 0.5rem;
-            padding: 1rem 1.25rem;
-            font-size: 0.875rem;
-            z-index: 250;
-            box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
-            animation: statusSlideIn 0.3s ease-out;
-            display: flex;
-            align-items: center;
-            gap: 0.75rem;
-            white-space: nowrap;
-            max-width: 400px;
-        }
-
-        @keyframes statusSlideIn {
-            from {
-                transform: translateX(20px);
-                opacity: 0;
-            }
-            to {
-                transform: translateX(0);
-                opacity: 1;
-            }
-        }
-
-        .action-status-spinner {
-            display: inline-block;
-            font-size: 1.25rem;
-            animation: spin 2s linear infinite;
-            flex-shrink: 0;
-        }
-
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
-
-        .action-status-message {
-            flex: 1;
-            min-width: 200px;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            color: var(--text-color);
-        }
-
-        .action-status-elapsed {
-            color: var(--text-muted);
-            font-size: 0.75rem;
-            flex-shrink: 0;
-        }
+        body { font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; background-color: var(--bg-color); color: var(--text-color); margin: 0; padding: 0; min-height: 100vh; }
+        header { background-color: var(--surface-color); padding: 1rem 2rem; border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.75rem; }
+        header h1 { margin: 0; font-size: 1.5rem; display: flex; align-items: center; gap: 0.5rem; }
+        .header-nav { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; }
+        .header-nav a { color: var(--text-muted); text-decoration: none; font-size: 0.875rem; padding: 0.35rem 0.75rem; border-radius: var(--tag-radius); border: 1px solid var(--border-color); transition: all 0.2s; white-space: nowrap; }
+        .header-nav a:hover { color: var(--text-color); border-color: var(--primary-color); }
+        .header-nav a.active { color: var(--text-color); border-color: var(--primary-color); background-color: rgba(59, 130, 246, 0.1); }
+        #status-indicator { display: flex; align-items: center; gap: 0.5rem; font-size: 0.875rem; color: var(--text-muted); }
+        #status-dot { width: 8px; height: 8px; border-radius: 50%; background-color: #94a3b8; transition: background-color 0.3s; }
+        #status-dot.live { background-color: var(--green); box-shadow: 0 0 6px var(--green); animation: pulse 2s infinite; }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+        main { max-width: 1100px; margin: 0 auto; padding: 1.5rem 1rem; }
+        .summary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1rem; margin-bottom: 1.5rem; }
+        .summary-card { background-color: var(--surface-color); border: 1px solid var(--border-color); border-radius: 0.5rem; padding: 1.25rem 1.5rem; display: flex; flex-direction: column; gap: 0.25rem; }
+        .summary-card .label { font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; }
+        .summary-card .value { font-size: 1.75rem; font-weight: 700; color: var(--text-color); }
+        .summary-card .sub { font-size: 0.75rem; color: var(--text-muted); }
+        .section-card { background-color: var(--surface-color); border: 1px solid var(--border-color); border-radius: 0.5rem; margin-bottom: 1rem; overflow: hidden; }
+        .section-header { display: flex; align-items: center; gap: 0.75rem; padding: 0.85rem 1.25rem; cursor: pointer; user-select: none; background-color: var(--surface-color); border-bottom: 1px solid var(--border-color); transition: background-color 0.15s; }
+        .section-header:hover { background-color: rgba(255, 255, 255, 0.03); }
+        .section-title { font-size: 0.95rem; font-weight: 600; color: var(--text-color); display: flex; align-items: center; gap: 0.5rem; flex: 1; }
+        .section-count { display: inline-flex; align-items: center; justify-content: center; background-color: rgba(59, 130, 246, 0.15); color: var(--blue-text); border: 1px solid rgba(59, 130, 246, 0.3); border-radius: 9999px; font-size: 0.72rem; font-weight: 700; min-width: 1.4rem; height: 1.4rem; padding: 0 0.4rem; }
+        .section-filter { background-color: var(--bg-color); border: 1px solid var(--border-color); color: var(--text-color); padding: 0.3rem 0.6rem; border-radius: var(--tag-radius); font-size: 0.8rem; width: 180px; transition: border-color 0.2s; }
+        .section-filter:focus { outline: none; border-color: var(--primary-color); }
+        .collapse-icon { font-size: 0.75rem; color: var(--text-muted); transition: transform 0.2s; flex-shrink: 0; }
+        .section-header.collapsed .collapse-icon { transform: rotate(-90deg); }
+        .section-header.collapsed { border-bottom: none; }
+        .section-body { padding: 0.5rem 0; }
+        .issue-row { display: flex; align-items: center; gap: 1rem; padding: 0.65rem 1.25rem; border-bottom: 1px solid rgba(51, 65, 85, 0.5); transition: background-color 0.15s; }
+        .issue-row:last-child { border-bottom: none; }
+        .issue-row:hover { background-color: rgba(255, 255, 255, 0.02); }
+        .issue-id { font-family: monospace; font-size: 0.85rem; color: var(--text-muted); white-space: nowrap; min-width: 3.5rem; }
+        .issue-info { flex: 1; display: flex; flex-direction: column; gap: 0.25rem; min-width: 0; }
+        .issue-title { font-size: 0.9rem; color: var(--text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .issue-meta { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+        .step-badge { display: inline-block; padding: 0.15rem 0.5rem; border-radius: 9999px; font-size: 0.75rem; background-color: rgba(148, 163, 184, 0.1); color: var(--text-muted); border: 1px solid var(--border-color); }
+        .env-tag { display: inline-block; padding: 0.15rem 0.5rem; border-radius: var(--tag-radius); font-size: 0.75rem; background-color: rgba(59, 130, 246, 0.1); color: #60a5fa; border: 1px solid rgba(59, 130, 246, 0.3); font-family: monospace; }
+        .action-btn { background-color: var(--primary-color); color: #fff; border: none; border-radius: var(--tag-radius); padding: 0.35rem 0.85rem; font-size: 0.8rem; cursor: pointer; white-space: nowrap; transition: background-color 0.2s, opacity 0.2s; flex-shrink: 0; }
+        .action-btn:hover:not(:disabled) { background-color: var(--primary-hover); }
+        .action-btn:disabled { opacity: 0.5; cursor: not-allowed; background-color: var(--primary-color); animation: pulse-btn 1.5s ease-in-out infinite; }
+        @keyframes pulse-btn { 0%, 100% { opacity: 0.5; } 50% { opacity: 0.7; } }
+        .action-btn:disabled:focus { outline: 2px solid var(--primary-color); outline-offset: 2px; }
+        .empty-state { padding: 2rem; text-align: center; color: var(--text-muted); font-size: 0.85rem; }
+        #last-updated { font-size: 0.75rem; color: var(--text-muted); text-align: right; margin-top: 0.5rem; }
+        #fab-create-issue { position: fixed; bottom: 2rem; right: 2rem; width: 3.5rem; height: 3.5rem; border-radius: 50%; background-color: var(--primary-color); border: none; color: white; font-size: 1.5rem; cursor: pointer; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4); display: flex; align-items: center; justify-content: center; transition: background-color 0.3s, transform 0.2s, box-shadow 0.3s; z-index: 100; }
+        #fab-create-issue:hover { background-color: var(--primary-hover); transform: scale(1.1); box-shadow: 0 6px 16px rgba(0, 0, 0, 0.5); }
+        #modal-overlay { display: none; position: fixed; inset: 0; background-color: rgba(0, 0, 0, 0.7); z-index: 200; }
+        #modal-overlay.open { display: flex; align-items: center; justify-content: center; }
+        #modal-dialog { background-color: var(--surface-color); border: 1px solid var(--border-color); border-radius: 0.75rem; box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5); width: 90%; max-width: 500px; max-height: 90vh; display: flex; flex-direction: column; }
+        .modal-header { display: flex; align-items: center; justify-content: space-between; padding: 1.25rem 1.5rem; border-bottom: 1px solid var(--border-color); }
+        .modal-title { font-size: 1.25rem; font-weight: 700; color: var(--text-color); }
+        .modal-close-btn { background: none; border: none; color: var(--text-muted); font-size: 1.5rem; cursor: pointer; padding: 0; width: 2rem; height: 2rem; display: flex; align-items: center; justify-content: center; }
+        .modal-body { padding: 1.5rem; overflow-y: auto; }
+        .form-group { margin-bottom: 1.25rem; }
+        .form-label { display: block; margin-bottom: 0.5rem; font-size: 0.875rem; font-weight: 600; color: var(--text-color); }
+        .form-label .required { color: var(--red); margin-left: 0.25rem; }
+        .form-input, .form-select, .form-textarea { width: 100%; background-color: var(--bg-color); border: 1px solid var(--border-color); color: var(--text-color); padding: 0.5rem 0.75rem; border-radius: var(--tag-radius); font-family: inherit; font-size: 0.875rem; }
+        .form-textarea { resize: vertical; min-height: 100px; max-height: 200px; }
+        .modal-footer { display: flex; gap: 0.75rem; padding: 1.25rem 1.5rem; border-top: 1px solid var(--border-color); justify-content: flex-end; }
+        .modal-btn { padding: 0.5rem 1rem; border-radius: var(--tag-radius); font-size: 0.875rem; font-weight: 600; cursor: pointer; border: none; white-space: nowrap; }
+        .modal-btn-primary { background-color: var(--primary-color); color: white; }
+        .modal-btn-secondary { background-color: transparent; color: var(--text-muted); border: 1px solid var(--border-color); }
+        .form-error { color: var(--red); font-size: 0.75rem; margin-top: 0.25rem; display: none; }
+        .form-error.show { display: block; }
+        #toast-notification { display: none; position: fixed; bottom: 2rem; left: 2rem; background-color: var(--surface-color); border: 1px solid var(--border-color); border-radius: 0.5rem; padding: 1rem 1.25rem; font-size: 0.875rem; z-index: 300; }
+        #toast-notification.show { display: block; }
+        #toast-notification.success { border-left: 3px solid var(--green); }
+        #toast-notification.error { border-left: 3px solid var(--red); }
+        /* Action Status Overlay */
+        .action-status { position: fixed; bottom: 2rem; right: 6rem; background-color: var(--surface-color); border: 1px solid var(--border-color); border-radius: var(--tag-radius); padding: 0.75rem 1.25rem; color: var(--text-color); font-size: 0.875rem; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4); display: flex; align-items: center; gap: 0.75rem; z-index: 150; animation: slideIn 0.3s ease-out; }
+        @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+        .action-status-spinner { animation: spin 2s linear infinite; display: inline-block; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        .action-status-message { font-weight: 600; }
+        .action-status-elapsed { color: var(--text-muted); font-family: monospace; }
     </style>
 </head>
 <body>
-    <header>
-        <h1>🗂️ Dashboard <span style="font-size: 1rem; color: var(--text-muted); font-weight: normal;">Environment Overview</span></h1>
-        <nav class="header-nav">
-            <a href="/">💬 Chat</a>
-            <a href="/processes/">⚙️ Prozesse</a>
-            <a href="/agents/">🤖 Agents</a>
-            <a href="/open-work/">📋 Offene Arbeit</a>
-            <a href="/llm-traffic/">📊 LLM Traffic</a>
-            <a href="/llm-stats/">📈 LLM Stats</a>
-            <a href="/dashboard/" class="active">🗂️ Dashboard</a>
-        </nav>
-        <div id="status-indicator">
-            <div id="status-dot"></div>
-            <span id="status-text">Loading...</span>
-        </div>
-    </header>
-
-    <main>
-        <!-- Summary Cards -->
-        <div class="summary-grid">
-            <div class="summary-card">
-                <div class="label">Requested</div>
-                <div class="value" id="card-requested">–</div>
-                <div class="sub">Open / Requested issues</div>
-            </div>
-            <div class="summary-card">
-                <div class="label">Current Release</div>
-                <div class="value" id="card-current">–</div>
-                <div class="sub">Planned in current release</div>
-            </div>
-            <div class="summary-card">
-                <div class="label">In Development</div>
-                <div class="value" id="card-indev">–</div>
-                <div class="sub">Work / Review / Check</div>
-            </div>
-            <div class="summary-card">
-                <div class="label">Active Agents</div>
-                <div class="value" id="card-agents">–</div>
-                <div class="sub">Active within 5 minutes</div>
-            </div>
-        </div>
-
-        <!-- Section: Requested -->
-        <div class="section-card">
-            <div class="section-header" onclick="toggleSection(this)">
-                <span class="section-title">
-                    📋 Requested
-                    <span class="section-count" id="count-requested">0</span>
-                </span>
-                <input class="section-filter" type="text" placeholder="Filter..."
-                    onclick="event.stopPropagation()"
-                    oninput="filterSection(this, 'requested')">
-                <span class="collapse-icon">▼</span>
-            </div>
-            <div class="section-body" id="body-requested">
-                <div class="empty-state"><p>Loading...</p></div>
-            </div>
-        </div>
-
-        <!-- Section: Planned (Current Release) -->
-        <div class="section-card">
-            <div class="section-header" onclick="toggleSection(this)">
-                <span class="section-title">
-                    🚀 Planned (Current Release)
-                    <span class="section-count" id="count-release-current">0</span>
-                </span>
-                <input class="section-filter" type="text" placeholder="Filter..."
-                    onclick="event.stopPropagation()"
-                    oninput="filterSection(this, 'release-current')">
-                <span class="collapse-icon">▼</span>
-            </div>
-            <div class="section-body" id="body-release-current">
-                <div class="empty-state"><p>Loading...</p></div>
-            </div>
-        </div>
-
-        <!-- Section: Planned (Next Release) — collapsed by default -->
-        <div class="section-card">
-            <div class="section-header collapsed" onclick="toggleSection(this)">
-                <span class="section-title">
-                    📅 Planned (Next Release)
-                    <span class="section-count" id="count-release-next">0</span>
-                </span>
-                <input class="section-filter" type="text" placeholder="Filter..."
-                    onclick="event.stopPropagation()"
-                    oninput="filterSection(this, 'release-next')">
-                <span class="collapse-icon">▼</span>
-            </div>
-            <div class="section-body" id="body-release-next" style="display:none">
-                <div class="empty-state"><p>Loading...</p></div>
-            </div>
-        </div>
-
-        <!-- Section: In Development -->
-        <div class="section-card">
-            <div class="section-header" onclick="toggleSection(this)">
-                <span class="section-title">
-                    🔨 In Development
-                    <span class="section-count" id="count-in-dev">0</span>
-                </span>
-                <input class="section-filter" type="text" placeholder="Filter..."
-                    onclick="event.stopPropagation()"
-                    oninput="filterSection(this, 'in-dev')">
-                <span class="collapse-icon">▼</span>
-            </div>
-            <div class="section-body" id="body-in-dev">
-                <div class="empty-state"><p>Loading...</p></div>
-            </div>
-        </div>
-
-        <!-- Section: Live Agent Status -->
-        <div class="section-card">
-            <div class="section-header" onclick="toggleSection(this)">
-                <span class="section-title">
-                    🤖 Live Agent Status
-                    <span class="section-count" id="count-live-agents">0</span>
-                </span>
-                <input class="section-filter" type="text" placeholder="Filter..."
-                    onclick="event.stopPropagation()"
-                    oninput="filterSection(this, 'live-agents')">
-                <span class="collapse-icon">▼</span>
-            </div>
-            <div class="section-body" id="body-live-agents">
-                <div class="empty-state"><p>Loading...</p></div>
-            </div>
-        </div>
-
-        <div id="last-updated"></div>
-    </main>
-
-    <!-- Floating Action Button -->
-    <button id="fab-create-issue" title="Create new issue (Ctrl+N)" onclick="openCreateIssueModal()">➕</button>
-
-    <!-- Modal Overlay & Dialog -->
-    <div id="modal-overlay" onclick="if(event.target === this) closeCreateIssueModal()">
-        <div id="modal-dialog">
-            <div class="modal-header">
-                <div class="modal-title">➕ Create New Issue</div>
-                <button class="modal-close-btn" onclick="closeCreateIssueModal()" title="Close (Esc)">✕</button>
-            </div>
-            <div class="modal-body">
-                <form id="create-issue-form" onsubmit="submitCreateIssueForm(event)">
-                    <div class="form-group">
-                        <label class="form-label">Title <span class="required">*</span></label>
-                        <input type="text" id="form-title" class="form-input" placeholder="e.g., Add dark mode support" required maxlength="200">
-                        <div class="form-error" id="error-title"></div>
-                    </div>
-
-                    <div class="form-group">
-                        <label class="form-label">Description <span class="required">*</span></label>
-                        <textarea id="form-description" class="form-textarea" placeholder="Describe the issue or feature request..." required maxlength="2000"></textarea>
-                        <div class="form-error" id="error-description"></div>
-                    </div>
-
-                    <div class="form-group">
-                        <label class="form-label">Type <span class="required">*</span></label>
-                        <select id="form-type" class="form-select" required>
-                            <option value="">-- Select Type --</option>
-                            <option value="bug">🐛 Bug</option>
-                            <option value="feature">✨ Feature</option>
-                            <option value="improvement">📈 Improvement</option>
-                            <option value="task">📝 Task</option>
-                            <option value="doc">📄 Documentation</option>
-                            <option value="chore">🔧 Chore</option>
-                        </select>
-                        <div class="form-error" id="error-type"></div>
-                    </div>
-
-                    <div class="form-group">
-                        <label class="form-label">Size <span class="required">*</span></label>
-                        <select id="form-size" class="form-select" required>
-                            <option value="">-- Select Size --</option>
-                            <option value="S">S – Small (1-2 hours)</option>
-                            <option value="M">M – Medium (3-8 hours)</option>
-                            <option value="L">L – Large (1-3 days)</option>
-                            <option value="XL">XL – Extra Large (3+ days)</option>
-                        </select>
-                        <div class="form-error" id="error-size"></div>
-                    </div>
-
-                    <div class="form-group">
-                        <label class="form-label">Project</label>
-                        <select id="form-project" class="form-select">
-                            <option value="">-- Select Project (Optional) --</option>
-                            <option value="requested">📋 Requested</option>
-                            <option value="release-current">🚀 Current Release</option>
-                            <option value="release-next">📅 Next Release</option>
-                        </select>
-                        <div class="form-error" id="error-project"></div>
-                    </div>
-                </form>
-            </div>
-            <div class="modal-footer">
-                <button class="modal-btn modal-btn-secondary" onclick="closeCreateIssueModal()">Cancel</button>
-                <button class="modal-btn modal-btn-primary" id="btn-submit-form" onclick="submitCreateIssueForm(event)">Create Issue</button>
-            </div>
-        </div>
+<header>
+    <h1>ABO Dashboard</h1>
+    <div class="header-nav" id="nav-container">
+        <a href="#" class="active">Overview</a>
+        <a href="/dashboard/traffic.html">Internal Traffic</a>
+        <a href="/dashboard/consumption.html">LLM Consumption</a>
     </div>
-
-    <!-- Toast Notification -->
-    <div id="toast-notification"></div>
-
-    <script>
+    <div id="status-indicator">
+        <div id="status-dot"></div>
+        <span id="status-text">Connecting...</span>
+    </div>
+</header>
+<main>
+    <div class="summary-grid">
+        <div class="summary-card"><span class="label">Requested Issues</span><span class="value" id="card-requested">0</span><span class="sub">Open or Triage</span></div>
+        <div class="summary-card"><span class="label">Current Release</span><span class="value" id="card-current">0</span><span class="sub">Planned for deployment</span></div>
+        <div class="summary-card"><span class="label">In Development</span><span class="value" id="card-indev">0</span><span class="sub">Active agent sessions</span></div>
+        <div class="summary-card"><span class="label">Active Agents</span><span class="value" id="card-agents">0</span><span class="sub">Across all sessions</span></div>
+    </div>
+    <div class="section-card">
+        <div class="section-header" onclick="toggleSection(this)"><span class="section-title">📌 Requested Issues <span class="section-count" id="count-requested">0</span></span><input type="text" class="section-filter" placeholder="Filter..." onclick="event.stopPropagation()" oninput="filterSection(this, 'requested')"><span class="collapse-icon">▼</span></div>
+        <div class="section-body" id="body-requested"></div>
+    </div>
+    <div class="section-card">
+        <div class="section-header" onclick="toggleSection(this)"><span class="section-title">🚀 Current Release <span class="section-count" id="count-release-current">0</span></span><input type="text" class="section-filter" placeholder="Filter..." onclick="event.stopPropagation()" oninput="filterSection(this, 'release-current')"><span class="collapse-icon">▼</span></div>
+        <div class="section-body" id="body-release-current"></div>
+    </div>
+    <div class="section-card">
+        <div class="section-header" onclick="toggleSection(this)"><span class="section-title">📅 Next Release <span class="section-count" id="count-release-next">0</span></span><input type="text" class="section-filter" placeholder="Filter..." onclick="event.stopPropagation()" oninput="filterSection(this, 'release-next')"><span class="collapse-icon">▼</span></div>
+        <div class="section-body" id="body-release-next"></div>
+    </div>
+    <div class="section-card">
+        <div class="section-header" onclick="toggleSection(this)"><span class="section-title">💻 In Development <span class="section-count" id="count-in-dev">0</span></span><input type="text" class="section-filter" placeholder="Filter..." onclick="event.stopPropagation()" oninput="filterSection(this, 'in-dev')"><span class="collapse-icon">▼</span></div>
+        <div class="section-body" id="body-in-dev"></div>
+    </div>
+    <div class="section-card">
+        <div class="section-header" onclick="toggleSection(this)"><span class="section-title">🤖 Live Agent Sessions <span class="section-count" id="count-live-agents">0</span></span><span class="collapse-icon">▼</span></div>
+        <div class="section-body" id="body-live-agents"></div>
+    </div>
+    <div id="last-updated">Last updated: Never</div>
+</main>
+<button id="fab-create-issue" title="Create new issue (Ctrl+N)" onclick="openCreateIssueModal()">➕</button>
+<div id="modal-overlay" onclick="if(event.target === this) closeCreateIssueModal()">
+  <div id="modal-dialog">
+    <div class="modal-header"><div class="modal-title">➕ Create New Issue</div><button class="modal-close-btn" onclick="closeCreateIssueModal()" title="Close (Esc)">✕</button></div>
+    <div class="modal-body">
+      <form id="create-issue-form" onsubmit="submitCreateIssueForm(event)">
+        <div class="form-group"><label class="form-label">Title <span class="required">*</span></label><input type="text" id="form-title" class="form-input" placeholder="e.g., Add dark mode support" required maxlength="200"><div class="form-error" id="error-title"></div></div>
+        <div class="form-group"><label class="form-label">Description <span class="required">*</span></label><textarea id="form-description" class="form-textarea" placeholder="Describe the issue or feature request..." required maxlength="2000"></textarea><div class="form-error" id="error-description"></div></div>
+        <div class="form-group"><label class="form-label">Type <span class="required">*</span></label><select id="form-type" class="form-select" required><option value="">-- Select Type --</option><option value="bug">🐛 Bug</option><option value="feature">✨ Feature</option><option value="improvement">📈 Improvement</option><option value="task">📝 Task</option><option value="doc">📄 Documentation</option><option value="chore">🔧 Chore</option></select><div class="form-error" id="error-type"></div></div>
+        <div class="form-group"><label class="form-label">Size <span class="required">*</span></label><select id="form-size" class="form-select" required><option value="">-- Select Size --</option><option value="S">S – Small (1-2 hours)</option><option value="M">M – Medium (3-8 hours)</option><option value="L">L – Large (1-3 days)</option><option value="XL">XL – Extra Large (3+ days)</option></select><div class="form-error" id="error-size"></div></div>
+        <div class="form-group"><label class="form-label">Environment <span class="required">*</span></label><select id="form-environment" class="form-select" required><option value="">Loading environments...</option></select><div class="form-error" id="error-environment"></div></div>
+        <div class="form-group"><label class="form-label">Project</label><select id="form-project" class="form-select"><option value="">-- Select Project (Optional) --</option><option value="requested">📋 Requested</option><option value="release-current">🚀 Current Release</option><option value="release-next">📅 Next Release</option></select><div class="form-error" id="error-project"></div></div>
+      </form>
+    </div>
+    <div class="modal-footer"><button class="modal-btn modal-btn-secondary" onclick="closeCreateIssueModal()">Cancel</button><button class="modal-btn modal-btn-primary" id="btn-submit-form" onclick="submitCreateIssueForm(event)">Create Issue</button></div>
+  </div>
+</div>
+<div id="toast-notification"></div>
+<script>
         let allIssues = [];
         let activeSessions = [];
+        let availableEnvironments = [];
 
         // ── Action Status Tracking ────────────────────────────────────────────
         let actionInProgress = {};  // { issueId: { actionType, sessionId, startTime, statusElement, pollInterval, elapsedInterval } }
         let normalPollingInterval = null;
         let aggressivePollingInterval = null;
 
-        /**
-         * Initialize or retrieve action tracking entry for an issue
-         * @param {string} issueId - Issue ID
-         * @returns {Object} Action tracking object
-         */
         function getOrCreateActionEntry(issueId) {
             if (!actionInProgress[issueId]) {
                 actionInProgress[issueId] = {
@@ -898,10 +187,6 @@
             return actionInProgress[issueId];
         }
 
-        /**
-         * Clean up completed action entry
-         * @param {string} issueId - Issue ID to clean up
-         */
         function cleanupActionEntry(issueId) {
             const action = actionInProgress[issueId];
             if (action) {
@@ -918,74 +203,43 @@
             }
         }
 
-        /**
-         * Check if any actions are currently in progress
-         * @returns {boolean} True if any action is active
-         */
         function hasActiveActions() {
             return Object.keys(actionInProgress).length > 0;
         }
 
-        /**
-         * Get list of currently active issueIds
-         * @returns {string[]} Array of issueIds with active actions
-         */
         function getActiveIssueIds() {
             return Object.keys(actionInProgress);
         }
 
         // ── Status Display Rendering ──────────────────────────────────────────
 
-        /**
-         * Create and render inline status display for an action
-         * @param {string} issueId - Issue ID being processed
-         * @param {string} issueTitle - Issue title for display
-         * @returns {HTMLElement} Status display element
-         */
         function createStatusDisplay(issueId, issueTitle) {
-            // Create container
             const statusDiv = document.createElement('div');
             statusDiv.className = 'action-status';
             statusDiv.setAttribute('aria-live', 'polite');
             statusDiv.setAttribute('aria-label', `Action in progress for issue ${issueId}`);
-            
-            // Create spinner (using hourglass emoji)
             const spinner = document.createElement('span');
             spinner.className = 'action-status-spinner';
             spinner.textContent = '⏳';
-            
-            // Create message text
             const message = document.createElement('span');
             message.className = 'action-status-message';
             message.textContent = `Running – Issue #${escapeHtml(issueId)}: ${escapeHtml(issueTitle)}`;
-            
-            // Create elapsed time counter
             const elapsed = document.createElement('span');
             elapsed.className = 'action-status-elapsed';
             elapsed.textContent = '(0s)';
-            
-            // Assemble
             statusDiv.appendChild(spinner);
             statusDiv.appendChild(message);
             statusDiv.appendChild(elapsed);
-            
-            // Insert into document (positioned as toast/overlay)
             document.body.appendChild(statusDiv);
-            
-            // Start elapsed time counter
             const action = actionInProgress[issueId];
             if (action) {
                 const startTime = Date.now();
                 const counterInterval = setInterval(() => {
                     const elapsed_s = Math.floor((Date.now() - startTime) / 1000);
                     elapsed.textContent = `(${elapsed_s}s)`;
-                    
-                    // Auto-cleanup after timeout (10 seconds of polling without updates)
                     if (elapsed_s > 10) {
                         clearInterval(counterInterval);
                         cleanupActionEntry(issueId);
-                        
-                        // Re-enable the button
                         const btn = document.querySelector(`button[onclick*="triggerAction('${escapeHtml(issueId)}"]`);
                         if (btn) {
                             btn.disabled = false;
@@ -993,22 +247,14 @@
                         }
                     }
                 }, 1000);
-                
                 action.elapsedInterval = counterInterval;
             }
-            
             return statusDiv;
         }
 
-        /**
-         * Update status display with session polling results
-         * @param {string} issueId - Issue ID
-         * @param {Object} session - Session data from /api/sessions
-         */
         function updateStatusDisplay(issueId, session) {
             const action = actionInProgress[issueId];
             if (!action || !action.statusElement) return;
-            
             const elapsed = action.statusElement.querySelector('.action-status-elapsed');
             if (elapsed && action.startTime) {
                 const elapsed_s = Math.floor((Date.now() - action.startTime) / 1000);
@@ -1018,82 +264,46 @@
 
         // ── Enhanced Action Trigger ───────────────────────────────────────────
 
-        /**
-         * Enhanced trigger action with status display and button locking
-         * Called from dashboard issue row buttons
-         * @param {string} issueId - Issue ID
-         * @param {string} actionType - Type of action (triage, release, develop)
-         */
         async function triggerAction(issueId, actionType) {
             const btn = event.currentTarget;
-            
-            // Prevent multiple simultaneous actions on same issue
             if (actionInProgress[issueId]) {
                 console.warn(`Action already in progress for issue #${issueId}`);
                 return;
             }
-            
-            // Find issue title from DOM
             const issueRow = btn.closest('.issue-row');
             const issueTitle = issueRow?.querySelector('.issue-title')?.textContent || `Issue #${issueId}`;
-            
-            // Store original button text
             btn.setAttribute('data-original-text', btn.textContent);
-            
-            // Initialize action tracking
             const action = getOrCreateActionEntry(issueId);
             action.actionType = actionType;
             action.startTime = Date.now();
-            
-            // Generate unique sessionId
             const timestamp = Date.now();
             action.sessionId = `dashboard-action-${issueId}-${timestamp}`;
-            
-            // Disable button immediately
             btn.disabled = true;
             btn.textContent = '⏳ Sending...';
-            
-            // Create and display status
             action.statusElement = createStatusDisplay(issueId, issueTitle);
-            
-            // Build command message
             const commands = {
                 triage:  `Start triage on issue #${issueId}`,
                 release: `Start release planning for issue #${issueId}`,
                 develop: `Continue development on issue #${issueId}`
             };
-            
             try {
-                // Send request to backend with sessionId and issueId
                 const response = await fetch('/api/interact', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         message: commands[actionType],
-                        sessionId: action.sessionId,  // NEW: pass sessionId to backend
-                        issueId: issueId,             // NEW: pass issueId to backend
+                        sessionId: action.sessionId,
+                        issueId: issueId,
                         userName: 'Dashboard'
                     })
                 });
-                
-                if (!response.ok) {
-                    throw new Error('Request failed');
-                }
-                
+                if (!response.ok) throw new Error('Request failed');
                 btn.textContent = '✅ Sent! Waiting...';
-                
-                // Start aggressive polling (2-5 second intervals) while action in progress
-                // Polling will continue until inactivity timeout or manual cleanup
                 startAggressivePolling();
-                
             } catch (err) {
                 console.error('Error triggering action:', err);
                 btn.textContent = '❌ Error';
-                
-                // Show error toast
                 showToast(`Failed to start ${actionType} for issue #${issueId}`, 'error');
-                
-                // Clean up on error
                 setTimeout(() => {
                     cleanupActionEntry(issueId);
                     btn.disabled = false;
@@ -1104,55 +314,33 @@
 
         // ── Enhanced Data Fetching with Aggressive Polling ────────────────────
 
-        /**
-         * Start aggressive polling (2-5 second intervals) when actions are in progress
-         */
         function startAggressivePolling() {
-            if (aggressivePollingInterval) {
-                return;  // Already running
-            }
-            
+            if (aggressivePollingInterval) return;
             aggressivePollingInterval = setInterval(async () => {
                 if (!hasActiveActions()) {
-                    // No more active actions, stop aggressive polling
                     if (aggressivePollingInterval) {
                         clearInterval(aggressivePollingInterval);
                         aggressivePollingInterval = null;
                     }
                     return;
                 }
-                
-                // Poll sessions every 2-3 seconds while actions in progress
                 try {
                     const sessionsRes = await fetch('/api/sessions');
                     if (!sessionsRes.ok) return;
-                    
                     activeSessions = await sessionsRes.json();
-                    
-                    // Match sessions to actions by sessionId
                     const activeIssueIds = getActiveIssueIds();
                     activeIssueIds.forEach(issueId => {
                         const action = actionInProgress[issueId];
                         if (!action) return;
-                        
-                        // Find session matching this action's sessionId
                         const session = activeSessions.find(s => s.sessionId === action.sessionId);
-                        
-                        if (session) {
-                            // Session is still active, update elapsed time display
-                            updateStatusDisplay(issueId, session);
-                        }
+                        if (session) updateStatusDisplay(issueId, session);
                     });
-                    
                 } catch (err) {
                     console.error('Error in aggressive polling:', err);
                 }
-            }, 2500);  // Poll every 2.5 seconds
+            }, 2500);
         }
 
-        /**
-         * Enhanced fetchData with support for aggressive polling
-         */
         async function fetchData() {
             try {
                 const [issuesRes, sessionsRes] = await Promise.all([
@@ -1166,12 +354,7 @@
                 updateLiveIndicator();
                 document.getElementById('last-updated').textContent =
                     `Last updated: ${new Date().toLocaleTimeString('en-US')}`;
-                
-                // Start aggressive polling if there are active actions
-                if (hasActiveActions()) {
-                    startAggressivePolling();
-                }
-                
+                if (hasActiveActions()) startAggressivePolling();
             } catch (err) {
                 document.getElementById('status-dot').className = '';
                 document.getElementById('status-text').textContent = 'Error';
@@ -1181,21 +364,31 @@
 
         // ── Keyboard Shortcuts ─────────────────────────────────────────────────
         document.addEventListener('keydown', (e) => {
-            // Ctrl+N or Cmd+N to open modal
             if ((e.ctrlKey || e.metaKey) && e.key === 'n') {
                 e.preventDefault();
                 openCreateIssueModal();
             }
-            // Escape to close modal
-            if (e.key === 'Escape') {
-                closeCreateIssueModal();
-            }
+            if (e.key === 'Escape') closeCreateIssueModal();
         });
 
         // ── Modal Functions ────────────────────────────────────────────────────
+        async function fetchEnvironments() {
+             try {
+                 const res = await fetch('/api/environments');
+                 availableEnvironments = await res.json();
+                 const select = document.getElementById('form-environment');
+                 select.innerHTML = availableEnvironments.length 
+                     ? availableEnvironments.map((e, i) => `<option value="${escapeHtml(e.name)}" ${i === 0 ? 'selected' : ''}>${escapeHtml(e.displayName || e.name)}</option>`).join('') 
+                     : '<option value="">No environments available</option>';
+             } catch {
+                 document.getElementById('form-environment').innerHTML = '<option value="">Failed to load environments</option>';
+             }
+        }
+
         function openCreateIssueModal() {
             document.getElementById('modal-overlay').classList.add('open');
             document.getElementById('form-title').focus();
+            if(!availableEnvironments.length) fetchEnvironments();
         }
 
         function closeCreateIssueModal() {
@@ -1215,35 +408,21 @@
 
         async function submitCreateIssueForm(event) {
             event.preventDefault();
-
             const title = document.getElementById('form-title').value.trim();
             const description = document.getElementById('form-description').value.trim();
             const type = document.getElementById('form-type').value.trim();
             const size = document.getElementById('form-size').value.trim();
             const project = document.getElementById('form-project').value.trim();
+            const environmentName = document.getElementById('form-environment').value.trim();
 
-            // Basic validation
             let hasErrors = false;
             const errors = {};
+            if (!title || title.length < 3) { errors.title = 'Title must be at least 3 characters'; hasErrors = true; }
+            if (!description || description.length < 10) { errors.description = 'Description must be at least 10 characters'; hasErrors = true; }
+            if (!type) { errors.type = 'Type is required'; hasErrors = true; }
+            if (!size) { errors.size = 'Size is required'; hasErrors = true; }
+            if (!environmentName) { errors.environment = 'Environment is required'; hasErrors = true; }
 
-            if (!title || title.length < 3) {
-                errors.title = 'Title must be at least 3 characters';
-                hasErrors = true;
-            }
-            if (!description || description.length < 10) {
-                errors.description = 'Description must be at least 10 characters';
-                hasErrors = true;
-            }
-            if (!type) {
-                errors.type = 'Type is required';
-                hasErrors = true;
-            }
-            if (!size) {
-                errors.size = 'Size is required';
-                hasErrors = true;
-            }
-
-            // Display errors
             Object.entries(errors).forEach(([field, message]) => {
                 const errorEl = document.getElementById(`error-${field}`);
                 if (errorEl) {
@@ -1254,7 +433,6 @@
 
             if (hasErrors) return;
 
-            // Disable submit button during submission
             const submitBtn = document.getElementById('btn-submit-form');
             submitBtn.disabled = true;
             const originalText = submitBtn.textContent;
@@ -1264,29 +442,18 @@
                 const response = await fetch('/api/issues/create', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        title,
-                        description,
-                        type,
-                        size,
-                        project: project || null
-                    })
+                    body: JSON.stringify({ title, description, type, size, project: project || null, environmentName })
                 });
-
                 if (!response.ok) {
                     const errorData = await response.json();
                     throw new Error(errorData.error || 'Failed to create issue');
                 }
-
                 const result = await response.json();
                 closeCreateIssueModal();
                 showToast(`✅ Issue created: #${result.id} - ${result.title}`, 'success');
-
-                // Refresh dashboard data
                 await fetchData();
             } catch (error) {
                 showToast(`❌ Error: ${error.message}`, 'error');
-                console.error('Error creating issue:', error);
             } finally {
                 submitBtn.disabled = false;
                 submitBtn.textContent = originalText;
@@ -1297,30 +464,24 @@
         function getIssuesForSection(sectionId) {
             switch (sectionId) {
                 case 'requested':
-                    return allIssues.filter(i =>
-                        i.project === 'requested' || i.currentStep?.status === 'open');
+                    return allIssues.filter(i => i.project === 'requested' || i.currentStep?.status === 'open');
                 case 'release-current':
-                    return allIssues.filter(i =>
-                        i.project === 'release-current' && i.currentStep?.status === 'planned');
+                    return allIssues.filter(i => i.project === 'release-current' && i.currentStep?.status === 'planned');
                 case 'release-next':
-                    return allIssues.filter(i =>
-                        i.project === 'release-next' && i.currentStep?.status === 'planned');
+                    return allIssues.filter(i => i.project === 'release-next' && i.currentStep?.status === 'planned');
                 case 'in-dev':
-                    return allIssues.filter(i =>
-                        ['work', 'review', 'check'].includes(i.currentStep?.status));
+                    return allIssues.filter(i => ['work', 'review', 'check'].includes(i.currentStep?.status));
                 default:
                     return [];
             }
         }
 
-        // ── Collapse / Expand ──────────────────────────────────────────────────
         function toggleSection(header) {
             header.classList.toggle('collapsed');
             const body = header.nextElementSibling;
             body.style.display = header.classList.contains('collapsed') ? 'none' : '';
         }
 
-        // ── Per-Section Text Filter ────────────────────────────────────────────
         function filterSection(input, sectionId) {
             const query = input.value.trim().toLowerCase();
             const body = document.getElementById('body-' + sectionId);
@@ -1332,8 +493,7 @@
 
         // ── Live Indicator ─────────────────────────────────────────────────────
         function updateLiveIndicator() {
-            const recentSessions = activeSessions.filter(s =>
-                (new Date() - new Date(s.lastActivity)) < 5 * 60 * 1000);
+            const recentSessions = activeSessions.filter(s => (new Date() - new Date(s.lastActivity)) < 5 * 60 * 1000);
             const dot = document.getElementById('status-dot');
             const text = document.getElementById('status-text');
             if (recentSessions.length > 0) {
@@ -1345,20 +505,17 @@
             }
         }
 
-        // ── Summary Cards ──────────────────────────────────────────────────────
         function updateSummaryCards() {
             const requested = getIssuesForSection('requested');
             const current = getIssuesForSection('release-current');
             const inDev = getIssuesForSection('in-dev');
-            const activeAgents = activeSessions.filter(s =>
-                (new Date() - new Date(s.lastActivity)) < 5 * 60 * 1000);
+            const activeAgents = activeSessions.filter(s => (new Date() - new Date(s.lastActivity)) < 5 * 60 * 1000);
             document.getElementById('card-requested').textContent = requested.length;
             document.getElementById('card-current').textContent = current.length;
             document.getElementById('card-indev').textContent = inDev.length;
             document.getElementById('card-agents').textContent = activeAgents.length;
         }
 
-        // ── Render All Sections ────────────────────────────────────────────────
         function renderAllSections() {
             ['requested', 'release-current', 'release-next', 'in-dev'].forEach(sectionId => {
                 renderSection(sectionId, getIssuesForSection(sectionId));
@@ -1384,8 +541,7 @@
                 const btn = action
                     ? `<button class="action-btn" onclick="triggerAction('${escapeHtml(i.id)}', '${action.type}')">${action.label}</button>`
                     : '';
-                return `
-                <div class="issue-row">
+                return `<div class="issue-row">
                   <span class="issue-id">#${escapeHtml(i.id)}</span>
                   <div class="issue-info">
                     <span class="issue-title">${escapeHtml(i.title)}</span>
@@ -1403,15 +559,13 @@
         function renderLiveAgentsSection() {
             const body = document.getElementById('body-live-agents');
             const countEl = document.getElementById('count-live-agents');
-            const recentSessions = activeSessions.filter(s =>
-                (new Date() - new Date(s.lastActivity)) < 5 * 60 * 1000);
+            const recentSessions = activeSessions.filter(s => (new Date() - new Date(s.lastActivity)) < 5 * 60 * 1000);
             if (countEl) countEl.textContent = recentSessions.length;
             if (recentSessions.length === 0) {
                 body.innerHTML = '<div class="empty-state"><p>No active agent sessions.</p></div>';
                 return;
             }
-            body.innerHTML = recentSessions.map(s => `
-                <div class="issue-row">
+            body.innerHTML = recentSessions.map(s => `<div class="issue-row">
                   <span class="issue-id" style="color:#a5b4fc; font-family:monospace;">${escapeHtml(s.sessionId)}</span>
                   <div class="issue-info">
                     <span class="issue-title">${escapeHtml(s.sessionId)}</span>
@@ -1423,7 +577,6 @@
                 </div>`).join('');
         }
 
-        // ── Helpers ────────────────────────────────────────────────────────────
         function escapeHtml(str) {
             if (!str) return '';
             return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -1439,17 +592,12 @@
             return `${Math.floor(diffMin / 60)}h ago`;
         }
 
-        // ── Initialize ─────────────────────────────────────────────────────────
         fetchData();
         normalPollingInterval = setInterval(fetchData, 10000);
-
-        // On page unload, clean up all intervals and actions
         window.addEventListener('beforeunload', () => {
             if (normalPollingInterval) clearInterval(normalPollingInterval);
             if (aggressivePollingInterval) clearInterval(aggressivePollingInterval);
-            getActiveIssueIds().forEach(issueId => {
-                cleanupActionEntry(issueId);
-            });
+            getActiveIssueIds().forEach(issueId => cleanupActionEntry(issueId));
         });
     </script>
 </body>
