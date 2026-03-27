@@ -98,7 +98,7 @@ public class Orchestrator
                 currentLoop++;
 
                 // Recalculate model in case agent state changed
-                currentModelName = _configuration["Config:ModelName"];
+                currentModelName = _configuration["Config:ModelName"] ?? "anthropic/claude-haiku-4.5";
                 if (agent.RequiresReviewModel && !string.IsNullOrEmpty(_configuration["Config:ReviewModelName"]))
                 {
                     currentModelName = _configuration["Config:ReviewModelName"]!;
