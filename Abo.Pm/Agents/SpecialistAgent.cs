@@ -103,7 +103,7 @@ public class SpecialistAgent : IAgent
                             type = "string",
                             description = "Optional. If the current step has multiple possible next steps, provide a keyword matching the condition name of the path to take."
                         },
-                        resultNotes = new { type = "string", description = "A detailed summary of the parameters, context, or results generated during this step to store in notes.md for the next person/agent. (Required)" }
+                        resultNotes = new { type = "string", description = "A detailed summary of the parameters, context, or results generated during this step to store in notes.md for the next person/agent. DO NOT REPEAT STUFF ALREADY STATED IN THE ISSUE OR PREVIOUS NOTES. (Required)" }
                     },
                     required = new[] { "resultNotes" }
                 }
@@ -299,11 +299,11 @@ public class SpecialistAgent : IAgent
             {
                 bool includeDotnet = tech == "dotnet" || tech == "mixed";
                 bool includePython = tech == "python" || tech == "mixed";
-                bool includeShell  = tech == "python" || tech == "node" || tech == "mixed";
+                bool includeShell = tech == "python" || tech == "node" || tech == "mixed";
 
                 if (includeDotnet) _connectorTools.Add(new DotnetTool(_currentWorkspace));
                 if (includePython) _connectorTools.Add(new PythonTool(_currentWorkspace));
-                if (includeShell)  _connectorTools.Add(new ShellTool(_currentWorkspace));
+                if (includeShell) _connectorTools.Add(new ShellTool(_currentWorkspace));
             }
 
             _connectorTools.Add(new SearchRegexTool(_currentWorkspace));
