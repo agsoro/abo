@@ -188,6 +188,7 @@ public static class WorkflowEngine
                     * **Strategic Focus:** Establish the fundamental strategy, roadmap, and patterns. Ignore routine implementation details or boilerplate.
                     * **Documentation/Wiki:** Document only the major architectural and technical pillars that affect the project's long-term integrity.
                     * **Delegation:** Do NOT write application implementation code. Leave execution to the Developer.
+                    * **Task Breakdown:** If the request is massive, use `create_sub_issue` to break the work down into smaller, manageable tickets for Developers.
 
                     ### TASK COMPLETION
                     Call `conclude_step` with one of these keywords. Include your architectural guidance in the mandatory `notes` parameter.

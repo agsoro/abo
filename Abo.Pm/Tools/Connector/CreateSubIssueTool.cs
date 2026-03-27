@@ -98,7 +98,7 @@ public class CreateSubIssueTool : IAboTool
                 size ?? string.Empty,
                 additionalLabels: additionalLabels.ToArray(),
                 project: parentProject,
-                status: "open");
+                status: StatusType.Planned);
 
             // Step 3: Establish the GitHub native sub-issue link (graceful degradation on failure)
             if (!string.IsNullOrWhiteSpace(parent.NodeId) && !string.IsNullOrWhiteSpace(subIssue.NodeId))

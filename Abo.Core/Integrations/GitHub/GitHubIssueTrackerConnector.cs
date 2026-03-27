@@ -421,7 +421,7 @@ query($owner: String!) {
         return record;
     }
 
-    public async Task<IssueRecord> UpdateIssueAsync(string issueId, string? title = null, string? body = null, string? state = null, string[]? labels = null, string? project = null, string? status = null, string? type = null)
+    public async Task<IssueRecord> UpdateIssueAsync(string issueId, string? title = null, string? body = null, string? state = null, string[]? labels = null, string? project = null, string? status = null, string? type = null, string? size = null)
     {
         var reqObj = new Dictionary<string, object>();
         if (title != null) reqObj["title"] = title;
@@ -433,7 +433,7 @@ query($owner: String!) {
         {
             updatedLabels = labels.ToList();
         }
-        else if (project != null)
+        else if (project != null || size != null)
         {
             var existingIssue = await GetIssueAsync(issueId);
             if (existingIssue != null) 
@@ -448,6 +448,15 @@ query($owner: String!) {
             {
                 updatedLabels.RemoveAll(l => l.StartsWith("project: ", StringComparison.OrdinalIgnoreCase));
                 // We keep the project string for GraphQL Sync, but do NOT push it to GitHub labels.
+            }
+
+            if (size != null)
+            {
+                updatedLabels.RemoveAll(l => l.StartsWith("size: ", StringComparison.OrdinalIgnoreCase));
+                if (!string.IsNullOrWhiteSpace(size))
+                {
+                    updatedLabels.Add($"size: {size}");
+                }
             }
             
             // Strip project labels from REST payload

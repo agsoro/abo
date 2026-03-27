@@ -30,6 +30,7 @@ public class UpdateIssueTool : IAboTool
                 description = "Set or correct the issue type.",
                 @enum = IssueType.AllowedValues
             },
+            size = new { type = "string", description = "Optional relative size estimate, e.g. 'S', 'M', 'L'." }
         },
         required = new[] { "issueId" },
         additionalProperties = false
@@ -65,7 +66,13 @@ public class UpdateIssueTool : IAboTool
                 typeToSet = newType;
             }
 
-            var updated = await _connector.UpdateIssueAsync(issueId, title: title, body: body, type: typeToSet);
+            string? sizeToSet = null;
+            if (args.TryGetValue("size", out var sizeElement) && sizeElement.ValueKind == JsonValueKind.String)
+            {
+                sizeToSet = sizeElement.GetString();
+            }
+
+            var updated = await _connector.UpdateIssueAsync(issueId, title: title, body: body, type: typeToSet, size: sizeToSet);
             return JsonSerializer.Serialize(updated);
         }
         catch (Exception ex)
