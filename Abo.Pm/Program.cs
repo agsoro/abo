@@ -158,6 +158,7 @@ app.MapGet("/api/issues", async (IConfiguration config, Microsoft.Extensions.Cac
         Title = issue.Title,
         Type = issue.Labels.FirstOrDefault(l => l.StartsWith("type: ", StringComparison.OrdinalIgnoreCase))?.Substring(6).Trim() ?? "",
         Project = issue.Project,   // Issue #205: expose project field for dashboard grouping
+        StepId = Abo.Core.WorkflowEngine.StepId.ToStepId(issue),
         CurrentStep = new
         {
             Status = Abo.Core.WorkflowEngine.ResolveStatusFallback(issue),
