@@ -66,6 +66,12 @@ public class ListActiveIssuesTool : IAboTool
             }
 
 
+            var allowedProjects = new[] { "requested", "backlog", "release-next" };
+            activeIssues = activeIssues.Where(i =>
+                !string.IsNullOrWhiteSpace(i.Project) &&
+                allowedProjects.Contains(i.Project, StringComparer.OrdinalIgnoreCase)
+            ).ToList();
+
             if (!activeIssues.Any())
             {
                 return "No active issues found.";

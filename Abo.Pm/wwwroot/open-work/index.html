@@ -497,6 +497,10 @@
                             <span class="meta-item">
                                 📂 Typ: <span class="type-tag">${escapeHtml(project.type || '—')}</span>
                             </span>
+                            ${project.isBlocked ? `
+                            <span class="meta-item">
+                                🔒 <strong style="color: var(--red);">Blockiert durch Sub-Issues</strong>
+                            </span>` : ''}
                             ${project.lastUpdated ? `
                             <span class="meta-item">
                                 🕐 Zuletzt aktualisiert: <strong>${formatTimestamp(project.lastUpdated)}</strong>

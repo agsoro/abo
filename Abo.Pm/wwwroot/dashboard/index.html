@@ -1392,6 +1392,7 @@
                     <div class="issue-meta">
                       ${i.environmentName ? `<span class="env-tag">${escapeHtml(i.environmentName)}</span>` : ''}
                       ${i.currentStep?.status ? `<span class="step-badge">${escapeHtml(i.currentStep.status)}</span>` : ''}
+                      ${i.isBlocked ? `<span class="step-badge" style="background-color: rgba(220, 38, 38, 0.2); color: var(--red); border-color: var(--red);">Blocked</span>` : ''}
                     </div>
                   </div>
                   ${btn}

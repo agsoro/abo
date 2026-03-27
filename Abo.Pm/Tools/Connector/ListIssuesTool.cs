@@ -46,7 +46,14 @@ public class ListIssuesTool : IAboTool
                 labels = labelsElement.EnumerateArray().Select(e => e.GetString() ?? "").Where(s => !string.IsNullOrEmpty(s)).ToArray();
 
             var issues = await _connector.ListIssuesAsync(state, labels);
-            return JsonSerializer.Serialize(issues, new JsonSerializerOptions { WriteIndented = true });
+            
+            var allowedProjects = new[] { "requested", "backlog", "release-next" };
+            var filteredIssues = issues.Where(i => 
+                !string.IsNullOrWhiteSpace(i.Project) && 
+                allowedProjects.Contains(i.Project, StringComparer.OrdinalIgnoreCase)
+            ).ToList();
+
+            return JsonSerializer.Serialize(filteredIssues, new JsonSerializerOptions { WriteIndented = true });
         }
         catch (Exception ex)
         {

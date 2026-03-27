@@ -107,16 +107,15 @@ public class GetOpenWorkTool : IAboTool
                 })
                 .ToList();
 
-            // Filter out blocked parents from the actionable work queue
+            // Sort by priority (no longer filtering out blocked issues, just marking them visually)
             activeIssues = activeIssues
-                .Where(i => !blockedIssueIds.Contains(i.Id))
                 .OrderBy(i => GetStepPriority(Abo.Core.WorkflowEngine.ResolveStatusFallback(i)))
                 .ThenBy(i => i.Id)
                 .ToList();
 
             if (!activeIssues.Any())
             {
-                return "No open issue work found. All remaining issues are blocked by open sub-issues.";
+                return "No open issue work found. All remaining issues may be blocked by open sub-issues.";
             }
 
             var output = new System.Text.StringBuilder();
@@ -125,9 +124,10 @@ public class GetOpenWorkTool : IAboTool
             // Priority rule banner
             output.AppendLine("> ⚠️ **PRIORITY RULE**: Pick the first listed issue. Issues are sorted: `open` > `release-planning` > `review` > `check` > `work` > `planned` (release-current only).");
             output.AppendLine("> Always process open (newly triaged) issues first, then release-planning. Among in-progress issues, prefer those closest to completion: review first, then check, work, planned.");
+            output.AppendLine("> 🛑 **DO NOT pick issues marked as [BLOCKED].** They are waiting for sub-issues to complete.");
             if (blockedIssueIds.Any())
             {
-                output.AppendLine($"> 🔒 **{blockedIssueIds.Count} parent issue(s) are hidden** because they have open sub-issues that must be completed first.");
+                output.AppendLine($"> 🔒 **{blockedIssueIds.Count} parent issue(s) are blocked** because they have open sub-issues that must be completed first.");
             }
             output.AppendLine();
 
@@ -138,9 +138,10 @@ public class GetOpenWorkTool : IAboTool
                 var envName = ExtractLabelValue(issue.Labels, "env") ?? "Unknown";
                 var projRef = ExtractLabelValue(issue.Labels, "ref") ?? issue.Id;
 
+                var isBlocked = blockedIssueIds.Contains(issue.Id);
                 var stepInfo = Abo.Core.WorkflowEngine.GetStepInfo(issue);
                 string nodeName = stepInfo?.StepName ?? status;
-                string displayState = stepInfo != null ? "Ready for work" : "Unknown State";
+                string displayState = stepInfo != null ? (isBlocked ? "Blocked by sub-issues" : "Ready for work") : "Unknown State";
                 if (string.Equals(status, "done", StringComparison.OrdinalIgnoreCase) || string.Equals(status, "invalid", StringComparison.OrdinalIgnoreCase))
                 {
                     displayState = "Completed";
@@ -161,11 +162,12 @@ public class GetOpenWorkTool : IAboTool
                 // Indicate if this issue is itself a sub-issue
                 var parentId = ExtractLabelValue(issue.Labels, "parent");
                 var subIssueNote = parentId != null ? $" _(sub-issue of #{parentId})_" : string.Empty;
+                var blockedNote = isBlocked ? " **[BLOCKED]**" : string.Empty;
 
                 // Indicate if this issue has sub-issues still in progress (sub-issue count info)
                 var subIssueCount = childrenByParentId.TryGetValue(issue.Id, out var subs) ? subs.Count : 0;
 
-                output.AppendLine($"### Issue: {issue.Title} (Ref: `{projRef}` | Issue: `{issue.Id}`){subIssueNote}");
+                output.AppendLine($"### Issue: {issue.Title} (Ref: `{projRef}` | Issue: `{issue.Id}`){subIssueNote}{blockedNote}");
                 if (!string.IsNullOrWhiteSpace(issue.Project))
                     output.AppendLine($"- **Project**: `{issue.Project}`");
                 output.AppendLine($"- **Environment**: `{envName}`");

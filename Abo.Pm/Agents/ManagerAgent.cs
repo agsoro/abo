@@ -196,7 +196,11 @@ public class ManagerAgent : IAgent
                 var status = Abo.Core.WorkflowEngine.ResolveStatusFallback(targetIssue);
 
                 var stepInfo = Abo.Core.WorkflowEngine.GetStepInfo(targetIssue);
-                if (stepInfo?.Role == null) return $"Error: Could not determine Role for step '{status}'.";
+                if (stepInfo?.Role == null) 
+                {
+                    var proj = Abo.Core.WorkflowEngine.ResolveProjectFallback(targetIssue);
+                    return $"Error: Could not determine Role for step '{status}' (Project: '{proj}', Type: '{targetIssue.Type}'). Ensure the issue has a compatible Project mapping (e.g., backlog, release-current).";
+                }
 
                 var role = stepInfo.Role;
                 var roleId = role.RoleId;

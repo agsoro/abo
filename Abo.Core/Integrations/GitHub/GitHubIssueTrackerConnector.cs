@@ -824,7 +824,11 @@ query($owner: String!) {
                         if (content.TryGetProperty("issueType", out var typeEl) && typeEl.ValueKind == JsonValueKind.Object) {
                             if (typeEl.TryGetProperty("name", out var typeNameEl)) {
                                 var typeStr = typeNameEl.GetString();
-                                if (!string.IsNullOrWhiteSpace(typeStr)) issue.Type = typeStr;
+                                if (!string.IsNullOrWhiteSpace(typeStr)) 
+                                {
+                                    var mappedType = Abo.Contracts.Models.IssueType.AllowedValues.FirstOrDefault(t => string.Equals(t, typeStr, StringComparison.OrdinalIgnoreCase));
+                                    issue.Type = mappedType ?? typeStr.ToLowerInvariant();
+                                }
                             }
                         }
                         
@@ -936,13 +940,14 @@ query($nodeId: ID!) {
                         issue { id }
                     }
                 }";
-                await SendGraphQLRequestAsync(new {
+                var res = await SendGraphQLRequestAsync(new {
                     query = updateTypeMut,
                     variables = new {
                         issueId = issue.NodeId,
                         typeId = issueTypeId
                     }
                 }, throwGraphQLErrors: false);
+                Console.WriteLine($"[UpdateIssue GraphQL] {res}");
             }
         }
     }
