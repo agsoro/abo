@@ -4,12 +4,13 @@ using Abo.Contracts.OpenAI;
 namespace Abo.Core;
 
 /// <summary>
-/// A simple in-memory session store for conversation history.
+/// A simple in-memory session store for conversation history and issue tracking.
 /// </summary>
 public class SessionService
 {
     private readonly ConcurrentDictionary<string, List<ChatMessage>> _history = new();
     private readonly ConcurrentDictionary<string, DateTime> _lastActivity = new();
+    private readonly ConcurrentDictionary<string, (string IssueId, string? Title)> _currentIssue = new();
     private const int MaxHistoryMessages = 20;
 
     public List<ChatMessage> GetHistory(string sessionId)
@@ -57,6 +58,42 @@ public class SessionService
     {
         _history.TryRemove(sessionId, out _);
         _lastActivity.TryRemove(sessionId, out _);
+        _currentIssue.TryRemove(sessionId, out _);
+    }
+
+    /// <summary>
+    /// Sets the current issue context for a session.
+    /// </summary>
+    public void SetCurrentIssue(string sessionId, string? issueId, string? issueTitle = null)
+    {
+        if (string.IsNullOrWhiteSpace(issueId))
+        {
+            _currentIssue.TryRemove(sessionId, out _);
+        }
+        else
+        {
+            _currentIssue[sessionId] = (issueId, issueTitle);
+        }
+    }
+
+    /// <summary>
+    /// Gets the current issue context for a session.
+    /// </summary>
+    public (string? IssueId, string? Title) GetCurrentIssue(string sessionId)
+    {
+        if (_currentIssue.TryGetValue(sessionId, out var issue))
+        {
+            return (issue.IssueId, issue.Title);
+        }
+        return (null, null);
+    }
+
+    /// <summary>
+    /// Clears the current issue context for a session.
+    /// </summary>
+    public void ClearCurrentIssue(string sessionId)
+    {
+        _currentIssue.TryRemove(sessionId, out _);
     }
 
     /// <summary>
@@ -78,12 +115,17 @@ public class SessionService
             var messageCount = kvp.Value.Count;
             var lastRole = kvp.Value.LastOrDefault()?.Role ?? "—";
 
+            // Get current issue context if available
+            var (issueId, issueTitle) = GetCurrentIssue(sessionId);
+
             result.Add(new SessionInfo
             {
                 SessionId = sessionId,
                 MessageCount = messageCount,
                 LastActivity = lastActive,
-                LastRole = lastRole
+                LastRole = lastRole,
+                CurrentIssueId = issueId,
+                CurrentIssueTitle = issueTitle
             });
         }
 
@@ -97,4 +139,14 @@ public class SessionInfo
     public int MessageCount { get; set; }
     public DateTime LastActivity { get; set; }
     public string LastRole { get; set; } = string.Empty;
+    
+    /// <summary>
+    /// The ID of the issue currently being processed by this session, if any.
+    /// </summary>
+    public string? CurrentIssueId { get; set; }
+    
+    /// <summary>
+    /// The title of the issue currently being processed by this session, if any.
+    /// </summary>
+    public string? CurrentIssueTitle { get; set; }
 }

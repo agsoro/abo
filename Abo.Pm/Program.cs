@@ -361,7 +361,7 @@ app.MapGet("/api/llm-consumption", async (HttpContext httpContext) =>
 });
 
 // API: Interact – main chat endpoint
-app.MapPost("/api/interact", async ([FromBody] InteractRequest req, Orchestrator orchestrator, AgentSupervisor supervisor, UserService userService, MattermostClient mattermostClient) =>
+app.MapPost("/api/interact", async ([FromBody] InteractRequest req, Orchestrator orchestrator, AgentSupervisor supervisor, UserService userService, MattermostClient mattermostClient, SessionService sessionService) =>
 {
     if (string.IsNullOrWhiteSpace(req.Message)) return Results.BadRequest("Message is empty.");
 
@@ -370,6 +370,12 @@ app.MapPost("/api/interact", async ([FromBody] InteractRequest req, Orchestrator
     var userId = req.UserId ?? sessionId;
 
     userService.GetOrCreateUser(userId, userName);
+
+    // Set current issue context if provided
+    if (!string.IsNullOrWhiteSpace(req.IssueId))
+    {
+        sessionService.SetCurrentIssue(sessionId, req.IssueId, req.IssueTitle);
+    }
 
     var history = orchestrator.GetSessionHistory(sessionId);
     var agent = await supervisor.GetBestAgentAsync(req.Message, history);
@@ -509,4 +515,17 @@ public class InteractRequest
     /// to show the typing indicator in the correct thread.
     /// </summary>
     public string? ParentId { get; set; }
+
+    /// <summary>
+    /// Optional: The ID of the issue being processed by this agent session.
+    /// When provided, this context is tracked in SessionService and returned
+    /// by GET /api/sessions for real-time dashboard feedback.
+    /// </summary>
+    public string? IssueId { get; set; }
+
+    /// <summary>
+    /// Optional: The title of the issue being processed by this agent session.
+    /// Used alongside IssueId for enhanced user feedback on the dashboard.
+    /// </summary>
+    public string? IssueTitle { get; set; }
 }
