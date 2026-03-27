@@ -118,27 +118,15 @@
 </header>
 <main>
     <div class="summary-grid">
-        <div class="summary-card"><span class="label">Requested Issues</span><span class="value" id="card-requested">0</span><span class="sub">Open or Triage</span></div>
-        <div class="summary-card"><span class="label">Current Release</span><span class="value" id="card-current">0</span><span class="sub">Planned for deployment</span></div>
+        <div class="summary-card"><span class="label">Total Issues</span><span class="value" id="card-total">0</span><span class="sub">Open issues</span></div>
         <div class="summary-card"><span class="label">In Development</span><span class="value" id="card-indev">0</span><span class="sub">Active agent sessions</span></div>
         <div class="summary-card"><span class="label">Active Agents</span><span class="value" id="card-agents">0</span><span class="sub">Across all sessions</span></div>
     </div>
-    <div class="section-card">
-        <div class="section-header" onclick="toggleSection(this)"><span class="section-title">📌 Requested Issues <span class="section-count" id="count-requested">0</span></span><input type="text" class="section-filter" placeholder="Filter..." onclick="event.stopPropagation()" oninput="filterSection(this, 'requested')"><span class="collapse-icon">▼</span></div>
-        <div class="section-body" id="body-requested"></div>
+    
+    <div id="project-sections-container">
+        <!-- Project sections will be dynamically injected here -->
     </div>
-    <div class="section-card">
-        <div class="section-header" onclick="toggleSection(this)"><span class="section-title">🚀 Current Release <span class="section-count" id="count-release-current">0</span></span><input type="text" class="section-filter" placeholder="Filter..." onclick="event.stopPropagation()" oninput="filterSection(this, 'release-current')"><span class="collapse-icon">▼</span></div>
-        <div class="section-body" id="body-release-current"></div>
-    </div>
-    <div class="section-card">
-        <div class="section-header" onclick="toggleSection(this)"><span class="section-title">📅 Next Release <span class="section-count" id="count-release-next">0</span></span><input type="text" class="section-filter" placeholder="Filter..." onclick="event.stopPropagation()" oninput="filterSection(this, 'release-next')"><span class="collapse-icon">▼</span></div>
-        <div class="section-body" id="body-release-next"></div>
-    </div>
-    <div class="section-card">
-        <div class="section-header" onclick="toggleSection(this)"><span class="section-title">💻 In Development <span class="section-count" id="count-in-dev">0</span></span><input type="text" class="section-filter" placeholder="Filter..." onclick="event.stopPropagation()" oninput="filterSection(this, 'in-dev')"><span class="collapse-icon">▼</span></div>
-        <div class="section-body" id="body-in-dev"></div>
-    </div>
+
     <div class="section-card">
         <div class="section-header" onclick="toggleSection(this)"><span class="section-title">🤖 Live Agent Sessions <span class="section-count" id="count-live-agents">0</span></span><span class="collapse-icon">▼</span></div>
         <div class="section-body" id="body-live-agents"></div>
@@ -167,6 +155,19 @@
         let allIssues = [];
         let activeSessions = [];
         let availableEnvironments = [];
+
+        // Mapping from stepId to action label and orchestrator command
+        const STEP_ACTION_MAPPING = {
+            'open': { label: 'Start Triage', command: (id) => `Start triage on issue #${id}` },
+            'planned_backlog': { label: 'Plan Release', command: (id) => `Start release planning for issue #${id}` },
+            'planned_release-current': { label: 'Plan Solution', command: (id) => `Plan architectural solution for issue #${id}` },
+            'planned_release-current_doc': { label: 'Plan Documentation', command: (id) => `Plan documentation architecture for issue #${id}` },
+            'work_release-current': { label: 'Continue Development', command: (id) => `Continue implementation of issue #${id}` },
+            'work_release-current_doc': { label: 'Write Documentation', command: (id) => `Continue writing documentation for issue #${id}` },
+            'review_release-current': { label: 'Start QA Review', command: (id) => `Start QA review for issue #${id}` },
+            'review_release-current_doc': { label: 'Review Documentation', command: (id) => `Start QA review of documentation for issue #${id}` },
+            'check_release-current': { label: 'Execute Release', command: (id) => `Execute final release and merge for issue #${id}` }
+        };
 
         // ── Action Status Tracking ────────────────────────────────────────────
         let actionInProgress = {};  // { issueId: { actionType, sessionId, startTime, statusElement, pollInterval, elapsedInterval } }
@@ -239,7 +240,7 @@
                     elapsed.textContent = `(${elapsed_s}s)`;
                     if (elapsed_s > 10) {
                         clearInterval(counterInterval);
-                        cleanupActionEntry(issueId);
+                        // cleanupActionEntry(issueId); // Don't cleanup, wait for poll reveal
                         const btn = document.querySelector(`button[onclick*="triggerAction('${escapeHtml(issueId)}"]`);
                         if (btn) {
                             btn.disabled = false;
@@ -264,34 +265,36 @@
 
         // ── Enhanced Action Trigger ───────────────────────────────────────────
 
-        async function triggerAction(issueId, actionType) {
+        async function triggerAction(issueId, stepId) {
             const btn = event.currentTarget;
             if (actionInProgress[issueId]) {
                 console.warn(`Action already in progress for issue #${issueId}`);
                 return;
             }
+
+            const mapping = STEP_ACTION_MAPPING[stepId];
+            if (!mapping) {
+                console.error(`No action mapping found for stepId: ${stepId}`);
+                return;
+            }
+
             const issueRow = btn.closest('.issue-row');
             const issueTitle = issueRow?.querySelector('.issue-title')?.textContent || `Issue #${issueId}`;
             btn.setAttribute('data-original-text', btn.textContent);
             const action = getOrCreateActionEntry(issueId);
-            action.actionType = actionType;
             action.startTime = Date.now();
             const timestamp = Date.now();
             action.sessionId = `dashboard-action-${issueId}-${timestamp}`;
             btn.disabled = true;
             btn.textContent = '⏳ Sending...';
             action.statusElement = createStatusDisplay(issueId, issueTitle);
-            const commands = {
-                triage:  `Start triage on issue #${issueId}`,
-                release: `Start release planning for issue #${issueId}`,
-                develop: `Continue development on issue #${issueId}`
-            };
+            
             try {
                 const response = await fetch('/api/interact', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        message: commands[actionType],
+                        message: mapping.command(issueId),
                         sessionId: action.sessionId,
                         issueId: issueId,
                         userName: 'Dashboard'
@@ -303,7 +306,7 @@
             } catch (err) {
                 console.error('Error triggering action:', err);
                 btn.textContent = '❌ Error';
-                showToast(`Failed to start ${actionType} for issue #${issueId}`, 'error');
+                showToast(`Failed to start action for issue #${issueId}`, 'error');
                 setTimeout(() => {
                     cleanupActionEntry(issueId);
                     btn.disabled = false;
@@ -347,7 +350,8 @@
                     fetch('/api/issues'),
                     fetch('/api/sessions')
                 ]);
-                allIssues = await issuesRes.json();
+                const rawIssues = await issuesRes.json();
+                allIssues = rawIssues.filter(i => i.status !== 'closed');
                 activeSessions = await sessionsRes.json();
                 renderAllSections();
                 updateSummaryCards();
@@ -460,21 +464,7 @@
             }
         }
 
-        // ── Section Filtering ──────────────────────────────────────────────────
-        function getIssuesForSection(sectionId) {
-            switch (sectionId) {
-                case 'requested':
-                    return allIssues.filter(i => i.project === 'requested' || i.currentStep?.status === 'open');
-                case 'release-current':
-                    return allIssues.filter(i => i.project === 'release-current' && i.currentStep?.status === 'planned');
-                case 'release-next':
-                    return allIssues.filter(i => i.project === 'release-next' && i.currentStep?.status === 'planned');
-                case 'in-dev':
-                    return allIssues.filter(i => ['work', 'review', 'check'].includes(i.currentStep?.status));
-                default:
-                    return [];
-            }
-        }
+        // ── Section Logic ──────────────────────────────────────────────────
 
         function toggleSection(header) {
             header.classList.toggle('collapsed');
@@ -482,10 +472,13 @@
             body.style.display = header.classList.contains('collapsed') ? 'none' : '';
         }
 
-        function filterSection(input, sectionId) {
+        function filterProjectSection(input, projectId) {
             const query = input.value.trim().toLowerCase();
-            const body = document.getElementById('body-' + sectionId);
-            body.querySelectorAll('.issue-row').forEach(row => {
+            const container = document.getElementById('project-sections-container');
+            const sectionBody = container.querySelector(`[data-project-id="${projectId}"] .section-body`);
+            if (!sectionBody) return;
+            
+            sectionBody.querySelectorAll('.issue-row').forEach(row => {
                 const text = row.textContent.toLowerCase();
                 row.style.display = text.includes(query) ? '' : 'none';
             });
@@ -506,54 +499,71 @@
         }
 
         function updateSummaryCards() {
-            const requested = getIssuesForSection('requested');
-            const current = getIssuesForSection('release-current');
-            const inDev = getIssuesForSection('in-dev');
+            const inDev = allIssues.filter(i => ['work', 'review', 'check'].includes(i.currentStep?.status));
             const activeAgents = activeSessions.filter(s => (new Date() - new Date(s.lastActivity)) < 5 * 60 * 1000);
-            document.getElementById('card-requested').textContent = requested.length;
-            document.getElementById('card-current').textContent = current.length;
+            document.getElementById('card-total').textContent = allIssues.length;
             document.getElementById('card-indev').textContent = inDev.length;
             document.getElementById('card-agents').textContent = activeAgents.length;
         }
 
         function renderAllSections() {
-            ['requested', 'release-current', 'release-next', 'in-dev'].forEach(sectionId => {
-                renderSection(sectionId, getIssuesForSection(sectionId));
-            });
-            renderLiveAgentsSection();
-        }
+            const container = document.getElementById('project-sections-container');
+            
+            // Group issues by project
+            const groups = allIssues.reduce((acc, issue) => {
+                const project = issue.project || 'Unassigned';
+                if (!acc[project]) acc[project] = [];
+                acc[project].push(issue);
+                return acc;
+            }, {});
 
-        function renderSection(sectionId, issues) {
-            const body = document.getElementById('body-' + sectionId);
-            const countEl = document.getElementById('count-' + sectionId);
-            if (countEl) countEl.textContent = issues.length;
-            if (issues.length === 0) {
-                body.innerHTML = '<div class="empty-state"><p>No issues.</p></div>';
-                return;
-            }
-            const actionMap = {
-                'requested':       { label: 'Start Triage',           type: 'triage' },
-                'release-current': { label: 'Start Release Planning',  type: 'release' },
-                'in-dev':          { label: 'Continue Development',    type: 'develop' }
-            };
-            const action = actionMap[sectionId];
-            body.innerHTML = issues.map(i => {
-                const btn = action
-                    ? `<button class="action-btn" onclick="triggerAction('${escapeHtml(i.id)}', '${action.type}')">${action.label}</button>`
-                    : '';
-                return `<div class="issue-row">
-                  <span class="issue-id">#${escapeHtml(i.id)}</span>
-                  <div class="issue-info">
-                    <span class="issue-title">${escapeHtml(i.title)}</span>
-                    <div class="issue-meta">
-                      ${i.environmentName ? `<span class="env-tag">${escapeHtml(i.environmentName)}</span>` : ''}
-                      ${i.currentStep?.status ? `<span class="step-badge">${escapeHtml(i.currentStep.status)}</span>` : ''}
-                      ${i.isBlocked ? `<span class="step-badge" style="background-color: rgba(220, 38, 38, 0.2); color: var(--red); border-color: var(--red);">Blocked</span>` : ''}
+            // Sort projects: Requested first, then alphabet, then Unassigned
+            const sortedProjects = Object.keys(groups).sort((a,b) => {
+                if (a.toLowerCase() === 'requested') return -1;
+                if (b.toLowerCase() === 'requested') return 1;
+                if (a === 'Unassigned') return 1;
+                if (b === 'Unassigned') return -1;
+                return a.localeCompare(b);
+            });
+
+            container.innerHTML = sortedProjects.map(project => {
+                const issues = groups[project];
+                const projectId = project.replace(/\s+/g, '-').toLowerCase();
+                
+                const rowsHtml = issues.map(i => {
+                    const mapping = STEP_ACTION_MAPPING[i.stepId];
+                    const btn = mapping 
+                        ? `<button class="action-btn" onclick="triggerAction('${escapeHtml(i.id)}', '${escapeHtml(i.stepId)}')">${escapeHtml(mapping.label)}</button>`
+                        : '';
+
+                    return `<div class="issue-row">
+                      <span class="issue-id">#${escapeHtml(i.id)}</span>
+                      <div class="issue-info">
+                        <span class="issue-title" title="${escapeHtml(i.title)}">${escapeHtml(i.title)}</span>
+                        <div class="issue-meta">
+                          ${i.environmentName ? `<span class="env-tag">${escapeHtml(i.environmentName)}</span>` : ''}
+                          ${i.currentStep?.stepName ? `<span class="step-badge">${escapeHtml(i.currentStep.stepName)}</span>` : ''}
+                          <span class="step-badge" style="opacity: 0.7">${escapeHtml(i.stepId)}</span>
+                        </div>
+                      </div>
+                      ${btn}
+                    </div>`;
+                }).join('');
+
+                return `
+                <div class="section-card" data-project-id="${projectId}">
+                    <div class="section-header" onclick="toggleSection(this)">
+                        <span class="section-title">📦 Project: ${escapeHtml(project)} <span class="section-count">${issues.length}</span></span>
+                        <input type="text" class="section-filter" placeholder="Filter..." onclick="event.stopPropagation()" oninput="filterProjectSection(this, '${projectId}')">
+                        <span class="collapse-icon">▼</span>
                     </div>
-                  </div>
-                  ${btn}
+                    <div class="section-body">
+                        ${rowsHtml}
+                    </div>
                 </div>`;
             }).join('');
+
+            renderLiveAgentsSection();
         }
 
         function renderLiveAgentsSection() {
@@ -579,7 +589,7 @@
 
         function escapeHtml(str) {
             if (!str) return '';
-            return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+            return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/'/g, '&#39;').replace(/"/g, '&quot;');
         }
 
         function formatRelativeTime(ts) {
