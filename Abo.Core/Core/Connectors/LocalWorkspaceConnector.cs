@@ -260,7 +260,8 @@ public class LocalWorkspaceConnector : IWorkspaceConnector
 
                 var relativeFilePath = Path.GetRelativePath(_environment.Dir, file);
                 var fileName = Path.GetFileName(file);
-                bool fileMatches = regex.IsMatch(fileName);
+                var normalizedPath = relativeFilePath.Replace('\\', '/');
+                bool fileMatches = regex.IsMatch(fileName) || regex.IsMatch(relativeFilePath) || regex.IsMatch(normalizedPath);
 
                 var matchedLines = new List<(int LineNumber, string Content)>();
 
@@ -285,7 +286,7 @@ public class LocalWorkspaceConnector : IWorkspaceConnector
                     fileResult.AppendLine($"File: {relativeFilePath}");
                     if (fileMatches)
                     {
-                        fileResult.AppendLine("  -> Filename matches pattern");
+                        fileResult.AppendLine("  -> Path or filename matches pattern");
                     }
 
                     bool limitReached = false;

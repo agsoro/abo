@@ -13,7 +13,7 @@ public class SearchRegexTool : IAboTool
     }
 
     public string Name => "search_regex";
-    public string Description => "Searches for a regex pattern within filenames and file contents across the specified directory.";
+    public string Description => "Searches for a regex pattern within paths, filenames, and file contents across the specified directory.";
 
     public object ParametersSchema => new
     {
