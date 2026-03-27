@@ -51,6 +51,15 @@ var app = builder.Build();
 app.UseDefaultFiles(); // Serves `/index.html` automatically for `/`
 app.UseStaticFiles();  // Serves wwwroot static files
 
+async Task<List<Abo.Core.Connectors.ConnectorEnvironment>> GetConfiguredEnvironmentsAsync()
+{
+    var environmentsFile = Path.Combine(AppContext.BaseDirectory, "Data", "environments.json");
+    if (!File.Exists(environmentsFile)) return new List<Abo.Core.Connectors.ConnectorEnvironment>();
+
+    var envJson = await File.ReadAllTextAsync(environmentsFile);
+    return JsonSerializer.Deserialize<List<Abo.Core.Connectors.ConnectorEnvironment>>(envJson, new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? new();
+}
+
 // API: Health / Status
 app.MapGet("/api/status", (IConfiguration config) =>
 {
@@ -58,6 +67,16 @@ app.MapGet("/api/status", (IConfiguration config) =>
     var model = config["Config:ModelName"];
     var hasKey = !string.IsNullOrEmpty(config["Config:ApiKey"]);
     return Results.Ok(new { Status = "Running", Model = model, HasApiKey = hasKey });
+});
+
+app.MapGet("/api/environments", async () =>
+{
+    var envs = await GetConfiguredEnvironmentsAsync();
+    var mapped = envs
+        .Where(e => e.IssueTracker != null)
+        .Select(e => new { name = e.Name, displayName = e.Name, hasIssueTracker = true })
+        .ToList();
+    return Results.Ok(mapped);
 });
 
 
@@ -71,14 +90,7 @@ async Task<List<Abo.Contracts.Models.IssueRecord>> GetAllIssuesAsync(IConfigurat
         return cachedIssues;
     }
 
-    var environmentsFile = Path.Combine(AppContext.BaseDirectory, "Data", "environments.json");
-    var envs = new List<Abo.Core.Connectors.ConnectorEnvironment>();
-    if (File.Exists(environmentsFile))
-    {
-        var envJson = await File.ReadAllTextAsync(environmentsFile);
-        envs = JsonSerializer.Deserialize<List<Abo.Core.Connectors.ConnectorEnvironment>>(envJson, new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? new();
-    }
-
+    var envs = await GetConfiguredEnvironmentsAsync();
     var activeIssues = new List<Abo.Contracts.Models.IssueRecord>();
 
     foreach (var env in envs.Where(e => e.IssueTracker != null))
@@ -114,13 +126,7 @@ async Task<List<Abo.Contracts.Models.IssueRecord>> GetAllIssuesAsync(IConfigurat
 // Helper to get a single issue tracker by environment name
 async Task<Abo.Core.Connectors.IIssueTrackerConnector?> GetTrackerForEnvironmentAsync(string? environmentName, IConfiguration config)
 {
-    var environmentsFile = Path.Combine(AppContext.BaseDirectory, "Data", "environments.json");
-    var envs = new List<Abo.Core.Connectors.ConnectorEnvironment>();
-    if (File.Exists(environmentsFile))
-    {
-        var envJson = await File.ReadAllTextAsync(environmentsFile);
-        envs = JsonSerializer.Deserialize<List<Abo.Core.Connectors.ConnectorEnvironment>>(envJson, new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? new();
-    }
+    var envs = await GetConfiguredEnvironmentsAsync();
 
     // If no environment specified, use the first one with an issue tracker
     var env = string.IsNullOrWhiteSpace(environmentName)
@@ -205,53 +211,41 @@ app.MapGet("/api/issues/{id}/status", async (string id, IConfiguration config, M
 // API: Issues – create a new issue (Issue #287)
 app.MapPost("/api/issues/create", async ([FromBody] CreateIssueRequest req, IConfiguration config, Microsoft.Extensions.Caching.Memory.IMemoryCache cache) =>
 {
-    // Validation
-    if (string.IsNullOrWhiteSpace(req.Title))
-        return Results.BadRequest(new { error = "Title is required" });
+    if (string.IsNullOrWhiteSpace(req.Title)) return Results.BadRequest(new { error = "Title is required" });
+    if (string.IsNullOrWhiteSpace(req.Description)) return Results.BadRequest(new { error = "Description is required" });
+    if (string.IsNullOrWhiteSpace(req.Type)) return Results.BadRequest(new { error = "Type is required" });
+    if (string.IsNullOrWhiteSpace(req.Size)) return Results.BadRequest(new { error = "Size is required" });
 
-    if (string.IsNullOrWhiteSpace(req.Description))
-        return Results.BadRequest(new { error = "Description is required" });
-
-    if (string.IsNullOrWhiteSpace(req.Type))
-        return Results.BadRequest(new { error = "Type is required" });
-
-    if (string.IsNullOrWhiteSpace(req.Size))
-        return Results.BadRequest(new { error = "Size is required" });
-
-    // Sanitize inputs
     var title = req.Title.Trim().Substring(0, Math.Min(req.Title.Length, 200));
     var description = req.Description.Trim().Substring(0, Math.Min(req.Description.Length, 2000));
     var type = req.Type.Trim().ToLower();
     var size = req.Size.Trim().ToUpper();
-
-    // Validate type and size values
     var validSizes = new[] { "S", "M", "L", "XL" };
 
     if (!Abo.Contracts.Models.IssueType.IsValid(type))
         return Results.BadRequest(new { error = $"Invalid type. Must be one of: {string.Join(", ", Abo.Contracts.Models.IssueType.AllowedValues)}" });
-
     if (!validSizes.Contains(size))
         return Results.BadRequest(new { error = $"Invalid size. Must be one of: {string.Join(", ", validSizes)}" });
 
     try
     {
-        // Get the issue tracker for the specified environment (or default)
-        var tracker = await GetTrackerForEnvironmentAsync(null, config);
-        if (tracker == null)
-            return Results.InternalServerError();
+        var tracker = await GetTrackerForEnvironmentAsync(req.EnvironmentName, config);
+        if (tracker == null) return Results.InternalServerError();
 
-        // Create the issue with the connector
+        var additionalLabels = new List<string>();
+        if (!string.IsNullOrWhiteSpace(req.EnvironmentName)) additionalLabels.Add($"env: {req.EnvironmentName.Trim()}");
+        if (!string.IsNullOrWhiteSpace(req.Project)) additionalLabels.Add($"project: {req.Project.Trim()}");
+
         var newIssue = await tracker.CreateIssueAsync(
             title: title,
             body: description,
             type: type,
             size: size,
-            additionalLabels: null,
+            additionalLabels: additionalLabels.Any() ? additionalLabels.ToArray() : null,
             project: req.Project,
             status: "open"
         );
 
-        // Invalidate the issues cache so fresh data is fetched next time
         cache.Remove("AllActiveIssues");
 
         return Results.Ok(new
@@ -538,6 +532,7 @@ public class CreateIssueRequest
     public string Type { get; set; } = string.Empty;
     public string Size { get; set; } = string.Empty;
     public string? Project { get; set; }
+    public string? EnvironmentName { get; set; }
 }
 
 public class InteractRequest
