@@ -63,9 +63,13 @@ public class SessionService
 
     /// <summary>
     /// Sets the current issue context for a session.
+    /// Also updates the last activity timestamp to ensure the session is tracked as active.
     /// </summary>
     public void SetCurrentIssue(string sessionId, string? issueId, string? issueTitle = null)
     {
+        // Track activity so sessions without chat history are still considered active
+        _lastActivity[sessionId] = DateTime.UtcNow;
+
         if (string.IsNullOrWhiteSpace(issueId))
         {
             _currentIssue.TryRemove(sessionId, out _);
@@ -99,21 +103,29 @@ public class SessionService
     /// <summary>
     /// Returns a list of currently active sessions with their message counts and last activity timestamps.
     /// Sessions with no activity in the last 24 hours are considered inactive.
+    /// Iterates over _lastActivity to include sessions that have context but no chat history yet
+    /// (e.g., delegated specialist sessions).
     /// </summary>
     public List<SessionInfo> GetActiveSessions()
     {
         var cutoff = DateTime.UtcNow.AddHours(-24);
         var result = new List<SessionInfo>();
 
-        foreach (var kvp in _history)
+        // Iterate over _lastActivity to include sessions that were set up via SetCurrentIssue
+        // but have no chat history yet (e.g., delegated specialist sessions).
+        foreach (var sessionId in _lastActivity.Keys)
         {
-            var sessionId = kvp.Key;
-            _lastActivity.TryGetValue(sessionId, out var lastActive);
-
+            if (!_lastActivity.TryGetValue(sessionId, out var lastActive)) continue;
             if (lastActive < cutoff) continue;
 
-            var messageCount = kvp.Value.Count;
-            var lastRole = kvp.Value.LastOrDefault()?.Role ?? "—";
+            // Get message count from _history if available
+            int messageCount = 0;
+            string lastRole = "—";
+            if (_history.TryGetValue(sessionId, out var history))
+            {
+                messageCount = history.Count;
+                lastRole = history.LastOrDefault()?.Role ?? "—";
+            }
 
             // Get current issue context if available
             var (issueId, issueTitle) = GetCurrentIssue(sessionId);
