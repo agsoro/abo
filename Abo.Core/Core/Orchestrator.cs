@@ -230,13 +230,13 @@ public class Orchestrator
                         $"⚠️ LOOP LIMIT WARNING — You are at loop {currentLoop} of {maxLoops} (90% threshold reached).\n\n" +
                         "You must now choose ONE of the following actions and execute it IMMEDIATELY:\n\n" +
                         "**Option A — COMMIT (partial work done, worth keeping):**\n" +
-                        "Call `complete_task` with resultNotes describing what was accomplished. The workflow will advance normally.\n\n" +
+                        "Call `conclude_step` with the proper routing keyword and `resultNotes` describing what was accomplished. The workflow will advance normally.\n\n" +
                         "**Option B — POSTPONE (work is incomplete but context must be preserved):**\n" +
                         "1. Optionally call `create_sub_issue` for each remaining piece of work.\n" +
-                        "2. Call `postpone_task` with `contextNotes`: a detailed summary of what was done, what sub-issues were created (IDs), and what remains.\n\n" +
+                        "2. Call `conclude_step` with `keyword`='postpone' and `resultNotes`: a detailed summary of what was done, what sub-issues were created (IDs), and what remains.\n\n" +
                         "**Option C — DISCARD (nothing useful was accomplished):**\n" +
-                        "Call `postpone_task` with `contextNotes` explaining why the work is being discarded.\n\n" +
-                        $"You MUST call `complete_task` or `postpone_task` before loop {maxLoops} is reached.\n" +
+                        "Call `conclude_step` with `keyword`='postpone' and `resultNotes` explaining why the work is being discarded.\n\n" +
+                        $"You MUST call `conclude_step` before loop {maxLoops} is reached.\n" +
                         "Do NOT continue normal work — choose your exit strategy NOW.";
 
                     var warningMessage = new ChatMessage { Role = "user", Content = warningText };
@@ -348,18 +348,18 @@ public class Orchestrator
                         _sessionService.AddMessage(sessionId, toolResponseMsg);
                         request.Messages.Add(toolResponseMsg);
 
-                        // Sentinel pattern: SpecialistAgent.complete_task returns [COMPLETE_TASK_RESULT]:<resultNotes>
+                        // Sentinel pattern: SpecialistAgent.conclude_step returns [CONCLUDE_STEP_RESULT]:<resultNotes>
                         // on success. Detect it here and immediately surface the resultNotes to the caller,
                         // eliminating the extra LLM synthesis round-trip. Mirrors the [TERMINATE_MANAGER_LOOP] pattern.
-                        if (toolResult.StartsWith(AgentSentinels.CompleteTaskResult))
+                        if (toolResult.StartsWith(AgentSentinels.ConcludeStepResult))
                         {
-                            var resultNotes = toolResult.Substring(AgentSentinels.CompleteTaskResult.Length);
-                            _logger.LogInformation($"[Session: {sessionId}] complete_task sentinel detected. Terminating agent loop immediately.");
+                            var resultNotes = toolResult.Substring(AgentSentinels.ConcludeStepResult.Length);
+                            _logger.LogInformation($"[Session: {sessionId}] conclude_step sentinel detected. Terminating agent loop immediately.");
                             await LogConsumptionAsync(sessionId, currentModelName, totalCalls, totalInputTokens, totalOutputTokens, totalCost, issueId);
                             return resultNotes;
                         }
 
-                        // Change C: PostponeTaskResult sentinel detection — immediately after CompleteTaskResult detection.
+                        // Change C: PostponeTaskResult sentinel detection — immediately after ConcludeStepResult detection.
                         // SpecialistAgent.postpone_task returns [POSTPONE_TASK_RESULT]:{contextNotes}.
                         // Detect it here and return [POSTPONED] {contextNotes} to the caller without advancing the workflow step.
                         if (toolResult.StartsWith(AgentSentinels.PostponeTaskResult))
@@ -370,7 +370,7 @@ public class Orchestrator
                             return $"[POSTPONED] {contextNotes}";
                         }
 
-                        if ((agent.Name == "SpecialistAgent" && toolCall.Function.Name == "complete_task") ||
+                        if ((agent.Name == "SpecialistAgent" && toolCall.Function.Name == "conclude_step") ||
                             (agent.Name == "ManagerAgent" && toolCall.Function.Name == "delegate_task"))
                         {
                             terminateAfterSynthesis = true;

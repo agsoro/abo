@@ -73,7 +73,7 @@ public class SpecialistAgent : IAgent
         "### WORKFLOW:\n" +
         "1. **Get Issue**: read the issue via `issueId` (Issue ID) from your instructions.\n" +
         "2. **Execute**: Use the tools to perform your work. All relative paths are automatically rooted in the checked-out issue's directory.\n" +
-        "3. **Complete**: When the task is done, use 'complete_task' to signal completion. You MUST supply 'resultNotes' detailing your executed work, outputs, and any context needed by the next Role. (These notes will be automatically added as a comment to the issue, so DO NOT use 'add_issue_comment' to duplicate this information). If there are multiple possible next steps (e.g., a decision gateway), you must supply a 'keyword' matching the condition to take.\n\n" +
+        "3. **Complete**: When the task is done, use 'conclude_step' to signal completion. You MUST supply 'resultNotes' detailing your executed work, outputs, and any context needed by the next Role. (These notes will be automatically added as a comment to the issue, so DO NOT use 'add_issue_comment' to duplicate this information). You MUST supply a 'keyword'. If there are defined transition conditions, use the one matching your decision. Alternatively, you can always use the 'postpone' keyword to suspend the task safely, or 'request_ceo_help' if you are completely blocked.\n\n" +
         "### RULES:\n" +
         "- Do not attempt to bypass the relative path confinement.";
 
@@ -91,7 +91,7 @@ public class SpecialistAgent : IAgent
             Type = "function",
             Function = new FunctionDefinition
             {
-                Name = "complete_task",
+                Name = "conclude_step",
                 Description = "Marks the current task in your checked-out issue as completed and updates its status. This will also terminate your session.",
                 Parameters = new
                 {
@@ -101,46 +101,12 @@ public class SpecialistAgent : IAgent
                         keyword = new
                         {
                             type = "string",
-                            description = "Optional. If the current step has multiple possible next steps, provide a keyword matching the condition name of the path to take."
+                            description = "Required. The routing outcome. Use the condition name of the path to take, or 'postpone' to safely suspend the task and preserve context, or 'request_ceo_help' to abort and request human assistance."
                         },
                         resultNotes = new { type = "string", description = "A detailed summary of the parameters, context, or results generated during this step to store in notes.md for the next person/agent. DO NOT REPEAT STUFF ALREADY STATED IN THE ISSUE OR PREVIOUS NOTES. (Required)" }
                     },
-                    required = new[] { "resultNotes" }
+                    required = new[] { "keyword", "resultNotes" }
                 }
-            }
-        });
-
-        definitions.Add(new ToolDefinition
-        {
-            Type = "function",
-            Function = new FunctionDefinition
-            {
-                Name = "postpone_task",
-                Description = "Suspends work on the current task without advancing the workflow. Posts a context comment on the issue and exits the agent session gracefully. Use when approaching the loop limit and the task cannot be fully completed. The issue remains in its current workflow step so the next agent session can resume.",
-                Parameters = new
-                {
-                    type = "object",
-                    properties = new
-                    {
-                        contextNotes = new
-                        {
-                            type = "string",
-                            description = "Detailed summary posted as an issue comment. Must include: what work was completed, what sub-issues were created (with IDs), and what work remains with guidance for the next agent."
-                        }
-                    },
-                    required = new[] { "contextNotes" }
-                }
-            }
-        });
-
-        definitions.Add(new ToolDefinition
-        {
-            Type = "function",
-            Function = new FunctionDefinition
-            {
-                Name = "request_ceo_help",
-                Description = "Stops work and asks the human CEO for help or clarification.",
-                Parameters = new { type = "object", properties = new { message = new { type = "string" } }, required = new[] { "message" } }
             }
         });
         // 3. Connector tool signatures (now fully mounted before execution via InitializeWorkspaceAsync)
@@ -166,9 +132,7 @@ public class SpecialistAgent : IAgent
         var name = toolCall.Function?.Name;
         var args = toolCall.Function?.Arguments ?? "{}";
 
-        if (name == "complete_task") return await HandleCompleteTaskAsync(args);
-        if (name == "postpone_task") return await HandlePostponeTaskAsync(args);
-        if (name == "request_ceo_help") return HandleRequestCeoHelp(args);
+        if (name == "conclude_step") return await HandleConcludeStepAsync(args);
 
         var globalTool = _globalTools.FirstOrDefault(t => t.Name == name);
         if (globalTool != null) return await globalTool.ExecuteAsync(args);
@@ -333,7 +297,7 @@ public class SpecialistAgent : IAgent
         }
     }
 
-    private async Task<string> HandleCompleteTaskAsync(string argsJson)
+    private async Task<string> HandleConcludeStepAsync(string argsJson)
     {
         if (string.IsNullOrEmpty(_currentIssueId) || _currentIssueTracker == null || _currentIssue == null) return "Error: No checked-out issue to complete.";
 
@@ -343,33 +307,40 @@ public class SpecialistAgent : IAgent
             if (args == null || !args.TryGetValue("resultNotes", out var resultNotesElement)) return "Error: 'resultNotes' is required.";
             var resultNotes = resultNotesElement.GetString();
 
-            string? keyword = null;
-            if (args.TryGetValue("keyword", out var keywordElement) && keywordElement.ValueKind == JsonValueKind.String)
+            if (!args.TryGetValue("keyword", out var keywordElement) || keywordElement.ValueKind != JsonValueKind.String)
+                return "Error: 'keyword' is required.";
+            var keyword = keywordElement.GetString();
+            if (string.IsNullOrWhiteSpace(keyword))
+                return "Error: 'keyword' must not be empty.";
+
+            if (keyword.Equals("postpone", StringComparison.OrdinalIgnoreCase))
             {
-                keyword = keywordElement.GetString();
+                return await HandlePostponeTaskAsync($"{{\"contextNotes\": {JsonSerializer.Serialize(resultNotes)}}}");
+            }
+            if (keyword.Equals("request_ceo_help", StringComparison.OrdinalIgnoreCase))
+            {
+                return HandleRequestCeoHelp($"{{\"message\": {JsonSerializer.Serialize(resultNotes)}}}");
             }
 
             var currentStepId = Abo.Core.WorkflowEngine.ResolveStepIdFallback(_currentIssue);
 
             ProcessStepInfo? nextStepInfo = null;
+            WorkflowTransition? matchedTransition = null;
 
             if (!string.IsNullOrWhiteSpace(currentStepId))
             {
                 var transitions = Abo.Core.WorkflowEngine.GetTransitions(currentStepId);
 
-                if (transitions.Count > 1)
+                if (transitions.Count > 0)
                 {
-                    if (string.IsNullOrWhiteSpace(keyword))
+                    if (transitions.TryGetValue(keyword, out var transition))
                     {
-                        var options = string.Join(", ", transitions.Select(t => $"'{t.ConditionName}'"));
-                        return $"Error: The current step leads to a decision gateway with multiple paths. You MUST provide the 'keyword' parameter matching one of these condition names to proceed: {options}";
+                        matchedTransition = transition;
                     }
-
-                    var matchedTransition = transitions.FirstOrDefault(t => t.ConditionName.Contains(keyword, StringComparison.OrdinalIgnoreCase) || keyword.Contains(t.ConditionName, StringComparison.OrdinalIgnoreCase));
 
                     if (matchedTransition == null)
                     {
-                        var options = string.Join(", ", transitions.Select(t => $"'{t.ConditionName}'"));
+                        var options = string.Join(", ", transitions.Keys.Select(k => $"'{k}'"));
                         return $"Error: The provided keyword '{keyword}' did not match any routing conditions. Valid expected condition matches are: {options}";
                     }
 
@@ -380,23 +351,11 @@ public class SpecialistAgent : IAgent
                         matchedTransition.ApplyState?.Invoke(_currentIssue);
                     }
                 }
-                else if (transitions.Count == 1)
-                {
-                    var resolvedId = transitions.First().NextStepId;
-                    var stepInfo = Abo.Core.WorkflowEngine.GetStepInfo(resolvedId);
-                    if (stepInfo != null)
-                    {
-                        nextStepInfo = stepInfo;
-                        transitions.First().ApplyState?.Invoke(_currentIssue);
-                    }
-                }
             }
 
             if (nextStepInfo == null) return "Error: Could not automatically determine the next workflow step.";
 
-            bool reachedEndEvent = string.Equals(nextStepInfo.StepId, "invalid", StringComparison.OrdinalIgnoreCase) ||
-                                   string.Equals(nextStepInfo.StepId, "done", StringComparison.OrdinalIgnoreCase) ||
-                                   nextStepInfo.Role == null;
+            bool reachedEndEvent = matchedTransition?.IsEndEvent ?? false;
 
             if (!string.IsNullOrWhiteSpace(resultNotes))
             {
@@ -404,8 +363,7 @@ public class SpecialistAgent : IAgent
             }
 
             var updatedLabels = _currentIssue.Labels.Where(l => !l.StartsWith("role: ") && !l.StartsWith("env: ")).ToList();
-            
-            await _currentIssueTracker.UpdateIssueAsync(_currentIssueId, state: _currentIssue.State, labels: updatedLabels.ToArray(), project: _currentIssue.Project, stepId: nextStepInfo.StepId);
+            await _currentIssueTracker.UpdateIssueAsync(_currentIssueId, state: _currentIssue.State, labels: updatedLabels.ToArray(), project: _currentIssue.Project, stepId: _currentIssue.StepId);
 
             if (reachedEndEvent)
             {
@@ -464,8 +422,8 @@ public class SpecialistAgent : IAgent
 
             // Return the sentinel prefix followed by the resultNotes so the Orchestrator can
             // immediately surface the notes to the user without an extra LLM round-trip.
-            // The Orchestrator detects AgentSentinels.CompleteTaskResult and short-circuits the loop.
-            return $"{AgentSentinels.CompleteTaskResult}{resultNotes}";
+            // The Orchestrator detects AgentSentinels.ConcludeStepResult and short-circuits the loop.
+            return $"{AgentSentinels.ConcludeStepResult}{resultNotes}";
         }
         catch (Exception ex)
         {

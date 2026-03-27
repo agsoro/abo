@@ -103,8 +103,8 @@ public class ListActiveIssuesTool : IAboTool
         var roleToShow = stepInfo?.Role?.RoleId ?? "Unknown";
 
         var transitions = Abo.Core.WorkflowEngine.GetTransitions(stepId);
-        var nextSteps = transitions.Any() 
-            ? string.Join(", ", transitions.Select(t => $"{t.ConditionName} -> {t.NextStepId}"))
+        var nextSteps = transitions.Count > 0 
+            ? string.Join(", ", transitions.Select(kvp => $"{kvp.Key} -> {kvp.Value.NextStepId}"))
             : "None";
 
         output.AppendLine($"{indent}- **[Ref: {projRef} | Issue: {issue.Id}] {issue.Title}**");

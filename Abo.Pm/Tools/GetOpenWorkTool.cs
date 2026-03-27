@@ -96,7 +96,7 @@ public class GetOpenWorkTool : IAboTool
             }
 
             // Filter: For 'planned' step, only surface issues with project = 'release-current'
-            // Issues with project 'planned' or 'release-next' at 'planned' step are deferred/backlog.
+            // Issues with project 'backlog' or 'release-next' at 'planned' step are deferred/backlog.
             activeIssues = activeIssues
                 .Where(i =>
                 {
@@ -179,9 +179,9 @@ public class GetOpenWorkTool : IAboTool
                     output.AppendLine($"- **Required Role**: `{roleToShow}`");
 
                 var transitions = Abo.Core.WorkflowEngine.GetTransitions(stepId);
-                if (transitions.Any())
+                if (transitions.Count > 0)
                 {
-                    var stepsDesc = string.Join(", ", transitions.Select(t => $"{t.ConditionName} -> {t.NextStepId}"));
+                    var stepsDesc = string.Join(", ", transitions.Select(kvp => $"{kvp.Key} -> {kvp.Value.NextStepId}"));
                     output.AppendLine($"- **Next Steps**: {stepsDesc}");
                 }
                 output.AppendLine($"- **State**: {status}");

@@ -8,12 +8,12 @@ namespace Abo.Core;
 public static class AgentSentinels
 {
     /// <summary>
-    /// Prefix returned by SpecialistAgent.complete_task on success.
+    /// Prefix returned by SpecialistAgent.conclude_step on success.
     /// The Orchestrator detects this and immediately returns the resultNotes
     /// to the caller, eliminating an unnecessary LLM synthesis round-trip.
-    /// Format: [COMPLETE_TASK_RESULT]:{resultNotes}
+    /// Format: [CONCLUDE_STEP_RESULT]:{resultNotes}
     /// </summary>
-    public const string CompleteTaskResult = "[COMPLETE_TASK_RESULT]:";
+    public const string ConcludeStepResult = "[CONCLUDE_STEP_RESULT]:";
 
     /// <summary>
     /// Prefix returned by SpecialistAgent.postpone_task.

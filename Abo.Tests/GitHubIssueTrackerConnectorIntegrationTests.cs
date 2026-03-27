@@ -134,18 +134,16 @@ public class GitHubIssueTrackerConnectorIntegrationTests
             // Step 1a: open -> release-planning (Triage OK)
             currentIssue.StepId = "open";
             currentIssue.Project = "requested";
-            var triage = Abo.Core.WorkflowEngine.GetTransitions(currentIssue.StepId)
-                .First(t => t.ConditionName == "Triage OK");
-            triage.ApplyState?.Invoke(currentIssue); // sets Project = "planned"
+            var triage = Abo.Core.WorkflowEngine.GetTransitions(currentIssue.StepId)["triage_ok"];
+            triage.ApplyState?.Invoke(currentIssue); // sets Project = "backlog"
             var updatedTriage = await _connector.UpdateIssueAsync(currentIssue.Id, project: currentIssue.Project, stepId: triage.NextStepId); // stepId = "release-planning"
             Assert.NotNull(updatedTriage);
             currentIssue.StepId = triage.NextStepId;
             await Task.Delay(2000);
 
-            // Step 1b: release-planning -> planned (Defer to backlog)
-            var t1 = Abo.Core.WorkflowEngine.GetTransitions(currentIssue.StepId)
-                .First(t => t.NextStepId == "planned" && t.ConditionName == "Defer to backlog");
-            t1.ApplyState?.Invoke(currentIssue); // sets Project = "planned"
+            // Step 1b: release-planning -> planned (assign to next release)
+            var t1 = Abo.Core.WorkflowEngine.GetTransitions(currentIssue.StepId)["assign_next"];
+            t1.ApplyState?.Invoke(currentIssue); // sets Project = "release-next"
             var updated1 = await _connector.UpdateIssueAsync(currentIssue.Id, project: currentIssue.Project, stepId: t1.NextStepId);
             Assert.NotNull(updated1);
             currentIssue.StepId = t1.NextStepId; // now "planned"
@@ -157,7 +155,7 @@ public class GitHubIssueTrackerConnectorIntegrationTests
             Assert.Equal("planned", verify1.StepId);
 
             // Step 2: planned -> work
-            var t2 = Abo.Core.WorkflowEngine.GetTransitions(currentIssue.StepId).First(t => t.NextStepId == "work");
+            var t2 = Abo.Core.WorkflowEngine.GetTransitions(currentIssue.StepId)["solution_planned"];
             t2.ApplyState?.Invoke(currentIssue); 
             var updated2 = await _connector.UpdateIssueAsync(currentIssue.Id, project: currentIssue.Project, stepId: t2.NextStepId);
             Assert.NotNull(updated2);
@@ -170,7 +168,7 @@ public class GitHubIssueTrackerConnectorIntegrationTests
             Assert.Equal("work", verify2.StepId);
 
             // Step 3: work -> review
-            var t3 = Abo.Core.WorkflowEngine.GetTransitions(currentIssue.StepId).First(t => t.NextStepId == "review");
+            var t3 = Abo.Core.WorkflowEngine.GetTransitions(currentIssue.StepId)["implementation_completed"];
             t3.ApplyState?.Invoke(currentIssue);
             var updated3 = await _connector.UpdateIssueAsync(currentIssue.Id, project: currentIssue.Project, stepId: t3.NextStepId);
             Assert.NotNull(updated3);
@@ -183,7 +181,7 @@ public class GitHubIssueTrackerConnectorIntegrationTests
             Assert.Equal("review", verify3.StepId);
 
             // Step 4: review -> check
-            var t4 = Abo.Core.WorkflowEngine.GetTransitions(currentIssue.StepId).First(t => t.NextStepId == "check");
+            var t4 = Abo.Core.WorkflowEngine.GetTransitions(currentIssue.StepId)["solution_accepted"];
             t4.ApplyState?.Invoke(currentIssue);
             var updated4 = await _connector.UpdateIssueAsync(currentIssue.Id, project: currentIssue.Project, stepId: t4.NextStepId);
             Assert.NotNull(updated4);
@@ -196,7 +194,7 @@ public class GitHubIssueTrackerConnectorIntegrationTests
             Assert.Equal("check", verify4.StepId);
 
             // Step 5: check -> done (AND explicitly close the issue RESTfully)
-            var t5 = Abo.Core.WorkflowEngine.GetTransitions(currentIssue.StepId).First(t => t.NextStepId == "done");
+            var t5 = Abo.Core.WorkflowEngine.GetTransitions(currentIssue.StepId)["release_finished"];
             t5.ApplyState?.Invoke(currentIssue);
             var updated5 = await _connector.UpdateIssueAsync(currentIssue.Id, project: currentIssue.Project, stepId: t5.NextStepId, state: "closed");
             Assert.NotNull(updated5);
