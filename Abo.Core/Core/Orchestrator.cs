@@ -18,7 +18,7 @@ public class Orchestrator
     private readonly string _consumptionLogPath = Path.Combine(AppContext.BaseDirectory, "Data", "llm_consumption.jsonl");
 
     private static readonly ConcurrentDictionary<string, SemaphoreSlim> _issueFileLocks = new();
-    private static readonly SemaphoreSlim _trafficLogLock     = new SemaphoreSlim(1, 1);
+    private static readonly SemaphoreSlim _trafficLogLock = new SemaphoreSlim(1, 1);
     private static readonly SemaphoreSlim _consumptionLogLock = new SemaphoreSlim(1, 1);
 
     public Orchestrator(HttpClient httpClient, IConfiguration configuration, ILogger<Orchestrator> logger, SessionService sessionService)
@@ -98,7 +98,7 @@ public class Orchestrator
                 currentLoop++;
 
                 // Recalculate model in case agent state changed
-                currentModelName = _configuration["Config:ModelName"] ?? "anthropic/claude-haiku-4.5";
+                currentModelName = _configuration["Config:ModelName"];
                 if (agent.RequiresReviewModel && !string.IsNullOrEmpty(_configuration["Config:ReviewModelName"]))
                 {
                     currentModelName = _configuration["Config:ReviewModelName"]!;
@@ -108,6 +108,16 @@ public class Orchestrator
                     currentModelName = _configuration["Config:CapableModelName"]!;
                 }
                 request.Model = currentModelName;
+
+                var systemMsg = request.Messages.FirstOrDefault(m => m.Role == "system");
+                if (systemMsg != null)
+                {
+                    var openaiInstruction = currentModelName.StartsWith("openai/", StringComparison.OrdinalIgnoreCase)
+                        ? "\n\n[PROVIDER INSTRUCTION] Keep your responses strictly exact, accurate, brief, short and concise. Do not repeat stuff or use excessive pleasantries."
+                        : string.Empty;
+
+                    systemMsg.Content = $"{agent.SystemPrompt}\n\n[CONTEXT] The default language for all responses '{defaultLanguage}', code/docu is 'en-us'{openaiInstruction}";
+                }
 
                 // Emergency hard-cap: summarize for all agents if message count exceeds 200
                 if (request.Messages.Count > 200)
