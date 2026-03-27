@@ -150,11 +150,11 @@ app.MapGet("/api/issues", async (IConfiguration config, Microsoft.Extensions.Cac
     {
         Id = issue.Id,
         Title = issue.Title,
-        TypeId = issue.Labels.FirstOrDefault(l => l.StartsWith("type: ", StringComparison.OrdinalIgnoreCase))?.Substring(6).Trim() ?? "",
+        Type = issue.Labels.FirstOrDefault(l => l.StartsWith("type: ", StringComparison.OrdinalIgnoreCase))?.Substring(6).Trim() ?? "",
         Project = issue.Project,   // Issue #205: expose project field for dashboard grouping
         CurrentStep = new
         {
-            StepId = Abo.Core.WorkflowEngine.ResolveStepIdFallback(issue),
+            Status = Abo.Core.WorkflowEngine.ResolveStatusFallback(issue),
             StepName = Abo.Core.WorkflowEngine.GetStepInfo(issue)?.StepName ?? "",
             RequiredRole = Abo.Core.WorkflowEngine.GetStepInfo(issue)?.Role?.RoleId ?? ""
         },
@@ -203,7 +203,7 @@ app.MapPost("/api/issues/create", async ([FromBody] CreateIssueRequest req, ICon
     var size = req.Size.Trim().ToUpper();
 
     // Validate type and size values
-    var validTypes = new[] { "bug", "feature", "improvement", "task", "chore" };
+    var validTypes = new[] { "bug", "feature", "improvement", "task", "chore", "doc" };
     var validSizes = new[] { "S", "M", "L", "XL" };
 
     if (!validTypes.Contains(type))
@@ -227,7 +227,7 @@ app.MapPost("/api/issues/create", async ([FromBody] CreateIssueRequest req, ICon
             size: size,
             additionalLabels: null,
             project: req.Project,
-            stepId: "open"
+            status: "open"
         );
 
         // Invalidate the issues cache so fresh data is fetched next time
@@ -263,10 +263,10 @@ app.MapGet("/api/open-work", async (IConfiguration config, Microsoft.Extensions.
     {
         IssueId = issue.Id,
         Title = issue.Title,
-        TypeId = issue.Labels.FirstOrDefault(l => l.StartsWith("type: ", StringComparison.OrdinalIgnoreCase))?.Substring(6).Trim() ?? "",
+        Type = issue.Labels.FirstOrDefault(l => l.StartsWith("type: ", StringComparison.OrdinalIgnoreCase))?.Substring(6).Trim() ?? "",
         CurrentStep = new
         {
-            StepId = Abo.Core.WorkflowEngine.ResolveStepIdFallback(issue),
+            Status = Abo.Core.WorkflowEngine.ResolveStatusFallback(issue),
             StepName = Abo.Core.WorkflowEngine.GetStepInfo(issue)?.StepName ?? "",
             RequiredRole = Abo.Core.WorkflowEngine.GetStepInfo(issue)?.Role?.RoleId ?? ""
         },
@@ -452,7 +452,7 @@ app.Lifetime.ApplicationStarted.Register(() =>
                         sb.AppendLine($"\n*{group.Key}*:");
                         foreach (var issue in group)
                         {
-                            var step = Abo.Core.WorkflowEngine.ResolveStepIdFallback(issue);
+                            var step = Abo.Core.WorkflowEngine.ResolveStatusFallback(issue);
                             var role = Abo.Core.WorkflowEngine.GetStepInfo(issue)?.Role?.RoleId ?? "Any";
                             var envName = issue.Labels.FirstOrDefault(l => l.StartsWith("env: ", StringComparison.OrdinalIgnoreCase))?.Substring(5).Trim() ?? "?";
                             sb.AppendLine($"- [{issue.Id}] {issue.Title} (Env: {envName}, Step: {step}, Role: {role})");

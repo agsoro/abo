@@ -10,10 +10,11 @@ public static class IssueType
     public const string Improvement = "improvement";
     public const string Task        = "task";
     public const string Chore       = "chore";
+    public const string Doc         = "doc";
 
     public static readonly IReadOnlyList<string> AllowedValues = new[]
     {
-        Feature, Bug, Improvement, Task, Chore
+        Feature, Bug, Improvement, Task, Chore, Doc
     };
 
     public static bool IsValid(string? value)

@@ -830,6 +830,7 @@
                             <option value="feature">✨ Feature</option>
                             <option value="improvement">📈 Improvement</option>
                             <option value="task">📝 Task</option>
+                            <option value="doc">📄 Documentation</option>
                             <option value="chore">🔧 Chore</option>
                         </select>
                         <div class="form-error" id="error-type"></div>
@@ -1297,16 +1298,16 @@
             switch (sectionId) {
                 case 'requested':
                     return allIssues.filter(i =>
-                        i.project === 'requested' || i.currentStep?.stepId === 'open');
+                        i.project === 'requested' || i.currentStep?.status === 'open');
                 case 'release-current':
                     return allIssues.filter(i =>
-                        i.project === 'release-current' && i.currentStep?.stepId === 'planned');
+                        i.project === 'release-current' && i.currentStep?.status === 'planned');
                 case 'release-next':
                     return allIssues.filter(i =>
-                        i.project === 'release-next' && i.currentStep?.stepId === 'planned');
+                        i.project === 'release-next' && i.currentStep?.status === 'planned');
                 case 'in-dev':
                     return allIssues.filter(i =>
-                        ['work', 'review', 'check'].includes(i.currentStep?.stepId));
+                        ['work', 'review', 'check'].includes(i.currentStep?.status));
                 default:
                     return [];
             }
@@ -1390,7 +1391,7 @@
                     <span class="issue-title">${escapeHtml(i.title)}</span>
                     <div class="issue-meta">
                       ${i.environmentName ? `<span class="env-tag">${escapeHtml(i.environmentName)}</span>` : ''}
-                      ${i.currentStep?.stepId ? `<span class="step-badge">${escapeHtml(i.currentStep.stepId)}</span>` : ''}
+                      ${i.currentStep?.status ? `<span class="step-badge">${escapeHtml(i.currentStep.status)}</span>` : ''}
                     </div>
                   </div>
                   ${btn}

@@ -6,29 +6,29 @@ namespace Abo.Core;
 
 public static class WorkflowEngine
 {
-    public static string ResolveStepIdFallback(IssueRecord issue)
+    public static string ResolveStatusFallback(IssueRecord issue)
     {
-        var stepId = issue.StepId ?? string.Empty;
+        var status = issue.Status ?? string.Empty;
 
         // If the step is recognized natively, accept it immediately
-        if (!string.IsNullOrWhiteSpace(stepId) && GetStepInfo(issue) != null) return stepId;
+        if (!string.IsNullOrWhiteSpace(status) && GetStepInfo(issue) != null) return status;
 
         // If the step is blank OR unrecognized (e.g. 'Open', 'Todo') but within the 'requested' project, force it
         if (string.Equals(issue.Project, "requested", StringComparison.OrdinalIgnoreCase)) return "open";
 
-        return stepId;
+        return status;
     }
 
     public static ProcessStepInfo? GetStepInfo(IssueRecord issue)
     {
-        var stepId = ResolveStepIdFallback(issue).ToLower();
+        var status = ResolveStatusFallback(issue).ToLower();
 
         bool isDoc = string.Equals(issue.Type, "doc", StringComparison.OrdinalIgnoreCase);
-        return stepId.ToLower() switch
+        return status.ToLower() switch
         {
             "open" => new ProcessStepInfo
             {
-                StepId = "open",
+                Status = "open",
                 StepName = "Triage Request",
                 Role = new RoleDefinition
                 {
@@ -48,13 +48,13 @@ public static class WorkflowEngine
                 },
                 Transitions = new Dictionary<string, WorkflowTransition>(StringComparer.OrdinalIgnoreCase)
                 {
-                    { "reject_duplicate", new WorkflowTransition { NextStepId = "invalid", IsEndEvent = true, ApplyState = issue => ApplyTransitionAndState(issue, "invalid", "requested", "closed") } },
-                    { "triage_ok", new WorkflowTransition { NextStepId = "release-planning", ApplyState = issue => ApplyTransitionAndState(issue, "release-planning", "backlog", "open") } }
+                    { "reject_duplicate", new WorkflowTransition { NextStatus = "invalid", IsEndEvent = true, ApplyState = issue => ApplyTransitionAndState(issue, "invalid", "requested", "closed") } },
+                    { "triage_ok", new WorkflowTransition { NextStatus = "release-planning", ApplyState = issue => ApplyTransitionAndState(issue, "release-planning", "backlog", "open") } }
                 }
             },
             "release-planning" => new ProcessStepInfo
             {
-                StepId = "release-planning",
+                Status = "release-planning",
                 StepName = "Release Planning",
                 Role = new RoleDefinition
                 {
@@ -83,15 +83,15 @@ public static class WorkflowEngine
                 },
                 Transitions = new Dictionary<string, WorkflowTransition>(StringComparer.OrdinalIgnoreCase)
                 {
-                    { "assign_current", new WorkflowTransition { NextStepId = "planned", ApplyState = issue => ApplyTransitionAndState(issue, "planned", "release-current", "open") } },
-                    { "assign_next", new WorkflowTransition { NextStepId = "planned", ApplyState = issue => ApplyTransitionAndState(issue, "planned", "release-next", "open") } },
-                    { "reject_duplicate", new WorkflowTransition { NextStepId = "invalid", IsEndEvent = true, ApplyState = issue => ApplyTransitionAndState(issue, "invalid", "requested", "closed") } }
+                    { "assign_current", new WorkflowTransition { NextStatus = "planned", ApplyState = issue => ApplyTransitionAndState(issue, "planned", "release-current", "open") } },
+                    { "assign_next", new WorkflowTransition { NextStatus = "planned", ApplyState = issue => ApplyTransitionAndState(issue, "planned", "release-next", "open") } },
+                    { "reject_duplicate", new WorkflowTransition { NextStatus = "invalid", IsEndEvent = true, ApplyState = issue => ApplyTransitionAndState(issue, "invalid", "requested", "closed") } }
                 }
             },
             "planned" => isDoc
                 ? new ProcessStepInfo // --- NEW: INFORMATION ARCHITECT (DOCS) ---
                 {
-                    StepId = "planned",
+                    Status = "planned",
                     StepName = "Documentation Planning",
                     Role = new RoleDefinition
                     {
@@ -111,15 +111,15 @@ public static class WorkflowEngine
                     },
                     Transitions = new Dictionary<string, WorkflowTransition>(StringComparer.OrdinalIgnoreCase)
                     {
-                        { "need_help", new WorkflowTransition { NextStepId = "waiting customer", IsEndEvent = true, ApplyState = i => ApplyTransitionAndState(i, "waiting customer", null, "open") } },
-                        { "pause_work", new WorkflowTransition { NextStepId = "planned", ApplyState = i => ApplyTransitionAndState(i, "planned", null, "open") } },
-                        { "solution_planned", new WorkflowTransition { NextStepId = "work", ApplyState = i => ApplyTransitionAndState(i, "work", null, "open") } }
+                        { "need_help", new WorkflowTransition { NextStatus = "waiting customer", IsEndEvent = true, ApplyState = i => ApplyTransitionAndState(i, "waiting customer", null, "open") } },
+                        { "pause_work", new WorkflowTransition { NextStatus = "planned", ApplyState = i => ApplyTransitionAndState(i, "planned", null, "open") } },
+                        { "solution_planned", new WorkflowTransition { NextStatus = "work", ApplyState = i => ApplyTransitionAndState(i, "work", null, "open") } }
                     }
                 }
                 :
                 new ProcessStepInfo
                 {
-                    StepId = "planned",
+                    Status = "planned",
                     StepName = "Solution Planning",
                     Role = new RoleDefinition
                     {
@@ -140,15 +140,15 @@ public static class WorkflowEngine
                     },
                     Transitions = new Dictionary<string, WorkflowTransition>(StringComparer.OrdinalIgnoreCase)
                 {
-                    { "need_help", new WorkflowTransition { NextStepId = "waiting customer", IsEndEvent = true, ApplyState = issue => ApplyTransitionAndState(issue, "waiting customer", null, "open") } },
-                    { "pause_work", new WorkflowTransition { NextStepId = "planned", ApplyState = issue => ApplyTransitionAndState(issue, "planned", null, "open") } },
-                    { "solution_planned", new WorkflowTransition { NextStepId = "work", ApplyState = issue => ApplyTransitionAndState(issue, "work", null, "open") } }
+                    { "need_help", new WorkflowTransition { NextStatus = "waiting customer", IsEndEvent = true, ApplyState = issue => ApplyTransitionAndState(issue, "waiting customer", null, "open") } },
+                    { "pause_work", new WorkflowTransition { NextStatus = "planned", ApplyState = issue => ApplyTransitionAndState(issue, "planned", null, "open") } },
+                    { "solution_planned", new WorkflowTransition { NextStatus = "work", ApplyState = issue => ApplyTransitionAndState(issue, "work", null, "open") } }
                 }
                 },
             "work" => isDoc
                 ? new ProcessStepInfo // --- NEW DOC BRANCH ---
                 {
-                    StepId = "work",
+                    Status = "work",
                     StepName = "Documentation Updates",
                     Role = new RoleDefinition
                     {
@@ -173,14 +173,14 @@ public static class WorkflowEngine
                     },
                     Transitions = new Dictionary<string, WorkflowTransition>(StringComparer.OrdinalIgnoreCase)
                     {
-                        { "need_help", new WorkflowTransition { NextStepId = "waiting customer", IsEndEvent = true, ApplyState = i => ApplyTransitionAndState(i, "waiting customer", null, "open") } },
-                        { "pause_work", new WorkflowTransition { NextStepId = "work", ApplyState = i => ApplyTransitionAndState(i, "work", null, "open") } },
-                        { "docs_completed", new WorkflowTransition { NextStepId = "review", ApplyState = i => ApplyTransitionAndState(i, "review", null, "open") } }
+                        { "need_help", new WorkflowTransition { NextStatus = "waiting customer", IsEndEvent = true, ApplyState = i => ApplyTransitionAndState(i, "waiting customer", null, "open") } },
+                        { "pause_work", new WorkflowTransition { NextStatus = "work", ApplyState = i => ApplyTransitionAndState(i, "work", null, "open") } },
+                        { "docs_completed", new WorkflowTransition { NextStatus = "review", ApplyState = i => ApplyTransitionAndState(i, "review", null, "open") } }
                     }
                 }
                 : new ProcessStepInfo
                 {
-                    StepId = "work",
+                    Status = "work",
                     StepName = "Implementation",
                     Role = new RoleDefinition
                     {
@@ -209,14 +209,14 @@ public static class WorkflowEngine
                     },
                     Transitions = new Dictionary<string, WorkflowTransition>(StringComparer.OrdinalIgnoreCase)
                 {
-                    { "need_help", new WorkflowTransition { NextStepId = "waiting customer", IsEndEvent = true, ApplyState = issue => ApplyTransitionAndState(issue, "waiting customer", null, "open") } },
-                    { "pause_work", new WorkflowTransition { NextStepId = "work", ApplyState = issue => ApplyTransitionAndState(issue, "work", null, "open") } },
-                    { "implementation_completed", new WorkflowTransition { NextStepId = "review", ApplyState = issue => ApplyTransitionAndState(issue, "review", null, "open") } }
+                    { "need_help", new WorkflowTransition { NextStatus = "waiting customer", IsEndEvent = true, ApplyState = issue => ApplyTransitionAndState(issue, "waiting customer", null, "open") } },
+                    { "pause_work", new WorkflowTransition { NextStatus = "work", ApplyState = issue => ApplyTransitionAndState(issue, "work", null, "open") } },
+                    { "implementation_completed", new WorkflowTransition { NextStatus = "review", ApplyState = issue => ApplyTransitionAndState(issue, "review", null, "open") } }
                 }
                 },
             "review" => new ProcessStepInfo
             {
-                StepId = "review",
+                Status = "review",
                 StepName = "QA Review",
                 Role = new RoleDefinition
                 {
@@ -236,13 +236,13 @@ public static class WorkflowEngine
                 },
                 Transitions = new Dictionary<string, WorkflowTransition>(StringComparer.OrdinalIgnoreCase)
                 {
-                    { "solution_rejected", new WorkflowTransition { NextStepId = "planned", ApplyState = issue => ApplyTransitionAndState(issue, "planned", null, "open") } },
-                    { "solution_accepted", new WorkflowTransition { NextStepId = "check", ApplyState = issue => ApplyTransitionAndState(issue, "check", null, "open") } }
+                    { "solution_rejected", new WorkflowTransition { NextStatus = "planned", ApplyState = issue => ApplyTransitionAndState(issue, "planned", null, "open") } },
+                    { "solution_accepted", new WorkflowTransition { NextStatus = "check", ApplyState = issue => ApplyTransitionAndState(issue, "check", null, "open") } }
                 }
             },
             "check" => new ProcessStepInfo
             {
-                StepId = "check",
+                Status = "check",
                 StepName = "Release",
                 Role = new RoleDefinition
                 {
@@ -267,8 +267,8 @@ public static class WorkflowEngine
                 },
                 Transitions = new Dictionary<string, WorkflowTransition>(StringComparer.OrdinalIgnoreCase)
                 {
-                    { "release_rejected", new WorkflowTransition { NextStepId = "work", ApplyState = issue => ApplyTransitionAndState(issue, "work", null, "open") } },
-                    { "release_finished", new WorkflowTransition { NextStepId = "done", IsEndEvent = true, ApplyState = issue => ApplyTransitionAndState(issue, "done", null, "closed") } }
+                    { "release_rejected", new WorkflowTransition { NextStatus = "work", ApplyState = issue => ApplyTransitionAndState(issue, "work", null, "open") } },
+                    { "release_finished", new WorkflowTransition { NextStatus = "done", IsEndEvent = true, ApplyState = issue => ApplyTransitionAndState(issue, "done", null, "closed") } }
                 }
             },
             _ => null
@@ -280,9 +280,9 @@ public static class WorkflowEngine
         return GetStepInfo(issue)?.Transitions ?? new Dictionary<string, WorkflowTransition>(StringComparer.OrdinalIgnoreCase);
     }
 
-    private static void ApplyTransitionAndState(IssueRecord issue, string stepId, string? project, string state = "open")
+    private static void ApplyTransitionAndState(IssueRecord issue, string status, string? project, string state = "open")
     {
-        issue.StepId = stepId;
+        issue.Status = status;
         if (project != null) issue.Project = project;
         issue.State = state;
     }

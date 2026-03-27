@@ -85,7 +85,7 @@ public class GetOpenWorkTool : IAboTool
             {
                 bool hasBlockingChild = children.Any(c =>
                 {
-                    var childStep = Abo.Core.WorkflowEngine.ResolveStepIdFallback(c).ToLower();
+                    var childStep = Abo.Core.WorkflowEngine.ResolveStatusFallback(c).ToLower();
                     // "open", "planned", "work", "review" block the parent; "check", "done", "invalid" do not
                     return childStep is "open" or "planned" or "work" or "review";
                 });
@@ -100,7 +100,7 @@ public class GetOpenWorkTool : IAboTool
             activeIssues = activeIssues
                 .Where(i =>
                 {
-                    var step = Abo.Core.WorkflowEngine.ResolveStepIdFallback(i).ToLower();
+                    var step = Abo.Core.WorkflowEngine.ResolveStatusFallback(i).ToLower();
                     if (step == "planned")
                         return string.Equals(i.Project, "release-current", StringComparison.OrdinalIgnoreCase);
                     return true; // all other steps are always surfaced
@@ -110,7 +110,7 @@ public class GetOpenWorkTool : IAboTool
             // Filter out blocked parents from the actionable work queue
             activeIssues = activeIssues
                 .Where(i => !blockedIssueIds.Contains(i.Id))
-                .OrderBy(i => GetStepPriority(Abo.Core.WorkflowEngine.ResolveStepIdFallback(i)))
+                .OrderBy(i => GetStepPriority(Abo.Core.WorkflowEngine.ResolveStatusFallback(i)))
                 .ThenBy(i => i.Id)
                 .ToList();
 
@@ -133,20 +133,20 @@ public class GetOpenWorkTool : IAboTool
 
             foreach (var issue in activeIssues)
             {
-                var typeId = ExtractLabelValue(issue.Labels, "type") ?? "Unknown";
-                var stepId = Abo.Core.WorkflowEngine.ResolveStepIdFallback(issue);
+                var type = ExtractLabelValue(issue.Labels, "type") ?? "Unknown";
+                var status = Abo.Core.WorkflowEngine.ResolveStatusFallback(issue);
                 var envName = ExtractLabelValue(issue.Labels, "env") ?? "Unknown";
                 var projRef = ExtractLabelValue(issue.Labels, "ref") ?? issue.Id;
 
                 var stepInfo = Abo.Core.WorkflowEngine.GetStepInfo(issue);
-                string nodeName = stepInfo?.StepName ?? stepId;
-                string status = stepInfo != null ? "Ready for work" : "Unknown State";
-                if (string.Equals(stepId, "done", StringComparison.OrdinalIgnoreCase) || string.Equals(stepId, "invalid", StringComparison.OrdinalIgnoreCase))
+                string nodeName = stepInfo?.StepName ?? status;
+                string displayState = stepInfo != null ? "Ready for work" : "Unknown State";
+                if (string.Equals(status, "done", StringComparison.OrdinalIgnoreCase) || string.Equals(status, "invalid", StringComparison.OrdinalIgnoreCase))
                 {
-                    status = "Completed";
+                    displayState = "Completed";
                 }
 
-                var priority = GetStepPriority(stepId);
+                var priority = GetStepPriority(status);
                 var priorityLabel = priority switch
                 {
                     0 => "🔴 Highest — New Request (open)",
@@ -171,7 +171,7 @@ public class GetOpenWorkTool : IAboTool
                 output.AppendLine($"- **Environment**: `{envName}`");
                 output.AppendLine($"- **Priority**: `{priorityLabel}`");
                 output.AppendLine($"- **Issue Status**: `{issue.State}`");
-                output.AppendLine($"- **Current Step**: {nodeName} (`{stepId}`)");
+                output.AppendLine($"- **Current Step**: {nodeName} (`{status}`)");
 
                 var roleToShow = stepInfo?.Role?.RoleId ?? "Unknown";
 
@@ -181,10 +181,10 @@ public class GetOpenWorkTool : IAboTool
                 var transitions = Abo.Core.WorkflowEngine.GetTransitions(issue);
                 if (transitions.Count > 0)
                 {
-                    var stepsDesc = string.Join(", ", transitions.Select(kvp => $"{kvp.Key} -> {kvp.Value.NextStepId}"));
+                    var stepsDesc = string.Join(", ", transitions.Select(kvp => $"{kvp.Key} -> {kvp.Value.NextStatus}"));
                     output.AppendLine($"- **Next Steps**: {stepsDesc}");
                 }
-                output.AppendLine($"- **State**: {status}");
+                output.AppendLine($"- **State**: {displayState}");
                 if (subIssueCount > 0)
                     output.AppendLine($"- **Sub-issues**: {subIssueCount} linked sub-issue(s) (all in terminal/near-terminal state — parent is unblocked)");
                 output.AppendLine($"- **Action**: Run `checkout_task {{\\\"issueId\\\": \\\"{issue.Id}\\\"}}` to pick up this work.");
@@ -206,7 +206,7 @@ public class GetOpenWorkTool : IAboTool
     /// Among in-progress issues, prefer those closest to completion:
     ///   release-planning (1) > review (2) > check (3) > work (4) > planned (5).
     /// </summary>
-    private static int GetStepPriority(string stepId) => stepId.ToLower() switch
+    private static int GetStepPriority(string status) => status.ToLower() switch
     {
         "open"             => 0,
         "release-planning" => 1,   // NEW

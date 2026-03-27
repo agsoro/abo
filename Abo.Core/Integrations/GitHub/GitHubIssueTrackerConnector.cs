@@ -20,8 +20,8 @@ public class GitHubIssueTrackerConnector : IIssueTrackerConnector
     private static readonly Dictionary<string, (string TypeFieldId, Dictionary<string, string> TypeOptions)> _projectTypeFields
         = new(StringComparer.OrdinalIgnoreCase);
 
-    // Enrichment result cache: key = issue number (string), value = (Project, StepId, Type, CachedAt)
-    private static readonly Dictionary<string, (string Project, string StepId, string Type, DateTime CachedAt)> _enrichmentCache
+    // Enrichment result cache: key = issue number (string), value = (Project, Status, Type, CachedAt)
+    private static readonly Dictionary<string, (string Project, string Status, string Type, DateTime CachedAt)> _enrichmentCache
         = new(StringComparer.OrdinalIgnoreCase);
     private static readonly TimeSpan _enrichmentCacheTtl = TimeSpan.FromSeconds(60);
 
@@ -253,8 +253,8 @@ query($owner: String!) {
                     labelsList.Add($"env: {_environmentName}");
                 }
 
-                // Parse StepId and Type from field values
-                var stepId = "";
+                // Parse Status and Type from field values
+                var status = "";
                 var typeStr = "";
                 if (item.TryGetProperty("fieldValues", out var fVals))
                 {
@@ -267,7 +267,7 @@ query($owner: String!) {
                             {
                                 if (fv.TryGetProperty("name", out var optName))
                                 {
-                                    stepId = optName.GetString() ?? "";
+                                    status = optName.GetString() ?? "";
                                 }
                             }
                             else if (string.Equals(fName.GetString(), "Type", StringComparison.OrdinalIgnoreCase))
@@ -291,7 +291,7 @@ query($owner: String!) {
                     Body = body,
                     State = state,
                     Project = logicalKey ?? "",
-                    StepId = stepId,
+                    Status = status,
                     Type = typeStr,
                     Labels = labelsList
                 };
@@ -300,7 +300,7 @@ query($owner: String!) {
                 results[numStr] = record;
 
                 // Pre-warm enrichment cache to avoid redundant GraphQL calls in the same session
-                _enrichmentCache[numStr] = (record.Project, record.StepId, record.Type, DateTime.UtcNow);
+                _enrichmentCache[numStr] = (record.Project, record.Status, record.Type, DateTime.UtcNow);
             }
         }
 
@@ -387,7 +387,7 @@ query($owner: String!) {
         return record;
     }
 
-    public async Task<IssueRecord> CreateIssueAsync(string title, string body, string type, string size, string[]? additionalLabels = null, string? project = null, string? stepId = null)
+    public async Task<IssueRecord> CreateIssueAsync(string title, string body, string type, string size, string[]? additionalLabels = null, string? project = null, string? status = null)
     {
         var labelsList = new List<string>();
         // Note: type is NOT added as a label — it is written to the Projects V2 Type field via SyncProjectV2Async
@@ -412,7 +412,7 @@ query($owner: String!) {
         
         if (!string.IsNullOrWhiteSpace(record.NodeId)) {
             record.Project = project ?? string.Empty;
-            record.StepId = stepId ?? string.Empty;
+            record.Status = status ?? string.Empty;
             record.Type = type;
             await SyncProjectV2Async(record);
             // Invalidate cache entry so the next fetch reflects the new project state
@@ -421,7 +421,7 @@ query($owner: String!) {
         return record;
     }
 
-    public async Task<IssueRecord> UpdateIssueAsync(string issueId, string? title = null, string? body = null, string? state = null, string[]? labels = null, string? project = null, string? stepId = null, string? type = null)
+    public async Task<IssueRecord> UpdateIssueAsync(string issueId, string? title = null, string? body = null, string? state = null, string[]? labels = null, string? project = null, string? status = null, string? type = null)
     {
         var reqObj = new Dictionary<string, object>();
         if (title != null) reqObj["title"] = title;
@@ -466,8 +466,8 @@ query($owner: String!) {
                 record.Project = project;
             }
             
-            if (stepId != null) {
-                record.StepId = stepId;
+            if (status != null) {
+                record.Status = status;
             }
 
             if (type != null) {
@@ -657,7 +657,7 @@ query($owner: String!) {
             {
                 var cached = _enrichmentCache[issue.Id];
                 if (string.IsNullOrEmpty(issue.Project)) issue.Project = cached.Project;
-                if (string.IsNullOrEmpty(issue.StepId))  issue.StepId  = cached.StepId;
+                if (string.IsNullOrEmpty(issue.Status))  issue.Status  = cached.Status;
                 if (string.IsNullOrEmpty(issue.Type))    issue.Type    = cached.Type;
             }
             return;
@@ -718,7 +718,7 @@ query($owner: String!) {
                                         if (fv.TryGetProperty("name", out var optName)) {
                                             var statusStr = optName.GetString();
                                             if (!string.IsNullOrWhiteSpace(statusStr)) {
-                                                issue.StepId = statusStr;
+                                                issue.Status = statusStr;
                                             }
                                         }
                                     }
@@ -740,7 +740,7 @@ query($owner: String!) {
             // Write back all enriched issues to the cache
             foreach (var issue in issues)
             {
-                _enrichmentCache[issue.Id] = (issue.Project, issue.StepId, issue.Type, DateTime.UtcNow);
+                _enrichmentCache[issue.Id] = (issue.Project, issue.Status, issue.Type, DateTime.UtcNow);
             }
         } catch { /* Ignore enrichment failure gracefully */ }
     }
@@ -805,9 +805,9 @@ query($nodeId: ID!) {
         }
 
         // Sync Status field
-        var stepId = issue.StepId;
-        if (targetItemNodeId != null && !string.IsNullOrWhiteSpace(targetGithubTitle) && !string.IsNullOrWhiteSpace(stepId)) {
-            if (_projectStatuses.TryGetValue(targetGithubTitle, out var statusOptions) && statusOptions.TryGetValue(stepId, out var statusIds)) {
+        var status = issue.Status;
+        if (targetItemNodeId != null && !string.IsNullOrWhiteSpace(targetGithubTitle) && !string.IsNullOrWhiteSpace(status)) {
+            if (_projectStatuses.TryGetValue(targetGithubTitle, out var statusOptions) && statusOptions.TryGetValue(status, out var statusIds)) {
                 var updateMut = @"mutation($projectId: ID!, $itemId: ID!, $fieldId: ID!, $optionId: String!) { updateProjectV2ItemFieldValue(input: {projectId: $projectId, itemId: $itemId, fieldId: $fieldId, value: { singleSelectOptionId: $optionId }}) { projectV2Item { id } } }";
                 await SendGraphQLRequestAsync(new { query = updateMut, variables = new { projectId = _projectNodeIds[targetGithubTitle], itemId = targetItemNodeId, fieldId = statusIds.fieldId, optionId = statusIds.optionId } }, throwGraphQLErrors: true);
             }

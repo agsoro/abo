@@ -93,8 +93,8 @@ public class ListActiveIssuesTool : IAboTool
     {
         var indent = new string(' ', indentLevel * 4);
         
-        var typeId = ExtractLabelValue(issue.Labels, "type") ?? "Unknown";
-        var stepId = Abo.Core.WorkflowEngine.ResolveStepIdFallback(issue);
+        var type = ExtractLabelValue(issue.Labels, "type") ?? "Unknown";
+        var status = Abo.Core.WorkflowEngine.ResolveStatusFallback(issue);
         var envName = ExtractLabelValue(issue.Labels, "env") ?? "Unknown";
         var projRef = ExtractLabelValue(issue.Labels, "ref") ?? issue.Id;
         var project = issue.Project;
@@ -104,14 +104,14 @@ public class ListActiveIssuesTool : IAboTool
 
         var transitions = Abo.Core.WorkflowEngine.GetTransitions(issue);
         var nextSteps = transitions.Count > 0 
-            ? string.Join(", ", transitions.Select(kvp => $"{kvp.Key} -> {kvp.Value.NextStepId}"))
+            ? string.Join(", ", transitions.Select(kvp => $"{kvp.Key} -> {kvp.Value.NextStatus}"))
             : "None";
 
         output.AppendLine($"{indent}- **[Ref: {projRef} | Issue: {issue.Id}] {issue.Title}**");
         if (!string.IsNullOrWhiteSpace(project))
             output.AppendLine($"{indent}  - Project: `{project}`");
-        output.AppendLine($"{indent}  - Type: `{typeId}`");
-        output.AppendLine($"{indent}  - Step: `{stepId}`");
+        output.AppendLine($"{indent}  - Type: `{type}`");
+        output.AppendLine($"{indent}  - Step: `{status}`");
         output.AppendLine($"{indent}  - Role: `{roleToShow}`");
         output.AppendLine($"{indent}  - Next Steps: `{nextSteps}`");
         output.AppendLine($"{indent}  - Status: `{issue.State}`");

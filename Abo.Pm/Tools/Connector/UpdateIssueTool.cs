@@ -28,7 +28,7 @@ public class UpdateIssueTool : IAboTool
             {
                 type = "string",
                 description = "Optional. Set or correct the issue type label. Used during triage to fill a missing or invalid type.",
-                @enum = new[] { "feature", "bug", "improvement", "task", "chore" }
+                @enum = new[] { "feature", "bug", "improvement", "task", "chore", "doc" }
             },
         },
         required = new[] { "issueId" },

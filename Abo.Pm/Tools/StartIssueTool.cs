@@ -18,7 +18,7 @@ public class StartIssueTool : IAboTool
     }
 
     public string Name => "start_issue";
-    public string Description => "Starts a new issue instance based on an existing BPMN process ID (type). This creates an issue in the environment's configured tracker.";
+    public string Description => "Starts a new issue instance. This creates an issue in the environment's configured tracker.";
 
     public object ParametersSchema => new
     {
@@ -27,13 +27,12 @@ public class StartIssueTool : IAboTool
         {
             issueId = new { type = "string", description = "The unique numeric or alphanumeric ID for the instantiated issue (used as an internal reference)." },
             title = new { type = "string", description = "A concise title for the issue." },
-            typeId = new { type = "string", description = "The ID of the process flow this issue runs on (e.g., Type_Dev_Sprint). MUST be an existing process." },
+            type = new { type = "string", description = "The type of the ticket (e.g., bug, feature, doc)." },
             info = new { type = "string", description = "The markdown content describing the goals, context, and initial parameters of the issue." },
             parentId = new { type = "string", description = "Optional. The ID of the parent issue if this is a subissue." },
-            initialStepId = new { type = "string", description = "The exact ID of the Starting Node / Item in the BPMN process to initialize the tracking state with." },
             environmentName = new { type = "string", description = "The name of the environment to supply for the issue (e.g. 'thingsboard'). Execute get_environments to find valid names." }
         },
-        required = new[] { "issueId", "title", "typeId", "info", "initialStepId", "environmentName" },
+        required = new[] { "issueId", "title", "type", "info", "environmentName" },
         additionalProperties = false
     };
 
@@ -50,8 +49,8 @@ public class StartIssueTool : IAboTool
             return "Failed to parse arguments.";
         }
 
-        if (args == null || string.IsNullOrWhiteSpace(args.IssueId) || string.IsNullOrWhiteSpace(args.TypeId) || string.IsNullOrWhiteSpace(args.EnvironmentName))
-            return "Invalid arguments provided. Ensure issueId, typeId, and environmentName are not empty.";
+        if (args == null || string.IsNullOrWhiteSpace(args.IssueId) || string.IsNullOrWhiteSpace(args.Type) || string.IsNullOrWhiteSpace(args.EnvironmentName))
+            return "Invalid arguments provided. Ensure issueId, type, and environmentName are not empty.";
 
         var environmentsFile = Path.Combine(AppContext.BaseDirectory, "Data", "Environments", "environments.json");
         ConnectorEnvironment? targetEnv = null;
@@ -70,11 +69,11 @@ public class StartIssueTool : IAboTool
 
         try
         {
-            var dummyIssue = new IssueRecord { Type = args.TypeId, StepId = args.InitialStepId };
+            var dummyIssue = new IssueRecord { Type = args.Type, Status = "open" };
             var initialStepInfo = Abo.Core.WorkflowEngine.GetStepInfo(dummyIssue);
             if (initialStepInfo == null)
             {
-                return $"Error: The initial step '{args.InitialStepId}' is not recognized by the WorkflowEngine.";
+                return $"Error: The initial step 'open' is not recognized by the WorkflowEngine.";
             }
             var requiredRole = initialStepInfo.Role?.RoleId;
 
@@ -99,20 +98,20 @@ public class StartIssueTool : IAboTool
             }
 
             // Write info.md equivalent
-            var bodyArgs = $"**Internal Reference ID:** {args.IssueId}\n**Type:** {args.TypeId}\n**Parent:** {args.ParentId ?? "None"}\n**Environment:** {args.EnvironmentName}\n\n## Context\n{args.Info}";
+            var bodyArgs = $"**Internal Reference ID:** {args.IssueId}\n**Type:** {args.Type}\n**Parent:** {args.ParentId ?? "None"}\n**Environment:** {args.EnvironmentName}\n\n## Context\n{args.Info}";
 
             // Map State to Labels
             var labels = new List<string>
             {
-                $"step: {args.InitialStepId}",
+                $"step: open",
                 $"ref: {args.IssueId}"
             };
 
             if (!string.IsNullOrWhiteSpace(args.ParentId)) labels.Add($"parent: {args.ParentId}");
 
-            var issue = await tracker.CreateIssueAsync(args.Title, bodyArgs, args.TypeId, "", labels.ToArray());
+            var issue = await tracker.CreateIssueAsync(args.Title, bodyArgs, args.Type, "", labels.ToArray());
 
-            return $"Successfully started issue '{args.IssueId}' ({args.Title}). Tracking via Issue ID: {issue.Id}. State initialized at step '{args.InitialStepId}'.";
+            return $"Successfully started issue '{args.IssueId}' ({args.Title}). Tracking via Issue ID: {issue.Id}. State initialized at step 'open'.";
         }
         catch (Exception ex)
         {
@@ -124,10 +123,9 @@ public class StartIssueTool : IAboTool
     {
         public string IssueId { get; set; } = string.Empty;
         public string Title { get; set; } = string.Empty;
-        public string TypeId { get; set; } = string.Empty;
+        public string Type { get; set; } = string.Empty;
         public string Info { get; set; } = string.Empty;
         public string? ParentId { get; set; }
-        public string InitialStepId { get; set; } = string.Empty;
         public string EnvironmentName { get; set; } = string.Empty;
     }
 }

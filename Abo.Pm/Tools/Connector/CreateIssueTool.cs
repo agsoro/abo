@@ -27,7 +27,7 @@ public class CreateIssueTool : IAboTool
             {
                 type = "string",
                 description = "The type of the issue.",
-                @enum = new[] { "feature", "bug", "improvement", "task", "chore" }
+                @enum = new[] { "feature", "bug", "improvement", "task", "chore", "doc" }
             },
             size = new { type = "string", description = "Optional relative size estimate, e.g. 'S', 'M', 'L'." },
             project = new { type = "string", description = "Optional project name to attach the issue to." }

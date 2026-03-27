@@ -40,7 +40,7 @@ public class CreateSubIssueTool : IAboTool
             {
                 type = "string",
                 description = "The type of the sub-issue.",
-                @enum = new[] { "feature", "bug", "improvement", "task", "chore" }
+                @enum = new[] { "feature", "bug", "improvement", "task", "chore", "doc" }
             },
             size = new { type = "string", description = "Optional relative size estimate, e.g. 'S', 'M', 'L'." }
         },
@@ -98,7 +98,7 @@ public class CreateSubIssueTool : IAboTool
                 size ?? string.Empty,
                 additionalLabels: additionalLabels.ToArray(),
                 project: parentProject,
-                stepId: "open");
+                status: "open");
 
             // Step 3: Establish the GitHub native sub-issue link (graceful degradation on failure)
             if (!string.IsNullOrWhiteSpace(parent.NodeId) && !string.IsNullOrWhiteSpace(subIssue.NodeId))

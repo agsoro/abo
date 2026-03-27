@@ -77,7 +77,7 @@ public class FileSystemIssueTrackerConnector : IIssueTrackerConnector
         return issue;
     }
 
-    public async Task<IssueRecord> CreateIssueAsync(string title, string body, string type, string size, string[]? additionalLabels = null, string? project = null, string? stepId = null)
+    public async Task<IssueRecord> CreateIssueAsync(string title, string body, string type, string size, string[]? additionalLabels = null, string? project = null, string? status = null)
     {
         var records = await LoadRecordsAsync();
         
@@ -100,7 +100,7 @@ public class FileSystemIssueTrackerConnector : IIssueTrackerConnector
             Body = body,
             State = "open",
             Project = project ?? string.Empty,
-            StepId = stepId ?? string.Empty,
+            Status = status ?? string.Empty,
             Type = type,
             Labels = labels
         };
@@ -110,7 +110,7 @@ public class FileSystemIssueTrackerConnector : IIssueTrackerConnector
         return issue;
     }
 
-    public async Task<IssueRecord> UpdateIssueAsync(string issueId, string? title = null, string? body = null, string? state = null, string[]? labels = null, string? project = null, string? stepId = null, string? type = null)
+    public async Task<IssueRecord> UpdateIssueAsync(string issueId, string? title = null, string? body = null, string? state = null, string[]? labels = null, string? project = null, string? status = null, string? type = null)
     {
         var records = await LoadRecordsAsync();
         var issue = records.FirstOrDefault(r => r.Id == issueId);
@@ -120,7 +120,7 @@ public class FileSystemIssueTrackerConnector : IIssueTrackerConnector
         if (body != null) issue.Body = body;
         if (state != null) issue.State = state;
         if (labels != null) issue.Labels = labels.ToList();
-        if (stepId != null) issue.StepId = stepId;
+        if (status != null) issue.Status = status;
         if (type != null) issue.Type = type;
 
         if (project != null)

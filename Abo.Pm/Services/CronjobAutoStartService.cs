@@ -155,7 +155,7 @@ public class CronjobAutoStartService : BackgroundService
                     sb.AppendLine($"*{group.Key}*:");
                     foreach (var issue in group)
                     {
-                        var step = Abo.Core.WorkflowEngine.ResolveStepIdFallback(issue);
+                        var step = Abo.Core.WorkflowEngine.ResolveStatusFallback(issue);
                         var role = Abo.Core.WorkflowEngine.GetStepInfo(issue)?.Role?.RoleId ?? "Any";
                         var envName = issue.Labels.FirstOrDefault(l => l.StartsWith("env: ", StringComparison.OrdinalIgnoreCase))?.Substring(5).Trim() ?? "?";
                         sb.AppendLine($"- [{issue.Id}] {issue.Title} (Env: {envName}, Step: {step}, Role: {role})");

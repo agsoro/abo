@@ -193,20 +193,20 @@ public class ManagerAgent : IAgent
 
                 if (targetIssue == null) return $"Error: Issue '{issueId}' not found.";
 
-                var stepId = Abo.Core.WorkflowEngine.ResolveStepIdFallback(targetIssue);
+                var status = Abo.Core.WorkflowEngine.ResolveStatusFallback(targetIssue);
 
                 var stepInfo = Abo.Core.WorkflowEngine.GetStepInfo(targetIssue);
-                if (stepInfo?.Role == null) return $"Error: Could not determine Role for step '{stepId}'.";
+                if (stepInfo?.Role == null) return $"Error: Could not determine Role for step '{status}'.";
 
                 var role = stepInfo.Role;
                 var roleId = role.RoleId;
 
                 // Re-validate step hasn't changed since get_open_work was called (best-effort secondary guard)
-                var freshStepId = Abo.Core.WorkflowEngine.ResolveStepIdFallback(targetIssue);
+                var freshStatus = Abo.Core.WorkflowEngine.ResolveStatusFallback(targetIssue);
                 var freshStepInfo = Abo.Core.WorkflowEngine.GetStepInfo(targetIssue);
                 if (freshStepInfo?.Role == null || !string.Equals(freshStepInfo.Role.RoleId, roleId, StringComparison.OrdinalIgnoreCase))
                 {
-                    return $"Issue '{issueId}' step has changed (now: '{freshStepId}', role: '{freshStepInfo?.Role?.RoleId}'). " +
+                    return $"Issue '{issueId}' step has changed (now: '{freshStatus}', role: '{freshStepInfo?.Role?.RoleId}'). " +
                            $"Another agent may have already advanced this issue. Skipping delegation.";
                 }
 

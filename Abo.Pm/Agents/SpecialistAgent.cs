@@ -322,12 +322,12 @@ public class SpecialistAgent : IAgent
                 return HandleRequestCeoHelp($"{{\"message\": {JsonSerializer.Serialize(resultNotes)}}}");
             }
 
-            var currentStepId = Abo.Core.WorkflowEngine.ResolveStepIdFallback(_currentIssue);
+            var currentStatus = Abo.Core.WorkflowEngine.ResolveStatusFallback(_currentIssue);
 
             ProcessStepInfo? nextStepInfo = null;
             WorkflowTransition? matchedTransition = null;
 
-            if (!string.IsNullOrWhiteSpace(currentStepId))
+            if (!string.IsNullOrWhiteSpace(currentStatus))
             {
                 var transitions = Abo.Core.WorkflowEngine.GetTransitions(_currentIssue);
 
@@ -363,7 +363,7 @@ public class SpecialistAgent : IAgent
             }
 
             var updatedLabels = _currentIssue.Labels.Where(l => !l.StartsWith("role: ") && !l.StartsWith("env: ")).ToList();
-            await _currentIssueTracker.UpdateIssueAsync(_currentIssueId, state: _currentIssue.State, labels: updatedLabels.ToArray(), project: _currentIssue.Project, stepId: _currentIssue.StepId);
+            await _currentIssueTracker.UpdateIssueAsync(_currentIssueId, state: _currentIssue.State, labels: updatedLabels.ToArray(), project: _currentIssue.Project, status: _currentIssue.Status);
 
             if (reachedEndEvent)
             {
@@ -406,7 +406,7 @@ public class SpecialistAgent : IAgent
             }
 
             // Post-completion: check if all release-current issues are done → alert CEO
-            if (reachedEndEvent && string.Equals(nextStepInfo.StepId, "done", StringComparison.OrdinalIgnoreCase))
+            if (reachedEndEvent && string.Equals(nextStepInfo.Status, "done", StringComparison.OrdinalIgnoreCase))
             {
                 await TryNotifyReleaseCompletionAsync();
             }

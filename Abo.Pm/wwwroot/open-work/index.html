@@ -424,9 +424,9 @@
             } catch { return ts; }
         }
 
-        function getStepBadgeClass(stepId) {
-            if (!stepId) return 'default';
-            const lower = stepId.toLowerCase();
+        function getStepBadgeClass(status) {
+            if (!status) return 'default';
+            const lower = status.toLowerCase();
             if (lower.includes('implement')) return 'implement';
             if (lower.includes('qa') || lower.includes('test')) return 'qa';
             if (lower.includes('analyze') || lower.includes('analyse')) return 'analyze';
@@ -434,7 +434,7 @@
             return 'default';
         }
 
-        function getStepLabel(stepId) {
+        function getStepLabel(status) {
             const labels = {
                 'Step_Implement': '🔨 Implementierung',
                 'Step_QA': '🔍 QA-Tests',
@@ -443,7 +443,7 @@
                 'Step_Deploy': '🚀 Deployment',
                 'Step_Plan': '📝 Planung'
             };
-            return labels[stepId] || stepId || '?';
+            return labels[status] || status || '?';
         }
 
         function applyFilter() {
@@ -452,18 +452,18 @@
             return allProjects.filter(p =>
                 (p.projectId || '').toLowerCase().includes(query) ||
                 (p.title || '').toLowerCase().includes(query) ||
-                (p.currentStepId || '').toLowerCase().includes(query)
+                (p.currentStatus || '').toLowerCase().includes(query)
             );
         }
 
         function updateSummary(projects) {
             totalProjectsEl.textContent = projects.length;
-            countImplementEl.textContent = projects.filter(p => (p.currentStepId || '').toLowerCase().includes('implement')).length;
+            countImplementEl.textContent = projects.filter(p => (p.currentStatus || '').toLowerCase().includes('implement')).length;
             countQaEl.textContent = projects.filter(p => {
-                const s = (p.currentStepId || '').toLowerCase();
+                const s = (p.currentStatus || '').toLowerCase();
                 return s.includes('qa') || s.includes('review');
             }).length;
-            countAnalyzeEl.textContent = projects.filter(p => (p.currentStepId || '').toLowerCase().includes('analyz')).length;
+            countAnalyzeEl.textContent = projects.filter(p => (p.currentStatus || '').toLowerCase().includes('analyz')).length;
         }
 
         function renderProjects() {
@@ -480,8 +480,8 @@
             }
 
             projectsContainer.innerHTML = filtered.map(project => {
-                const stepClass = getStepBadgeClass(project.currentStepId);
-                const stepLabel = getStepLabel(project.currentStepId);
+                const stepClass = getStepBadgeClass(project.currentStatus);
+                const stepLabel = getStepLabel(project.currentStatus);
 
                 return `
                     <div class="project-card">
@@ -495,7 +495,7 @@
                                 🌐 Environment: <span class="env-tag">${escapeHtml(project.environmentName || '—')}</span>
                             </span>
                             <span class="meta-item">
-                                📂 Typ: <span class="type-tag">${escapeHtml(project.typeId || '—')}</span>
+                                📂 Typ: <span class="type-tag">${escapeHtml(project.type || '—')}</span>
                             </span>
                             ${project.lastUpdated ? `
                             <span class="meta-item">
