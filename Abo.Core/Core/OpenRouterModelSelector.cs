@@ -125,7 +125,7 @@ public class OpenRouterModelSelector
                     PriceCompletion = allModelsInfo[x.Id].Completion,
                     Vendor = x.Id.Split('/')[0]
                 })
-                .Where(m => m.Score > 0 && (m.PricePrompt > 0 || m.PriceCompletion > 0) && m.Vendor != "openai") // Exclude free models and OpenAI
+                .Where(m => m.Score > 0 && (m.PricePrompt > 0 || m.PriceCompletion > 0) && m.Vendor != "openai" && m.Vendor != "z-ai") // Exclude free models and OpenAI
                 .ToList();
 
             if (rankedModels.Count == 0)
