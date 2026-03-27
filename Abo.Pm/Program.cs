@@ -15,6 +15,7 @@ builder.Services.AddHttpClient();
 builder.Services.AddMemoryCache();
 builder.Services.AddSingleton<SessionService>();
 builder.Services.AddSingleton<UserService>();
+builder.Services.AddSingleton<Abo.Core.Services.TrafficLoggerService>();
 builder.Services.AddHttpClient<Orchestrator>(client => client.Timeout = TimeSpan.FromSeconds(600));
 builder.Services.AddHttpClient<AgentSupervisor>(client => client.Timeout = TimeSpan.FromSeconds(600));
 
@@ -273,85 +274,19 @@ app.MapGet("/api/open-work", async (IConfiguration config, Microsoft.Extensions.
 });
 
 // API: LLM Traffic – fetch LLM call/response log entries
-app.MapGet("/api/llm-traffic", async (HttpContext httpContext) =>
+app.MapGet("/api/llm-traffic", async (int? limit, Abo.Core.Services.TrafficLoggerService trafficLoggerService) =>
 {
-    var limitParam = httpContext.Request.Query["limit"].FirstOrDefault();
-    var limit = int.TryParse(limitParam, out var parsedLimit) && parsedLimit > 0 ? parsedLimit : 100;
-
-    var logPath = Path.Combine(AppContext.BaseDirectory, "Data", "llm_traffic.jsonl");
-    if (!File.Exists(logPath)) return Results.Ok(new List<object>());
-
-    var lines = await File.ReadAllLinesAsync(logPath);
-
-    var entries = new List<JsonElement>();
-    foreach (var line in lines)
-    {
-        if (string.IsNullOrWhiteSpace(line)) continue;
-        try
-        {
-            var entry = JsonSerializer.Deserialize<JsonElement>(line);
-            entries.Add(entry);
-        }
-        catch
-        {
-            // Skip malformed lines
-        }
-    }
-
-    // Return newest entries first with a stable secondary sort.
-    // Pair each entry with its original file line-index so we have a stable tiebreaker
-    // when two entries share the same Timestamp (e.g. REQUEST and RESPONSE written within
-    // the same millisecond). ThenBy(idx) preserves file-write order within a tied timestamp
-    // group, ensuring REQUEST (written first, lower idx) always appears before its paired
-    // RESPONSE (written second, higher idx) in the newest-first output.
-    var indexed = entries
-        .Select((entry, idx) => new { entry, idx })
-        .ToList();
-
-    var result = indexed
-        .OrderByDescending(x =>
-        {
-            if (x.entry.TryGetProperty("Timestamp", out var ts))
-                return ts.GetString() ?? "";
-            return "";
-        })
-        .ThenBy(x => x.idx)   // preserve original write-order (REQUEST before RESPONSE) within same timestamp
-        .Take(limit)
-        .Select(x => x.entry)
-        .ToList();
-
-    return Results.Ok(result);
+    var effectiveLimit = limit.HasValue && limit.Value > 0 ? limit.Value : 100;
+    var entries = await trafficLoggerService.GetTrafficAsync(effectiveLimit);
+    return Results.Ok(entries);
 });
 
 // API: LLM Consumption – fetch aggregated token/cost statistics per agent run
-app.MapGet("/api/llm-consumption", async (HttpContext httpContext) =>
+app.MapGet("/api/llm-consumption", async (int? limit, Abo.Core.Services.TrafficLoggerService trafficLoggerService) =>
 {
-    var limitParam = httpContext.Request.Query["limit"].FirstOrDefault();
-    var limit = int.TryParse(limitParam, out var parsedLimit) && parsedLimit > 0 ? parsedLimit : 100;
-
-    var logPath = Path.Combine(AppContext.BaseDirectory, "Data", "llm_consumption.jsonl");
-    if (!File.Exists(logPath)) return Results.Ok(new List<object>());
-
-    var lines = await File.ReadAllLinesAsync(logPath);
-
-    var entries = new List<JsonElement>();
-    foreach (var line in lines)
-    {
-        if (string.IsNullOrWhiteSpace(line)) continue;
-        try
-        {
-            var entry = JsonSerializer.Deserialize<JsonElement>(line);
-            entries.Add(entry);
-        }
-        catch
-        {
-            // Skip malformed lines
-        }
-    }
-
-    // Return newest entries first, limited by the limit parameter
-    var result = entries.AsEnumerable().Reverse().Take(limit).ToList();
-    return Results.Ok(result);
+    var effectiveLimit = limit.HasValue && limit.Value > 0 ? limit.Value : 100;
+    var entries = await trafficLoggerService.GetConsumptionAsync(effectiveLimit);
+    return Results.Ok(entries);
 });
 
 // API: Interact – main chat endpoint
