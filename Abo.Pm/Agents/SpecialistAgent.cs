@@ -404,14 +404,11 @@ public class SpecialistAgent : IAgent
             }
 
             var updatedLabels = _currentIssue.Labels.Where(l => !l.StartsWith("role: ") && !l.StartsWith("env: ")).ToList();
-            if (!reachedEndEvent)
-            {
-                await _currentIssueTracker.UpdateIssueAsync(_currentIssueId, state: "open", labels: updatedLabels.ToArray(), project: _currentIssue.Project, stepId: nextStepInfo.StepId);
-            }
-            else
-            {
-                await _currentIssueTracker.UpdateIssueAsync(_currentIssueId, state: "closed", labels: updatedLabels.ToArray(), project: _currentIssue.Project, stepId: nextStepInfo.StepId);
+            
+            await _currentIssueTracker.UpdateIssueAsync(_currentIssueId, state: _currentIssue.State, labels: updatedLabels.ToArray(), project: _currentIssue.Project, stepId: nextStepInfo.StepId);
 
+            if (reachedEndEvent)
+            {
                 // Post a short status comment with aggregated LLM consumption stats (best-effort, non-blocking)
                 var consumptionFilePath = Path.Combine(
                     AppContext.BaseDirectory, "Data", "IssueConsumption", $"{_currentIssueId}.json");

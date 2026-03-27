@@ -4,13 +4,6 @@ using Abo.Contracts.Models;
 
 namespace Abo.Core;
 
-public class WorkflowTransition
-{
-    public string ConditionName { get; set; } = string.Empty;
-    public string NextStepId { get; set; } = string.Empty;
-    public Action<IssueRecord>? ApplyState { get; set; }
-}
-
 public static class WorkflowEngine
 {
     public static string ResolveStepIdFallback(IssueRecord issue)
@@ -49,6 +42,11 @@ public static class WorkflowEngine
                     - **Valid issue**: route to `release-planning` using keyword 'Triage OK'. Do NOT assign `release-current` or `release-next` — that is the Release Planner's job.
                     - **Invalid/Duplicate**: route to `invalid` using keyword 'Reject or Duplicate'.",
                     AllowedTools = new List<string> { "list_issues", "get_issue", "add_issue_comment", "update_issue", "get_wiki_page", "read_file", "list_dir", "search_wiki" }
+                },
+                Transitions = new List<WorkflowTransition>
+                {
+                    new WorkflowTransition { ConditionName = "Reject or Duplicate", NextStepId = "invalid", ApplyState = issue => ApplyTransitionAndState(issue, "requested", "closed") },
+                    new WorkflowTransition { ConditionName = "Triage OK", NextStepId = "release-planning", ApplyState = issue => ApplyTransitionAndState(issue, "planned", "open") }
                 }
             },
             "release-planning" => new ProcessStepInfo 
@@ -76,6 +74,12 @@ public static class WorkflowEngine
                     - DO NOT write code or modify source files.
                     - Keep `release-current` focused: prefer quality over quantity.",
                     AllowedTools = new List<string> { "list_issues", "get_issue", "update_issue", "add_issue_comment", "search_wiki", "get_wiki_page" }
+                },
+                Transitions = new List<WorkflowTransition>
+                {
+                    new WorkflowTransition { ConditionName = "Assign to current release", NextStepId = "planned", ApplyState = issue => ApplyTransitionAndState(issue, "release-current", "open") },
+                    new WorkflowTransition { ConditionName = "Assign to next release", NextStepId = "planned", ApplyState = issue => ApplyTransitionAndState(issue, "release-next", "open") },
+                    new WorkflowTransition { ConditionName = "Defer to backlog", NextStepId = "planned", ApplyState = issue => ApplyTransitionAndState(issue, "planned", "open") }
                 }
             },
             "planned" => new ProcessStepInfo 
@@ -97,6 +101,11 @@ public static class WorkflowEngine
                     - 'Solution planned' -> Moves to implementation (work).
                     - 'Problem: Need more input/help' -> Moves to waiting customer.",
                     AllowedTools = new List<string> { "read_file", "list_dir", "search_regex", "get_issue", "add_issue_comment", "get_wiki_page", "create_wiki_page", "update_wiki_page", "search_wiki", "create_sub_issue" }
+                },
+                Transitions = new List<WorkflowTransition>
+                {
+                    new WorkflowTransition { ConditionName = "Problem: Need more input/help", NextStepId = "waiting customer", ApplyState = issue => ApplyTransitionAndState(issue, null, "open") },
+                    new WorkflowTransition { ConditionName = "Solution planned", NextStepId = "work", ApplyState = issue => ApplyTransitionAndState(issue, null, "open") }
                 }
             },
             "work" => new ProcessStepInfo 
@@ -122,6 +131,11 @@ public static class WorkflowEngine
                     4. **Handoff:** git push origin feature/issue-{issueId}-{short-description}
                     5. **Report:** Include the exact branch name in your resultNotes so the Release Engineer knows which branch to merge.",
                     AllowedTools = new List<string> { "read_file", "write_file", "delete_file", "list_dir", "mkdir", "git", "dotnet", "python", "shell", "search_regex", "http_get", "get_issue", "add_issue_comment", "get_wiki_page", "update_wiki_page", "search_wiki" }
+                },
+                Transitions = new List<WorkflowTransition>
+                {
+                    new WorkflowTransition { ConditionName = "Problem: Need more input/help", NextStepId = "waiting customer", ApplyState = issue => ApplyTransitionAndState(issue, null, "open") },
+                    new WorkflowTransition { ConditionName = "Implementation completed", NextStepId = "review", ApplyState = issue => ApplyTransitionAndState(issue, null, "open") }
                 }
             },
             "review" => new ProcessStepInfo 
@@ -139,6 +153,11 @@ public static class WorkflowEngine
                     * **Non-Invasive Role:** You can run system commands and review code, but you DO NOT write code or modify files directly. 
                     * **Gatekeeping:** If any issue is found or if documentation is missing/inaccurate, document the findings and REJECT the flow. You do not push/release the code.",
                     AllowedTools = new List<string> { "read_file", "list_dir", "git", "dotnet", "python", "shell", "search_regex", "http_get", "get_issue", "add_issue_comment", "get_wiki_page", "create_wiki_page", "update_wiki_page", "search_wiki" }
+                },
+                Transitions = new List<WorkflowTransition>
+                {
+                    new WorkflowTransition { ConditionName = "Problem: Solution rejected", NextStepId = "planned", ApplyState = issue => ApplyTransitionAndState(issue, null, "open") },
+                    new WorkflowTransition { ConditionName = "Solution accepted", NextStepId = "check", ApplyState = issue => ApplyTransitionAndState(issue, null, "open") }
                 }
             },
             "check" => new ProcessStepInfo 
@@ -162,6 +181,10 @@ public static class WorkflowEngine
                     * **Conflict Resolution:** If a merge conflict occurs, use 'request_ceo_help' to escalate — do NOT attempt to resolve conflicts autonomously.
                     * **Scope:** You only release code that has been cleared by QA.",
                     AllowedTools = new List<string> { "read_file", "list_dir", "git", "get_issue", "add_issue_comment" }
+                },
+                Transitions = new List<WorkflowTransition>
+                {
+                    new WorkflowTransition { ConditionName = "Release finished", NextStepId = "done", ApplyState = issue => ApplyTransitionAndState(issue, null, "closed") }
                 }
             },
             "done" => new ProcessStepInfo { StepId = "done", StepName = "Completed" },
@@ -173,44 +196,12 @@ public static class WorkflowEngine
 
     public static List<WorkflowTransition> GetTransitions(string stepId)
     {
-        return stepId.ToLower() switch
-        {
-            "open" => new List<WorkflowTransition>
-            {
-                new WorkflowTransition { ConditionName = "Reject or Duplicate", NextStepId = "invalid", ApplyState = issue => SetProject(issue, "requested") },
-                new WorkflowTransition { ConditionName = "Triage OK", NextStepId = "release-planning", ApplyState = issue => SetProject(issue, "planned") }
-            },
-            "release-planning" => new List<WorkflowTransition>
-            {
-                new WorkflowTransition { ConditionName = "Assign to current release", NextStepId = "planned", ApplyState = issue => SetProject(issue, "release-current") },
-                new WorkflowTransition { ConditionName = "Assign to next release", NextStepId = "planned", ApplyState = issue => SetProject(issue, "release-next") },
-                new WorkflowTransition { ConditionName = "Defer to backlog", NextStepId = "planned", ApplyState = issue => SetProject(issue, "planned") }
-            },
-            "planned" => new List<WorkflowTransition>
-            {
-                new WorkflowTransition { ConditionName = "Problem: Need more input/help", NextStepId = "waiting customer" },
-                new WorkflowTransition { ConditionName = "Solution planned", NextStepId = "work" }
-            },
-            "work" => new List<WorkflowTransition>
-            {
-                new WorkflowTransition { ConditionName = "Problem: Need more input/help", NextStepId = "waiting customer" },
-                new WorkflowTransition { ConditionName = "Implementation completed", NextStepId = "review" }
-            },
-            "review" => new List<WorkflowTransition>
-            {
-                new WorkflowTransition { ConditionName = "Problem: Solution rejected", NextStepId = "planned" },
-                new WorkflowTransition { ConditionName = "Solution accepted", NextStepId = "check" }
-            },
-            "check" => new List<WorkflowTransition>
-            {
-                new WorkflowTransition { ConditionName = "Release finished", NextStepId = "done" }
-            },
-            _ => new List<WorkflowTransition>()
-        };
+        return GetStepInfo(stepId)?.Transitions ?? new List<WorkflowTransition>();
     }
 
-    private static void SetProject(IssueRecord issue, string? newValue)
+    private static void ApplyTransitionAndState(IssueRecord issue, string? project, string state = "open")
     {
-        issue.Project = newValue ?? string.Empty;
+        if (project != null) issue.Project = project;
+        issue.State = state;
     }
 }
