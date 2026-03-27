@@ -68,6 +68,11 @@ public class Orchestrator
             Tools = agent.GetToolDefinitions()
         };
 
+        if (string.IsNullOrWhiteSpace(request.Model))
+        {
+            return "Error: AI Model is not configured. The OpenRouter model selection might still be initializing, or 'Config:ModelName' is empty in appsettings.json.";
+        }
+
         if (request.Tools?.Count == 0)
         {
             request.Tools = null;
@@ -108,6 +113,11 @@ public class Orchestrator
                     currentModelName = _configuration["Config:CapableModelName"]!;
                 }
                 request.Model = currentModelName;
+
+                if (string.IsNullOrWhiteSpace(request.Model))
+                {
+                    return "Error: AI Model has become unconfigured during the agent loop. Please check 'Config:ModelName' in appsettings.json.";
+                }
 
                 var systemMsg = request.Messages.FirstOrDefault(m => m.Role == "system");
                 if (systemMsg != null)
@@ -429,6 +439,8 @@ public class Orchestrator
 
     private async Task<string> SummarizeMessagesAsync(List<ChatMessage> messages, string modelName, string sessionId)
     {
+        if (string.IsNullOrWhiteSpace(modelName)) return "Summary failed: No model configured.";
+
         var apiEndpoint = _configuration["Config:ApiEndpoint"] ?? throw new InvalidOperationException("API Endpoint not configured.");
         var apiKey = _configuration["Config:ApiKey"] ?? string.Empty;
 
