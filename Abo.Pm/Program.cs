@@ -152,34 +152,12 @@ async Task<Abo.Core.Connectors.IIssueTrackerConnector?> GetTrackerForEnvironment
 app.MapGet("/api/issues", async (IConfiguration config, Microsoft.Extensions.Caching.Memory.IMemoryCache cache) =>
 {
     var issues = await GetAllIssuesAsync(config, cache);
-
-    var childrenByParentId = issues
-        .Where(i => i.Labels.Any(l => l.StartsWith("parent: ", StringComparison.OrdinalIgnoreCase)))
-        .GroupBy(i => i.Labels.FirstOrDefault(l => l.StartsWith("parent: ", StringComparison.OrdinalIgnoreCase))?.Substring(8).Trim())
-        .Where(g => g.Key != null)
-        .ToDictionary(g => g.Key!, g => g.ToList());
-
-    var blockedIssueIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-    foreach (var (parentId, children) in childrenByParentId)
-    {
-        bool hasBlockingChild = children.Any(c =>
-        {
-            var childStep = Abo.Core.WorkflowEngine.ResolveStatusFallback(c).ToLower();
-            return childStep is "open" or "planned" or "work" or "review";
-        });
-        if (hasBlockingChild)
-        {
-            blockedIssueIds.Add(parentId);
-        }
-    }
-
     var mapped = issues.Select(issue => new
     {
         Id = issue.Id,
         Title = issue.Title,
         Type = issue.Labels.FirstOrDefault(l => l.StartsWith("type: ", StringComparison.OrdinalIgnoreCase))?.Substring(6).Trim() ?? "",
         Project = issue.Project,   // Issue #205: expose project field for dashboard grouping
-        IsBlocked = blockedIssueIds.Contains(issue.Id),
         CurrentStep = new
         {
             Status = Abo.Core.WorkflowEngine.ResolveStatusFallback(issue),
@@ -274,33 +252,11 @@ app.MapGet("/api/sessions", (SessionService sessionService) =>
 app.MapGet("/api/open-work", async (IConfiguration config, Microsoft.Extensions.Caching.Memory.IMemoryCache cache) =>
 {
     var issues = await GetAllIssuesAsync(config, cache);
-
-    var childrenByParentId = issues
-        .Where(i => i.Labels.Any(l => l.StartsWith("parent: ", StringComparison.OrdinalIgnoreCase)))
-        .GroupBy(i => i.Labels.FirstOrDefault(l => l.StartsWith("parent: ", StringComparison.OrdinalIgnoreCase))?.Substring(8).Trim())
-        .Where(g => g.Key != null)
-        .ToDictionary(g => g.Key!, g => g.ToList());
-
-    var blockedIssueIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-    foreach (var (parentId, children) in childrenByParentId)
-    {
-        bool hasBlockingChild = children.Any(c =>
-        {
-            var childStep = Abo.Core.WorkflowEngine.ResolveStatusFallback(c).ToLower();
-            return childStep is "open" or "planned" or "work" or "review";
-        });
-        if (hasBlockingChild)
-        {
-            blockedIssueIds.Add(parentId);
-        }
-    }
-
     var mapped = issues.Where(i => i.State != "closed").Select(issue => new
     {
         IssueId = issue.Id,
         Title = issue.Title,
         Type = issue.Labels.FirstOrDefault(l => l.StartsWith("type: ", StringComparison.OrdinalIgnoreCase))?.Substring(6).Trim() ?? "",
-        IsBlocked = blockedIssueIds.Contains(issue.Id),
         CurrentStep = new
         {
             Status = Abo.Core.WorkflowEngine.ResolveStatusFallback(issue),
