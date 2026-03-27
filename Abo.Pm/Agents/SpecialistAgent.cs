@@ -324,7 +324,6 @@ public class SpecialistAgent : IAgent
 
             var currentStatus = Abo.Core.WorkflowEngine.ResolveStatusFallback(_currentIssue);
 
-            ProcessStepInfo? nextStepInfo = null;
             WorkflowTransition? matchedTransition = null;
 
             if (!string.IsNullOrWhiteSpace(currentStatus))
@@ -345,15 +344,8 @@ public class SpecialistAgent : IAgent
                     }
 
                     matchedTransition.ApplyState?.Invoke(_currentIssue);
-                    var stepInfo = Abo.Core.WorkflowEngine.GetStepInfo(_currentIssue);
-                    if (stepInfo != null)
-                    {
-                        nextStepInfo = stepInfo;
-                    }
                 }
             }
-
-            if (nextStepInfo == null) return "Error: Could not automatically determine the next workflow step.";
 
             bool reachedEndEvent = matchedTransition?.IsEndEvent ?? false;
 
@@ -403,12 +395,6 @@ public class SpecialistAgent : IAgent
                     // Clean up the accumulator file
                     try { File.Delete(consumptionFilePath); } catch { }
                 }
-            }
-
-            // Post-completion: check if all release-current issues are done → alert CEO
-            if (reachedEndEvent && string.Equals(nextStepInfo.StepId, "done", StringComparison.OrdinalIgnoreCase))
-            {
-                await TryNotifyReleaseCompletionAsync();
             }
 
             // Capture issueId before clearing state (needed for sentinel return value context)
