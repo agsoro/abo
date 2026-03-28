@@ -321,14 +321,14 @@ public static class WorkflowEngine
 
                     ### TASK COMPLETION
                     Call `conclude_step` with one of these keywords. Include your review findings in the mandatory `notes` parameter.
-                    - 'solution_accepted' -> Review successfully completed, moves to Release.
+                    - 'solution_accepted' -> Documentation successfully completed.
                     - 'solution_rejected' -> Review failed, moves back to Documentation Updates.",
                     AllowedTools = new List<string> { "conclude_step", "read_file", "list_dir", "git", "search_regex", "http_get", "get_issue", "get_wiki_page", "search_wiki" }
                 },
                 Transitions = new Dictionary<string, WorkflowTransition>(StringComparer.OrdinalIgnoreCase)
                 {
                     { "solution_rejected", new WorkflowTransition { NextStepId = StepId.WorkReleaseCurrentDoc, ApplyState = issue => ApplyTransitionAndState(issue, StatusType.Work, ProjectType.ReleaseCurrent, StateType.Open) } },
-                    { "solution_accepted", new WorkflowTransition { NextStepId = StepId.CheckReleaseCurrent, ApplyState = issue => ApplyTransitionAndState(issue, StatusType.Check, ProjectType.ReleaseCurrent, StateType.Open) } }
+                    { "solution_accepted", new WorkflowTransition { NextStepId = StepId.Done, IsEndEvent = true, ApplyState = issue => ApplyTransitionAndState(issue, StatusType.Done, ProjectType.ReleaseCurrent, StateType.Closed) } }
                 }
             },
             StepId.CheckReleaseCurrent => new ProcessStepInfo
