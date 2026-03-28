@@ -1,6 +1,9 @@
 using System.Text.Json;
 using Abo.Contracts.Models;
 using Abo.Core.Connectors;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Configuration;
+using Abo.Integrations.GitHub;
 using Abo.Tools;
 
 namespace Abo.Tools.Connector;
@@ -12,8 +15,8 @@ namespace Abo.Tools.Connector;
 /// </summary>
 public class SuggestAboFeatureTool : IAboTool
 {
-    private readonly IEnumerable<IAboTool> _allTools;
-    private readonly IIssueTrackerConnector _connector;
+    private readonly IServiceProvider _serviceProvider;
+    private readonly IConfiguration _config;
 
     public string Name => "suggest_abo_feature";
     public string Description => "Allows agents to autonomously suggest new tools or capabilities for their work. Creates an issue with an analysis prompt and optionally a sub-issue for implementation.";
@@ -38,10 +41,10 @@ public class SuggestAboFeatureTool : IAboTool
         additionalProperties = false
     };
 
-    public SuggestAboFeatureTool(IEnumerable<IAboTool> allTools, IIssueTrackerConnector connector)
+    public SuggestAboFeatureTool(IServiceProvider serviceProvider, IConfiguration config)
     {
-        _allTools = allTools;
-        _connector = connector;
+        _serviceProvider = serviceProvider;
+        _config = config;
     }
 
     public async Task<string> ExecuteAsync(string argumentsJson)
@@ -62,7 +65,8 @@ public class SuggestAboFeatureTool : IAboTool
             // Check if a tool with this name already exists
             if (!string.IsNullOrWhiteSpace(name))
             {
-                var existingTool = _allTools.FirstOrDefault(t =>
+                var allTools = _serviceProvider.GetServices<IAboTool>();
+                var existingTool = allTools.FirstOrDefault(t =>
                     t.Name.Equals(name, StringComparison.OrdinalIgnoreCase) ||
                     t.Name.Equals($"add_{name}", StringComparison.OrdinalIgnoreCase) ||
                     t.Name.Equals($"{name}_tool", StringComparison.OrdinalIgnoreCase));
@@ -91,8 +95,32 @@ public class SuggestAboFeatureTool : IAboTool
                        "- **Priority**: Should this be prioritized against current work?\n" +
                        "- **Alternatives**: Are there existing tools that could achieve similar goals?";
 
+            var environmentsFile = Path.Combine(AppContext.BaseDirectory, "Data", "environments.json");
+            var envs = new List<ConnectorEnvironment>();
+            if (File.Exists(environmentsFile))
+            {
+                var envJson = await File.ReadAllTextAsync(environmentsFile);
+                var jsOpt = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+                envs = JsonSerializer.Deserialize<List<ConnectorEnvironment>>(envJson, jsOpt) ?? new();
+            }
+
+            var targetEnv = envs.FirstOrDefault(e => e.Name.Equals("abo", StringComparison.OrdinalIgnoreCase) && e.IssueTracker != null)
+                         ?? envs.FirstOrDefault(e => e.IssueTracker != null);
+
+            if (targetEnv == null) return "Error: No issue tracker configured for 'abo' or any other environment.";
+
+            IIssueTrackerConnector connector;
+            if (targetEnv.IssueTracker!.Type.Equals("github", StringComparison.OrdinalIgnoreCase))
+            {
+                connector = new GitHubIssueTrackerConnector(targetEnv.IssueTracker, _config["Integrations:GitHub:Token"], targetEnv.Name);
+            }
+            else
+            {
+                connector = new FileSystemIssueTrackerConnector(targetEnv.Name);
+            }
+
             // Create the main analysis issue
-            var issue = await _connector.CreateIssueAsync(
+            var issue = await connector.CreateIssueAsync(
                 title: title,
                 body: body,
                 type: IssueType.Feature,
