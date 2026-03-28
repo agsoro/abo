@@ -158,7 +158,7 @@ public static class WorkflowEngine
                     ### RULES & GUIDELINES
                     * **High-Level Planning:** Provide a high-level outline of the documentation that needs to be written or updated. Define the target audience and tone.
                     * **Delegation:** Do NOT write the step-by-step content or final markdown yourself; leave execution to the Technical Writer.
-                    * **Task Breakdown:** If the request is too large for one issue (size = L), use `create_sub_issue` to break the work down into smaller, manageable tickets for Technical Writers.
+                    * **Task Breakdown:** If the request is too large for one issue (size = L), use `create_sub_issue` to break the work down into smaller, manageable tickets for Technical Writers. ONLY CREATE SUB ISSUES IF YOU PLAN TO CHANGE MORE THAN 3 FILES.
 
                     ### TASK COMPLETION
                     Call `conclude_step` with one of these keywords. Provide your outline and guidance in the mandatory `notes` parameter.
@@ -188,7 +188,7 @@ public static class WorkflowEngine
                     * **Strategic Focus:** Establish the fundamental strategy, roadmap, and patterns. Ignore routine implementation details or boilerplate.
                     * **Documentation/Wiki:** Document only the major architectural and technical pillars that affect the project's long-term integrity.
                     * **Delegation:** Do NOT write application implementation code. Leave execution to the Developer.
-                    * **Task Breakdown:** If the request is too large for one issue (size = L), use `create_sub_issue` to break the work down into smaller, manageable tickets for Developers.
+                    * **Task Breakdown:** If the request is too large for one issue (size = L), use `create_sub_issue` to break the work down into smaller, manageable tickets for Developers. ONLY CREATE SUB ISSUES IF THE CHANGES CANNOT BE HANDLED BY ONE DEVELOPER IN ONE FLOW.
 
                     ### TASK COMPLETION
                     Call `conclude_step` with one of these keywords. Include your architectural guidance in the mandatory `notes` parameter.

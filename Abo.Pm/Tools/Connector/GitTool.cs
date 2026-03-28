@@ -36,7 +36,18 @@ public class GitTool : IAboTool
                 return "Error: arguments parameter is required.";
             }
 
-            // SECURITY: Reject stdin access (commands that wait for stdin can block/kill the system)
+            if (cmdArgs.Contains("../") || cmdArgs.Contains("..\\"))
+            {
+                return "Error: directory traversal is not allowed";
+            }
+            if (cmdArgs.EndsWith(".wiki"))
+            {
+                return "Error: use wiki tools instead";
+            }
+            if (cmdArgs.StartsWith("clone ") || cmdArgs.StartsWith("clone\t"))
+            {
+                return "Error: clone is not allowed";
+            }
             if (cmdArgs.Contains("commit") && !cmdArgs.Contains("-m ") && !cmdArgs.Contains("--no-edit"))
             {
                 return "Error: stdin is not allowed";
@@ -49,8 +60,6 @@ public class GitTool : IAboTool
             {
                 return "Error: stdin is not allowed";
             }
-
-            // SECURITY: Reject direct file writes via git plumbing commands
             if (cmdArgs.Contains("hash-object -w"))
             {
                 return "Error: direct file writes are not allowed; use dedicated file operation methods";
