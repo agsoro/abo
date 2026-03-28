@@ -240,15 +240,6 @@
                 const counterInterval = setInterval(() => {
                     const elapsed_s = Math.floor((Date.now() - startTime) / 1000);
                     elapsed.textContent = `(${elapsed_s}s)`;
-                    if (elapsed_s > 10) {
-                        clearInterval(counterInterval);
-                        // cleanupActionEntry(issueId); // Don't cleanup, wait for poll reveal
-                        const btn = document.querySelector(`button[onclick*="triggerAction('${escapeHtml(issueId)}"]`);
-                        if (btn) {
-                            btn.disabled = false;
-                            btn.textContent = btn.getAttribute('data-original-text') || 'Action';
-                        }
-                    }
                 }, 1000);
                 action.elapsedInterval = counterInterval;
             }
@@ -338,7 +329,18 @@
                         const action = actionInProgress[issueId];
                         if (!action) return;
                         const session = activeSessions.find(s => s.sessionId === action.sessionId);
-                        if (session) updateStatusDisplay(issueId, session);
+                        if (session) {
+                            // Session still active - update display
+                            updateStatusDisplay(issueId, session);
+                        } else {
+                            // Session has completed - cleanup and re-enable button
+                            const btn = document.querySelector(`button[onclick*="triggerAction('${escapeHtml(issueId)}']`);
+                            if (btn) {
+                                btn.disabled = false;
+                                btn.textContent = btn.getAttribute('data-original-text') || 'Action';
+                            }
+                            cleanupActionEntry(issueId);
+                        }
                     });
                 } catch (err) {
                     console.error('Error in aggressive polling:', err);
