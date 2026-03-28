@@ -212,4 +212,174 @@ public class FileSystemWikiConnector : IWikiConnector
             return Task.FromResult($"Error moving wiki page: {ex.Message}");
         }
     }
+
+    /// <inheritdoc />
+    public async Task<string> PatchPageAsync(string path, string patch)
+    {
+        // Security: Get full path (prevents directory traversal)
+        var fullPath = GetFullPath(EnsureMdExtension(path));
+
+        // 1. Read existing page content or start with empty content
+        string originalContent = string.Empty;
+        if (File.Exists(fullPath))
+        {
+            try
+            {
+                originalContent = await File.ReadAllTextAsync(fullPath);
+            }
+            catch (Exception ex)
+            {
+                return $"Error reading wiki page '{path}': {ex.Message}";
+            }
+        }
+
+        // Split into lines for processing
+        var originalLines = originalContent.Split('\n');
+
+        // 2. Parse the unified diff/patch
+        var lines = patch.Split('\n');
+        int lineIndex = 0;
+
+        // Parse header: --- a/file.txt and +++ b/file.txt
+        if (lineIndex >= lines.Length || !lines[lineIndex].StartsWith("--- "))
+        {
+            return "Error: Invalid patch format - missing '---' header.";
+        }
+        lineIndex++;
+
+        if (lineIndex >= lines.Length || !lines[lineIndex].StartsWith("+++ "))
+        {
+            return "Error: Invalid patch format - missing '+++' header.";
+        }
+        lineIndex++;
+
+        // Parse hunks
+        var resultLines = new List<string>();
+        int originalLineIndex = 0;
+
+        while (lineIndex < lines.Length)
+        {
+            var currentLine = lines[lineIndex];
+
+            // Skip any non-hunk header lines
+            if (!currentLine.StartsWith("@@ "))
+            {
+                lineIndex++;
+                continue;
+            }
+
+            // Parse hunk header: @@ -oldStart,oldCount +newStart,newCount @@
+            var hunkMatch = Regex.Match(currentLine, @"@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@");
+            if (!hunkMatch.Success)
+            {
+                return "Error: Invalid patch format - missing hunk header '@@'.";
+            }
+
+            int hunkOldStart = int.Parse(hunkMatch.Groups[1].Value);
+            int hunkOldCount = hunkMatch.Groups[2].Success ? int.Parse(hunkMatch.Groups[2].Value) : 1;
+            lineIndex++;
+
+            // Copy context lines before the hunk
+            while (originalLineIndex < hunkOldStart - 1)
+            {
+                if (originalLineIndex >= originalLines.Length)
+                {
+                    return $"Error: Patch target line {originalLineIndex + 1} is out of range.";
+                }
+                resultLines.Add(originalLines[originalLineIndex]);
+                originalLineIndex++;
+            }
+
+            // Process hunk body
+            int hunkLineIndex = 0;
+
+            while (hunkLineIndex < hunkOldCount + 50) // Reasonable limit for hunk body
+            {
+                if (lineIndex >= lines.Length) break;
+
+                currentLine = lines[lineIndex];
+
+                // Hunk trailer
+                if (currentLine == "\\")
+                {
+                    lineIndex++;
+                    hunkLineIndex++;
+                    continue;
+                }
+
+                // Skip empty lines at end of hunk
+                if (string.IsNullOrEmpty(currentLine) && lineIndex == lines.Length - 1)
+                {
+                    break;
+                }
+
+                char lineType = currentLine.Length > 0 ? currentLine[0] : ' ';
+
+                if (lineType == '-')
+                {
+                    // Deletion - skip original line
+                    string expectedContent = currentLine.Length > 1 ? currentLine.Substring(1) : "";
+
+                    if (originalLineIndex >= originalLines.Length)
+                    {
+                        return $"Error: Patch hunk line {hunkLineIndex + 1} does not match file content.";
+                    }
+
+                    var actualContent = originalLines[originalLineIndex];
+                    if (!actualContent.TrimEnd('\r').EndsWith(expectedContent.TrimEnd('\r')))
+                    {
+                        return $"Error: Patch hunk line {hunkLineIndex + 1} does not match file content.";
+                    }
+
+                    originalLineIndex++;
+                    hunkLineIndex++;
+                }
+                else if (lineType == '+')
+                {
+                    // Addition - add new line
+                    string newContent = currentLine.Length > 1 ? currentLine.Substring(1) : "";
+                    resultLines.Add(newContent);
+                    lineIndex++;
+                    hunkLineIndex++;
+                }
+                else if (lineType == ' ')
+                {
+                    // Context line - copy original line
+                    if (originalLineIndex >= originalLines.Length)
+                    {
+                        return $"Error: Patch target line {originalLineIndex + 1} is out of range.";
+                    }
+
+                    resultLines.Add(originalLines[originalLineIndex]);
+                    originalLineIndex++;
+                    lineIndex++;
+                    hunkLineIndex++;
+                }
+                else
+                {
+                    lineIndex++;
+                    hunkLineIndex++;
+                }
+            }
+        }
+
+        // Copy any remaining lines from original page
+        while (originalLineIndex < originalLines.Length)
+        {
+            resultLines.Add(originalLines[originalLineIndex]);
+            originalLineIndex++;
+        }
+
+        // 3. Write the modified content back
+        try
+        {
+            var newContent = string.Join("\n", resultLines);
+            await File.WriteAllTextAsync(fullPath, newContent);
+            return $"Successfully applied patch to wiki page: {path}";
+        }
+        catch (Exception ex)
+        {
+            return $"Error writing wiki page '{path}': {ex.Message}";
+        }
+    }
 }

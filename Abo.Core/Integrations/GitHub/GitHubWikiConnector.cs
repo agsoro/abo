@@ -280,4 +280,167 @@ public class GitHubWikiConnector : IWikiConnector
             return $"Error moving wiki page: {ex.Message}";
         }
     }
+
+    /// <inheritdoc />
+    public async Task<string> PatchPageAsync(string path, string patch)
+    {
+        try
+        {
+            await SyncWikiAsync();
+
+            var fullPath = GetFullPath(EnsureMdExtension(path));
+
+            // 1. Read existing page content or start with empty content
+            string originalContent = string.Empty;
+            if (File.Exists(fullPath))
+            {
+                originalContent = await File.ReadAllTextAsync(fullPath);
+            }
+
+            // 2. Parse and apply the unified diff/patch
+            var result = ApplyPatch(originalContent, patch);
+            if (result.StartsWith("Error:"))
+            {
+                return result;
+            }
+
+            // 3. Write the modified content back
+            await File.WriteAllTextAsync(fullPath, result);
+            await CommitAndPushAsync($"Patch wiki page: {path}");
+
+            return $"Successfully applied patch to wiki page: {path}";
+        }
+        catch (Exception ex)
+        {
+            return $"Error patching wiki page: {ex.Message}";
+        }
+    }
+
+    private string ApplyPatch(string originalContent, string patch)
+    {
+        var originalLines = originalContent.Split('\n');
+        var lines = patch.Split('\n');
+        int lineIndex = 0;
+
+        // Parse header
+        if (lineIndex >= lines.Length || !lines[lineIndex].StartsWith("--- "))
+        {
+            return "Error: Invalid patch format - missing '---' header.";
+        }
+        lineIndex++;
+
+        if (lineIndex >= lines.Length || !lines[lineIndex].StartsWith("+++ "))
+        {
+            return "Error: Invalid patch format - missing '+++' header.";
+        }
+        lineIndex++;
+
+        var resultLines = new List<string>();
+        int originalLineIndex = 0;
+
+        while (lineIndex < lines.Length)
+        {
+            var currentLine = lines[lineIndex];
+
+            if (!currentLine.StartsWith("@@ "))
+            {
+                lineIndex++;
+                continue;
+            }
+
+            var hunkMatch = Regex.Match(currentLine, @"@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@");
+            if (!hunkMatch.Success)
+            {
+                return "Error: Invalid patch format - missing hunk header '@@'.";
+            }
+
+            int hunkOldStart = int.Parse(hunkMatch.Groups[1].Value);
+            int hunkOldCount = hunkMatch.Groups[2].Success ? int.Parse(hunkMatch.Groups[2].Value) : 1;
+            lineIndex++;
+
+            while (originalLineIndex < hunkOldStart - 1)
+            {
+                if (originalLineIndex >= originalLines.Length)
+                {
+                    return $"Error: Patch target line {originalLineIndex + 1} is out of range.";
+                }
+                resultLines.Add(originalLines[originalLineIndex]);
+                originalLineIndex++;
+            }
+
+            int hunkLineIndex = 0;
+
+            while (hunkLineIndex < hunkOldCount + 50)
+            {
+                if (lineIndex >= lines.Length) break;
+
+                currentLine = lines[lineIndex];
+
+                if (currentLine == "\\")
+                {
+                    lineIndex++;
+                    hunkLineIndex++;
+                    continue;
+                }
+
+                if (string.IsNullOrEmpty(currentLine) && lineIndex == lines.Length - 1)
+                {
+                    break;
+                }
+
+                char lineType = currentLine.Length > 0 ? currentLine[0] : ' ';
+
+                if (lineType == '-')
+                {
+                    string expectedContent = currentLine.Length > 1 ? currentLine.Substring(1) : "";
+
+                    if (originalLineIndex >= originalLines.Length)
+                    {
+                        return $"Error: Patch hunk line {hunkLineIndex + 1} does not match file content.";
+                    }
+
+                    var actualContent = originalLines[originalLineIndex];
+                    if (!actualContent.TrimEnd('\r').EndsWith(expectedContent.TrimEnd('\r')))
+                    {
+                        return $"Error: Patch hunk line {hunkLineIndex + 1} does not match file content.";
+                    }
+
+                    originalLineIndex++;
+                    hunkLineIndex++;
+                }
+                else if (lineType == '+')
+                {
+                    string newContent = currentLine.Length > 1 ? currentLine.Substring(1) : "";
+                    resultLines.Add(newContent);
+                    lineIndex++;
+                    hunkLineIndex++;
+                }
+                else if (lineType == ' ')
+                {
+                    if (originalLineIndex >= originalLines.Length)
+                    {
+                        return $"Error: Patch target line {originalLineIndex + 1} is out of range.";
+                    }
+
+                    resultLines.Add(originalLines[originalLineIndex]);
+                    originalLineIndex++;
+                    lineIndex++;
+                    hunkLineIndex++;
+                }
+                else
+                {
+                    lineIndex++;
+                    hunkLineIndex++;
+                }
+            }
+        }
+
+        while (originalLineIndex < originalLines.Length)
+        {
+            resultLines.Add(originalLines[originalLineIndex]);
+            originalLineIndex++;
+        }
+
+        return string.Join("\n", resultLines);
+    }
 }
