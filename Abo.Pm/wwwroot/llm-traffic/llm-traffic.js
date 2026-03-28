@@ -26,11 +26,18 @@
                 .replace(/'/g, '&#39;');
         }
 
+        // Stable key without index - used for expanded state tracking.
+        // This key uniquely identifies an entry based on its content (Timestamp + SessionId + Type)
+        // and remains constant across data updates, preserving expanded state.
+        function getEntryStableKey(entry) {
+            return (entry.Timestamp || '') + '_' + (entry.SessionId || '') + '_' + (entry.Type || '');
+        }
+
         // index is the entry's positional index in the filtered array.
         // Appending it guarantees key uniqueness even when Timestamp + SessionId + Type
         // are identical, preventing silent card deduplication in the cardRegistry Map.
         function getEntryKey(entry, index) {
-            return (entry.Timestamp || '') + '_' + (entry.SessionId || '') + '_' + (entry.Type || '') + '_' + index;
+            return getEntryStableKey(entry) + '_' + index;
         }
 
         function formatTimestamp(ts) {
@@ -461,10 +468,10 @@
             if (!container) return;
             const isVisible = container.style.display === 'block';
             container.style.display = isVisible ? 'none' : 'block';
-            btn.textContent = isVisible ? '\uD83D\uDCCB Show Raw JSON' : '\uD83D\uDCCB Hide Raw JSON';
+            btn.textContent = isVisible ? '\uD83D\uDCCB Show Raw JSON' : '\u25B2 Hide Raw JSON';
         };
 
-        // -----------------------------------------------------------------------
+        // ---------------------------------------------------------------------------
         // Smart incremental DOM update
         //
         // Instead of tearing down and rebuilding the entire list on every poll,
@@ -475,7 +482,7 @@
         //
         // This means the user's scroll position, expanded/collapsed state, and
         // any focus inside a card are all preserved automatically across updates.
-        // -----------------------------------------------------------------------
+        // ---------------------------------------------------------------------------
 
         // Map from entry key -> { card (DOM node), entry (data), bodyRendered }
         const cardRegistry = new Map();
@@ -484,7 +491,10 @@
         // from renderEntries() to guarantee a unique key per card slot.
         function buildCard(entry, index) {
             const key         = getEntryKey(entry, index);
-            const isExpanded  = expandedIds.has(key);
+            // Use stable key (without index) for expanded state tracking
+            // This ensures expanded state is preserved across data updates
+            const stableKey   = getEntryStableKey(entry);
+            const isExpanded  = expandedIds.has(stableKey);
             const rawType     = (entry.Type || 'UNKNOWN').toUpperCase();
             const displayType = getDisplayType(entry);
             const isSummary   = rawType.startsWith('SUMMARY');
@@ -524,10 +534,12 @@
             header.addEventListener('click', () => {
                 card.classList.toggle('expanded');
                 if (card.classList.contains('expanded')) {
-                    expandedIds.add(key);
+                    // Use stable key for expanded state tracking
+                    expandedIds.add(stableKey);
                     ensureBodyRendered();
                 } else {
-                    expandedIds.delete(key);
+                    // Use stable key for expanded state tracking
+                    expandedIds.delete(stableKey);
                 }
             });
 
