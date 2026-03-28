@@ -1,12 +1,14 @@
 using Abo.Agents;
 using Abo.Core;
 using Abo.Core.Connectors;
+using Abo.Core.Models;
 using Abo.Integrations.Mattermost;
 using Abo.Integrations.XpectoLive;
-using Abo.Tools;
 using Abo.Services;
+using Abo.Tools;
 using Microsoft.AspNetCore.Mvc;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using Microsoft.Extensions.Caching.Memory;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -19,6 +21,20 @@ builder.Services.AddSingleton<UserService>();
 builder.Services.AddSingleton<Abo.Core.Services.TrafficLoggerService>();
 builder.Services.AddHttpClient<Orchestrator>(client => client.Timeout = TimeSpan.FromSeconds(600));
 builder.Services.AddHttpClient<AgentSupervisor>(client => client.Timeout = TimeSpan.FromSeconds(600));
+
+// Register Auth Service
+var dataDirectory = Path.Combine(AppContext.BaseDirectory, "Data");
+builder.Services.Configure<Abo.Core.Services.AuthOptions>(builder.Configuration.GetSection("Auth"));
+builder.Services.AddSingleton<Abo.Core.Services.AuthService>(sp =>
+{
+    var options = sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<Abo.Core.Services.AuthOptions>>();
+
+    // Ensure data directory exists
+    if (!Directory.Exists(dataDirectory))
+        Directory.CreateDirectory(dataDirectory);
+
+    return new Abo.Core.Services.AuthService(dataDirectory, options, sp.GetRequiredService<ILogger<Abo.Core.Services.AuthService>>());
+});
 
 // Register Integrations
 builder.Services.Configure<XpectoLiveOptions>(builder.Configuration.GetSection("Integrations:XpectoLive"));
@@ -47,6 +63,7 @@ builder.Services.AddSingleton<StartupStatusService>();
 builder.Services.AddSingleton<Abo.Core.OpenRouterModelSelector>();
 builder.Services.AddHostedService<EnvironmentValidationService>();
 builder.Services.AddHostedService<CronjobAutoStartService>();
+builder.Services.AddHostedService<AuthCleanupService>();
 
 var app = builder.Build();
 
@@ -96,6 +113,251 @@ app.MapGet("/api/environments", async () =>
     return Results.Ok(mapped);
 });
 
+// ── Authentication API ─────────────────────────────────────────────────────────
+
+// Extract Bearer token from Authorization header
+string? ExtractBearerToken(HttpContext context)
+{
+    var authHeader = context.Request.Headers.Authorization.FirstOrDefault();
+    if (string.IsNullOrEmpty(authHeader) || !authHeader.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
+        return null;
+    return authHeader.Substring(7);
+}
+
+// Require authentication middleware helper
+async Task<(bool IsAuthenticated, string? Username)> RequireAuthAsync(HttpContext context, Abo.Core.Services.AuthService authService)
+{
+    var token = ExtractBearerToken(context);
+    if (string.IsNullOrEmpty(token))
+        return (false, null);
+
+    var (valid, username) = await authService.ValidateSessionAsync(token);
+    return (valid, username);
+}
+
+// POST /api/auth/login – Authenticate user and return session token
+app.MapPost("/api/auth/login", async (
+    [FromBody] LoginRequest request,
+    Abo.Core.Services.AuthService authService,
+    HttpContext context) =>
+{
+    var ipAddress = context.Connection.RemoteIpAddress?.ToString();
+    var userAgent = context.Request.Headers.UserAgent.FirstOrDefault();
+
+    var (success, token, error) = await authService.LoginAsync(
+        request.Username,
+        request.Password,
+        ipAddress,
+        userAgent);
+
+    if (!success)
+    {
+        return Results.Unauthorized();
+    }
+
+    return Results.Ok(new { Token = token, Username = request.Username });
+});
+
+// POST /api/auth/logout – Invalidate session token
+app.MapPost("/api/auth/logout", async (
+    HttpContext context,
+    Abo.Core.Services.AuthService authService) =>
+{
+    var token = ExtractBearerToken(context);
+    if (string.IsNullOrEmpty(token))
+        return Results.BadRequest(new { error = "No token provided" });
+
+    await authService.LogoutAsync(token);
+    return Results.Ok(new { message = "Logged out successfully" });
+});
+
+// GET /api/auth/me – Get current authenticated user info
+app.MapGet("/api/auth/me", async (
+    HttpContext context,
+    Abo.Core.Services.AuthService authService) =>
+{
+    var (isAuthenticated, username) = await RequireAuthAsync(context, authService);
+    if (!isAuthenticated || string.IsNullOrEmpty(username))
+    {
+        return Results.Unauthorized();
+    }
+
+    var user = await authService.GetUserAsync(username);
+    if (user == null)
+    {
+        return Results.NotFound();
+    }
+
+    return Results.Ok(new
+    {
+        Username = user.Username,
+        Roles = user.Roles,
+        PasswordChanged = user.PasswordChanged,
+        CreatedAt = user.CreatedAt,
+        LastPasswordChange = user.LastPasswordChange
+    });
+});
+
+// POST /api/auth/change-password – Change current user's password
+app.MapPost("/api/auth/change-password", async (
+    HttpContext context,
+    [FromBody] ChangePasswordRequest request,
+    Abo.Core.Services.AuthService authService) =>
+{
+    var (isAuthenticated, username) = await RequireAuthAsync(context, authService);
+    if (!isAuthenticated || string.IsNullOrEmpty(username))
+    {
+        return Results.Unauthorized();
+    }
+
+    var (success, error) = await authService.ChangePasswordAsync(
+        username,
+        request.CurrentPassword,
+        request.NewPassword);
+
+    if (!success)
+    {
+        return Results.BadRequest(new { error });
+    }
+
+    return Results.Ok(new { message = "Password changed successfully. Please login again." });
+});
+
+// ── Admin Auth API ─────────────────────────────────────────────────────────────
+
+// POST /api/admin/auth/init-password – Create user and send initial password via Mattermost (admin only)
+app.MapPost("/api/admin/auth/init-password", async (
+    HttpContext context,
+    [FromBody] InitPasswordRequest request,
+    Abo.Core.Services.AuthService authService,
+    MattermostClient mattermostClient) =>
+{
+    // For now, require Bearer token authentication to access admin endpoints
+    var (isAuthenticated, username) = await RequireAuthAsync(context, authService);
+    if (!isAuthenticated || string.IsNullOrEmpty(username))
+    {
+        return Results.Unauthorized();
+    }
+
+    // Check if user has admin role
+    var user = await authService.GetUserAsync(username);
+    if (user == null || !user.Roles.Contains("admin"))
+    {
+        return Results.Forbid();
+    }
+
+    var roles = request.Roles?.Count > 0 ? request.Roles : new List<string> { "user" };
+    
+    var (success, password, error) = await authService.CreateUserAsync(
+        request.Username,
+        roles,
+        mattermostClient,
+        request.MattermostUsername);
+
+    if (!success)
+    {
+        return Results.BadRequest(new { error });
+    }
+
+    return Results.Created($"/api/admin/auth/users/{request.Username}", new
+    {
+        Username = request.Username,
+        InitialPassword = password,
+        Message = password != null 
+            ? "User created. Initial password sent via Mattermost."
+            : "User created. Check logs for initial password (Mattermost not configured)."
+    });
+});
+
+// GET /api/admin/auth/users – List all users (admin only)
+app.MapGet("/api/admin/auth/users", async (
+    HttpContext context,
+    Abo.Core.Services.AuthService authService) =>
+{
+    var (isAuthenticated, username) = await RequireAuthAsync(context, authService);
+    if (!isAuthenticated || string.IsNullOrEmpty(username))
+    {
+        return Results.Unauthorized();
+    }
+
+    var user = await authService.GetUserAsync(username);
+    if (user == null || !user.Roles.Contains("admin"))
+    {
+        return Results.Forbid();
+    }
+
+    var users = await authService.ListUsersAsync();
+    return Results.Ok(users);
+});
+
+// DELETE /api/admin/auth/users/{username} – Delete a user (admin only)
+app.MapDelete("/api/admin/auth/users/{username}", async (
+    HttpContext context,
+    string username,
+    Abo.Core.Services.AuthService authService) =>
+{
+    var (isAuthenticated, currentUser) = await RequireAuthAsync(context, authService);
+    if (!isAuthenticated || string.IsNullOrEmpty(currentUser))
+    {
+        return Results.Unauthorized();
+    }
+
+    var user = await authService.GetUserAsync(currentUser);
+    if (user == null || !user.Roles.Contains("admin"))
+    {
+        return Results.Forbid();
+    }
+
+    var (success, error) = await authService.DeleteUserAsync(username);
+    if (!success)
+    {
+        return Results.BadRequest(new { error });
+    }
+
+    return Results.NoContent();
+});
+
+// POST /api/admin/auth/reset-password/{username} – Reset a user's password (admin only)
+app.MapPost("/api/admin/auth/reset-password/{username}", async (
+    HttpContext context,
+    string username,
+    [FromBody] ResetPasswordRequest? request,
+    Abo.Core.Services.AuthService authService,
+    MattermostClient mattermostClient) =>
+{
+    var (isAuthenticated, currentUser) = await RequireAuthAsync(context, authService);
+    if (!isAuthenticated || string.IsNullOrEmpty(currentUser))
+    {
+        return Results.Unauthorized();
+    }
+
+    var user = await authService.GetUserAsync(currentUser);
+    if (user == null || !user.Roles.Contains("admin"))
+    {
+        return Results.Forbid();
+    }
+
+    var targetUsername = request?.MattermostUsername;
+    var (success, password, error) = await authService.ResetPasswordAsync(
+        username,
+        mattermostClient,
+        targetUsername);
+
+    if (!success)
+    {
+        return Results.BadRequest(new { error });
+    }
+
+    return Results.Ok(new
+    {
+        Username = username,
+        NewPassword = password,
+        Message = password != null
+            ? "Password reset. New password sent via Mattermost."
+            : "Password reset. Check logs for new password (Mattermost not configured)."
+    });
+});
+
 // ── Admin API: Environment Management ─────────────────────────────────────
 
 // GET /api/admin/environments – Returns ALL environments for management UI
@@ -112,7 +374,7 @@ app.MapPost("/api/admin/environments", async ([FromBody] Abo.Core.Connectors.Con
         return Results.BadRequest(new { error = "Name is required" });
 
     // Validate name format (alphanumeric with hyphens)
-    if (!System.Text.RegularExpressions.Regex.IsMatch(newEnv.Name, @"^[a-zA-Z0-9\-]+$"))
+    if (!Regex.IsMatch(newEnv.Name, @"^[a-zA-Z0-9\-]+$"))
         return Results.BadRequest(new { error = "Name must be alphanumeric with hyphens only" });
 
     var environmentsFile = Path.Combine(AppContext.BaseDirectory, "Data", "environments.json");
@@ -154,7 +416,7 @@ app.MapPut("/api/admin/environments/{name}", async (string name, [FromBody] Abo.
     // If renaming, validate new name format
     if (!name.Equals(updatedEnv.Name, StringComparison.OrdinalIgnoreCase))
     {
-        if (!System.Text.RegularExpressions.Regex.IsMatch(updatedEnv.Name, @"^[a-zA-Z0-9\-]+$"))
+        if (!Regex.IsMatch(updatedEnv.Name, @"^[a-zA-Z0-9\-]+$"))
             return Results.BadRequest(new { error = "Name must be alphanumeric with hyphens only" });
     }
 
@@ -651,6 +913,25 @@ app.Lifetime.ApplicationStarted.Register(() =>
             logger.LogError(ex, "Failed to send startup greeting to CEO.");
         }
     });
+
+    // Initialize Auth Service - create CEO user if not exists
+    Task.Run(async () =>
+    {
+        try
+        {
+            using var scope = app.Services.CreateScope();
+            var authService = scope.ServiceProvider.GetRequiredService<Abo.Core.Services.AuthService>();
+            var mattermostClient = scope.ServiceProvider.GetRequiredService<MattermostClient>();
+            var options = scope.ServiceProvider.GetRequiredService<Microsoft.Extensions.Options.IOptions<MattermostOptions>>().Value;
+
+            await authService.InitializeAsync(mattermostClient, options.CeoUserName);
+        }
+        catch (Exception ex)
+        {
+            var logger = app.Services.GetRequiredService<ILogger<Program>>();
+            logger.LogError(ex, "Failed to initialize Auth Service (CEO user creation)");
+        }
+    });
 });
 
 // Initialize OpenRouter models dynamically before starting the server
@@ -665,6 +946,32 @@ if (app.Services.GetRequiredService<IConfiguration>() is IConfigurationRoot conf
 }
 
 app.Run();
+
+// ── Request/Response DTOs ─────────────────────────────────────────────────────
+
+public class LoginRequest
+{
+    public string Username { get; set; } = string.Empty;
+    public string Password { get; set; } = string.Empty;
+}
+
+public class ChangePasswordRequest
+{
+    public string CurrentPassword { get; set; } = string.Empty;
+    public string NewPassword { get; set; } = string.Empty;
+}
+
+public class InitPasswordRequest
+{
+    public string Username { get; set; } = string.Empty;
+    public List<string>? Roles { get; set; }
+    public string? MattermostUsername { get; set; }
+}
+
+public class ResetPasswordRequest
+{
+    public string? MattermostUsername { get; set; }
+}
 
 public class CreateIssueRequest
 {
@@ -707,4 +1014,43 @@ public class InteractRequest
     /// Used alongside IssueId for enhanced user feedback on the dashboard.
     /// </summary>
     public string? IssueTitle { get; set; }
+}
+
+// ── Background Services ───────────────────────────────────────────────────────
+
+/// <summary>
+/// Background service that periodically cleans up expired auth sessions.
+/// </summary>
+public class AuthCleanupService : BackgroundService
+{
+    private readonly IServiceProvider _services;
+    private readonly ILogger<AuthCleanupService> _logger;
+    private readonly TimeSpan _cleanupInterval = TimeSpan.FromMinutes(15);
+
+    public AuthCleanupService(IServiceProvider services, ILogger<AuthCleanupService> logger)
+    {
+        _services = services;
+        _logger = logger;
+    }
+
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    {
+        _logger.LogInformation("Auth Cleanup Service started");
+
+        while (!stoppingToken.IsCancellationRequested)
+        {
+            try
+            {
+                using var scope = _services.CreateScope();
+                var authService = scope.ServiceProvider.GetRequiredService<Abo.Core.Services.AuthService>();
+                await authService.CleanupExpiredSessionsAsync();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error during auth session cleanup");
+            }
+
+            await Task.Delay(_cleanupInterval, stoppingToken);
+        }
+    }
 }
