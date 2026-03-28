@@ -31,11 +31,44 @@ public class GitTool : IAboTool
         try
         {
             var args = JsonSerializer.Deserialize<Dictionary<string, string>>(argumentsJson);
-            if (args != null && args.TryGetValue("arguments", out var cmdArgs))
+            if (args == null || !args.TryGetValue("arguments", out var cmdArgs))
             {
-                return await _connector.RunGitAsync(cmdArgs);
+                return "Error: arguments parameter is required.";
             }
-            return "Error: arguments parameter is required.";
+
+            // SECURITY: Reject stdin access (commands that wait for stdin can block/kill the system)
+            if (cmdArgs.Contains("commit") && !cmdArgs.Contains("-m ") && !cmdArgs.Contains("--no-edit"))
+            {
+                return "Error: stdin is not allowed";
+            }
+            if (cmdArgs.Contains("rebase") && !cmdArgs.Contains("--no-edit"))
+            {
+                return "Error: stdin is not allowed";
+            }
+            if (cmdArgs.Contains("merge") && !cmdArgs.Contains("--no-edit"))
+            {
+                return "Error: stdin is not allowed";
+            }
+
+            // SECURITY: Reject direct file writes via git plumbing commands
+            if (cmdArgs.Contains("hash-object -w"))
+            {
+                return "Error: direct file writes are not allowed; use dedicated file operation methods";
+            }
+            if (cmdArgs.Contains("write-tree"))
+            {
+                return "Error: direct file writes are not allowed; use dedicated file operation methods";
+            }
+            if (cmdArgs.Contains("update-index --add"))
+            {
+                return "Error: direct file writes are not allowed; use dedicated file operation methods";
+            }
+            if (cmdArgs.Contains("checkout-index"))
+            {
+                return "Error: direct file writes are not allowed; use dedicated file operation methods";
+            }
+
+            return await _connector.RunGitAsync(cmdArgs);
         }
         catch (Exception ex)
         {
