@@ -14,7 +14,9 @@ public class GitHubWikiConnector : IWikiConnector
     {
         _token = token;
         _repoUrl = $"https://x-access-token:{token}@github.com/{owner}/{repo}.wiki.git";
-        _cloneDir = Path.GetFullPath(Path.Combine(environment.Dir, ".github-wiki"));
+        _cloneDir = string.IsNullOrWhiteSpace(environment.WikiDir)
+            ? Path.GetFullPath(Path.Combine(environment.Dir, ".github-wiki"))
+            : Path.GetFullPath(environment.WikiDir);
     }
 
     private async Task SyncWikiAsync()
