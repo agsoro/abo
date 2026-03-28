@@ -23,6 +23,11 @@ public class SuggestAboFeatureTool : IAboTool
         type = "object",
         properties = new
         {
+            name = new
+            {
+                type = "string",
+                description = "The name of the suggested feature or capability that would help the agent complete their work."
+            },
             description = new
             {
                 type = "string",
@@ -49,17 +54,18 @@ public class SuggestAboFeatureTool : IAboTool
                 return "Error: 'description' parameter is required.";
             }
 
-            // Extract a potential tool name from the description for conflict checking
-            // This is a heuristic: look for patterns like "add X tool" or "tool for X"
-            var toolNameCandidate = ExtractToolName(description);
+            if (args == null || !args.TryGetValue("name", out var name) || string.IsNullOrWhiteSpace(name))
+            {
+                return "Error: 'name' parameter is required.";
+            }
 
             // Check if a tool with this name already exists
-            if (!string.IsNullOrWhiteSpace(toolNameCandidate))
+            if (!string.IsNullOrWhiteSpace(name))
             {
                 var existingTool = _allTools.FirstOrDefault(t =>
-                    t.Name.Equals(toolNameCandidate, StringComparison.OrdinalIgnoreCase) ||
-                    t.Name.Equals($"add_{toolNameCandidate}", StringComparison.OrdinalIgnoreCase) ||
-                    t.Name.Equals($"{toolNameCandidate}_tool", StringComparison.OrdinalIgnoreCase));
+                    t.Name.Equals(name, StringComparison.OrdinalIgnoreCase) ||
+                    t.Name.Equals($"add_{name}", StringComparison.OrdinalIgnoreCase) ||
+                    t.Name.Equals($"{name}_tool", StringComparison.OrdinalIgnoreCase));
 
                 if (existingTool != null)
                 {
@@ -95,37 +101,11 @@ public class SuggestAboFeatureTool : IAboTool
                 project: "release-next",
                 status: StatusType.Planned);
 
-            // Create a sub-issue for implementation if approved
-            var subIssueTitle = $"[abo] implement: {shortDescription}";
-            var subIssueBody = $"++ implementation sub-issue for: {description} ++\n\n" +
-                               "## Implementation Notes\n" +
-                               "- **Triggered by**: Feature suggestion via `suggest_abo_feature` tool\n" +
-                               "- **Parent Issue**: #" + issue.Id + "\n\n" +
-                               "### Requirements\n" +
-                               "[To be filled by analyst]\n\n" +
-                               "### Technical Approach\n" +
-                               "[To be determined during implementation planning]";
-
-            var subIssue = await _connector.CreateIssueAsync(
-                title: subIssueTitle,
-                body: subIssueBody,
-                type: IssueType.Feature,
-                size: "",
-                additionalLabels: new[] { $"parent: {issue.Id}", "env: abo", "type: feature" },
-                project: "release-next",
-                status: StatusType.Planned);
-
-            // Establish GitHub native sub-issue link if possible
-            if (!string.IsNullOrWhiteSpace(issue.NodeId) && !string.IsNullOrWhiteSpace(subIssue.NodeId))
-            {
-                await _connector.AddSubIssueAsync(issue.NodeId, subIssue.NodeId);
-            }
 
             var result = new
             {
-                message = $"Feature suggestion issue #{issue.Id} created successfully with implementation sub-issue #{subIssue.Id}.",
-                analysisIssue = new { id = issue.Id, title = issue.Title, url = GetIssueUrl(issue) },
-                implementationIssue = new { id = subIssue.Id, title = subIssue.Title, url = GetIssueUrl(subIssue) }
+                message = $"Feature suggestion issue #{issue.Id}.",
+                analysisIssue = new { id = issue.Id, title = issue.Title }
             };
 
             return JsonSerializer.Serialize(result, new JsonSerializerOptions { WriteIndented = true });
@@ -134,82 +114,5 @@ public class SuggestAboFeatureTool : IAboTool
         {
             return $"Error suggesting feature: {ex.Message}";
         }
-    }
-
-    /// <summary>
-    /// Extracts a potential tool name from the description using simple heuristics.
-    /// </summary>
-    private static string? ExtractToolName(string description)
-    {
-        // Look for patterns like "tool for X", "add X tool", "implement X"
-        var lowerDesc = description.ToLowerInvariant();
-
-        // Pattern: "add [something] tool" or "add [something]"
-        var addMatch = System.Text.RegularExpressions.Regex.Match(
-            lowerDesc, @"add\s+(?:a\s+)?(?:new\s+)?(?:tool\s+for\s+)?(.+?)(?:\s+tool)?$", 
-            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
-        if (addMatch.Success && addMatch.Groups.Count > 1)
-        {
-            return NormalizeToolName(addMatch.Groups[1].Value);
-        }
-
-        // Pattern: "tool for [something]"
-        var toolForMatch = System.Text.RegularExpressions.Regex.Match(
-            lowerDesc, @"tool\s+for\s+(.+?)(?:\s+to|$)", 
-            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
-        if (toolForMatch.Success && toolForMatch.Groups.Count > 1)
-        {
-            return NormalizeToolName(toolForMatch.Groups[1].Value);
-        }
-
-        // Pattern: "implement [something]" or "create [something]"
-        var implementMatch = System.Text.RegularExpressions.Regex.Match(
-            lowerDesc, @"(?:implement|create|build)\s+(?:a\s+)?(.+?)(?:\s+tool)?$", 
-            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
-        if (implementMatch.Success && implementMatch.Groups.Count > 1)
-        {
-            return NormalizeToolName(implementMatch.Groups[1].Value);
-        }
-
-        return null;
-    }
-
-    /// <summary>
-    /// Normalizes a tool name by removing special characters and converting to snake_case.
-    /// </summary>
-    private static string NormalizeToolName(string name)
-    {
-        // Remove common words
-        var cleaned = System.Text.RegularExpressions.Regex.Replace(
-            name, @"\b(a|an|the|new|for|to|that|this)\b", "", 
-            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
-
-        // Replace spaces and special characters with underscores
-        cleaned = System.Text.RegularExpressions.Regex.Replace(cleaned, @"[\s\-]+", "_");
-
-        // Remove any remaining non-alphanumeric characters (except underscores)
-        cleaned = System.Text.RegularExpressions.Regex.Replace(cleaned, @"[^a-z0-9_]", "");
-
-        // Remove leading/trailing underscores
-        cleaned = cleaned.Trim('_');
-
-        // Convert to lowercase
-        return cleaned.ToLowerInvariant();
-    }
-
-    /// <summary>
-    /// Gets a URL for the issue if available (placeholder implementation).
-    /// </summary>
-    private static string GetIssueUrl(IssueRecord issue)
-    {
-        // The actual URL would depend on the connector implementation
-        // For GitHub: https://github.com/{owner}/{repo}/issues/{id}
-        // For filesystem: local path
-        // Return a generic reference for now
-        if (!string.IsNullOrWhiteSpace(issue.Project))
-        {
-            return $"#{issue.Id} [{issue.Project}]";
-        }
-        return $"#{issue.Id}";
     }
 }
