@@ -232,7 +232,7 @@ public static class WorkflowEngine
                     - 'implementation_completed' -> Development successfully completed, moves to QA review.
                     - 'pause_work' -> Pauses the workflow for this issue (to be resumed later).
                     - 'need_help' -> Escalates to the customer for clarification.",
-                    AllowedTools = new List<string> { "conclude_step", "read_file", "write_file", "patch_file", "delete_file", "list_dir", "mkdir", "git", "dotnet", "python", "shell", "search_regex", "http_get", "get_issue", "get_wiki_page", "update_wiki_page", "search_wiki" }
+                    AllowedTools = new List<string> { "conclude_step", "read_file", "write_file", "patch_file", "patch_wiki_page", "delete_file", "list_dir", "mkdir", "git", "dotnet", "python", "shell", "search_regex", "http_get", "get_issue", "get_wiki_page", "update_wiki_page", "search_wiki" }
                 },
                 Transitions = new Dictionary<string, WorkflowTransition>(StringComparer.OrdinalIgnoreCase)
                 {
