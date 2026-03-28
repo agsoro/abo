@@ -68,22 +68,19 @@ public class GitHubWikiConnector : IWikiConnector
     }
 
     /// <summary>
-    /// Resolves a page path/filename to a full filesystem path, always rooted in the wiki clone directory.
-    /// GitHub wiki does not support subdirectories — all pages must live at the root level.
-    /// Only the filename portion of the input is used; any directory components are stripped.
+    /// Resolves a page path/filename to a full filesystem path, rooted in the wiki clone directory.
+    /// Supports subdirectories (e.g. "Folder/page.md").
     /// </summary>
     private string GetFullPath(string path)
     {
-        // Strip any directory components — GitHub wiki is always flat (no subdirectories)
-        var fileName = Path.GetFileName(path.TrimStart('/', '\\'));
-        var fullPath = Path.GetFullPath(Path.Combine(_cloneDir, fileName));
+        var combined = Path.GetFullPath(Path.Combine(_cloneDir, path.TrimStart('/', '\\')));
 
         // Safety check: ensure the resolved path is still within the clone directory
-        if (!fullPath.StartsWith(_cloneDir, StringComparison.OrdinalIgnoreCase))
+        if (!combined.StartsWith(_cloneDir, StringComparison.OrdinalIgnoreCase))
         {
             throw new UnauthorizedAccessException("Directory traversal is not allowed in the Wiki.");
         }
-        return fullPath;
+        return combined;
     }
 
     private string EnsureMdExtension(string path)
@@ -117,18 +114,27 @@ public class GitHubWikiConnector : IWikiConnector
         {
             await SyncWikiAsync();
 
-            // GitHub wiki does not support subdirectories — always create at root level.
-            // The parentPath parameter is intentionally ignored for the GitHub wiki connector.
             var fileName = Regex.Replace(title.ToLowerInvariant(), @"[^a-z0-9]+", "-").Trim('-');
             fileName = EnsureMdExtension(fileName);
 
-            var fullPath = Path.Combine(_cloneDir, fileName);
-            if (File.Exists(fullPath)) return $"Error: Wiki page '{fileName}' already exists at this location.";
+            var dir = _cloneDir;
+            if (!string.IsNullOrWhiteSpace(parentPath))
+            {
+                dir = GetFullPath(parentPath);
+                if (!Directory.Exists(dir))
+                {
+                    Directory.CreateDirectory(dir);
+                }
+            }
+
+            var fullPath = Path.Combine(dir, fileName);
+            var relativePath = Path.GetRelativePath(_cloneDir, fullPath);
+            if (File.Exists(fullPath)) return $"Error: Wiki page '{relativePath}' already exists at this location.";
 
             await File.WriteAllTextAsync(fullPath, content);
-            await CommitAndPushAsync($"Create wiki page: {title}");
+            await CommitAndPushAsync($"Create wiki page: {relativePath}");
 
-            return $"Successfully created wiki page: {fileName}";
+            return $"Successfully created wiki page: {relativePath}";
         }
         catch (Exception ex)
         {
@@ -205,8 +211,16 @@ public class GitHubWikiConnector : IWikiConnector
             var sourcePath = GetFullPath(EnsureMdExtension(pathOrId));
             if (!File.Exists(sourcePath)) return $"Error: Wiki page '{pathOrId}' does not exist.";
 
-            // GitHub wiki is always flat — always move to root level regardless of newPathOrParentId.
-            // Only the newTitle (if provided) affects the destination filename.
+            // Determine the target directory
+            var targetDir = string.IsNullOrWhiteSpace(newPathOrParentId)
+                ? _cloneDir
+                : GetFullPath(newPathOrParentId);
+
+            if (!Directory.Exists(targetDir))
+            {
+                Directory.CreateDirectory(targetDir);
+            }
+
             string targetFileName;
             if (!string.IsNullOrWhiteSpace(newTitle))
             {
@@ -218,7 +232,7 @@ public class GitHubWikiConnector : IWikiConnector
                 targetFileName = Path.GetFileName(sourcePath);
             }
 
-            var destPath = Path.Combine(_cloneDir, targetFileName);
+            var destPath = Path.Combine(targetDir, targetFileName);
 
             if (File.Exists(destPath) && !string.Equals(sourcePath, destPath, StringComparison.OrdinalIgnoreCase))
             {
