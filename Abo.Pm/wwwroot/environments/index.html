@@ -1,0 +1,670 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ABO – Environment Configuration</title>
+    <style>
+        :root {
+            --bg-color: #0f172a;
+            --surface-color: #1e293b;
+            --text-color: #f8fafc;
+            --text-muted: #94a3b8;
+            --primary-color: #3b82f6;
+            --primary-hover: #2563eb;
+            --border-color: #334155;
+            --green: #16a34a;
+            --green-bg: rgba(22, 163, 74, 0.15);
+            --green-text: #4ade80;
+            --red: #dc2626;
+            --red-bg: rgba(220, 38, 38, 0.15);
+            --yellow: #ca8a04;
+            --yellow-bg: rgba(202, 138, 4, 0.15);
+            --yellow-text: #fbbf24;
+            --tag-radius: 0.25rem;
+        }
+        * { box-sizing: border-box; }
+        body { font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; background-color: var(--bg-color); color: var(--text-color); margin: 0; padding: 0; min-height: 100vh; }
+        header { background-color: var(--surface-color); padding: 1rem 2rem; border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.75rem; }
+        header h1 { margin: 0; font-size: 1.5rem; display: flex; align-items: center; gap: 0.5rem; }
+        .header-nav { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; }
+        .header-nav a { color: var(--text-muted); text-decoration: none; font-size: 0.875rem; padding: 0.35rem 0.75rem; border-radius: var(--tag-radius); border: 1px solid var(--border-color); transition: all 0.2s; white-space: nowrap; }
+        .header-nav a:hover { color: var(--text-color); border-color: var(--primary-color); }
+        .header-nav a.active { color: var(--text-color); border-color: var(--primary-color); background-color: rgba(59, 130, 246, 0.1); }
+        main { max-width: 1200px; margin: 0 auto; padding: 1.5rem 1rem; }
+        .page-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; flex-wrap: wrap; gap: 1rem; }
+        .page-title { font-size: 1.5rem; font-weight: 700; margin: 0; }
+        .page-description { color: var(--text-muted); margin: 0.25rem 0 0 0; font-size: 0.9rem; }
+        .btn { padding: 0.5rem 1rem; border-radius: var(--tag-radius); font-size: 0.875rem; font-weight: 600; cursor: pointer; border: none; white-space: nowrap; transition: all 0.2s; }
+        .btn-primary { background-color: var(--primary-color); color: white; }
+        .btn-primary:hover { background-color: var(--primary-hover); }
+        .btn-secondary { background-color: transparent; color: var(--text-muted); border: 1px solid var(--border-color); }
+        .btn-secondary:hover { color: var(--text-color); border-color: var(--primary-color); }
+        .btn-danger { background-color: var(--red); color: white; }
+        .btn-danger:hover { background-color: #b91c1c; }
+        .btn-sm { padding: 0.35rem 0.75rem; font-size: 0.8rem; }
+        .environments-table { width: 100%; background-color: var(--surface-color); border: 1px solid var(--border-color); border-radius: 0.5rem; overflow: hidden; border-collapse: collapse; }
+        .environments-table th { text-align: left; padding: 0.85rem 1rem; background-color: rgba(255, 255, 255, 0.03); border-bottom: 1px solid var(--border-color); font-size: 0.8rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; }
+        .environments-table td { padding: 0.85rem 1rem; border-bottom: 1px solid rgba(51, 65, 85, 0.5); vertical-align: middle; }
+        .environments-table tr:last-child td { border-bottom: none; }
+        .environments-table tr:hover td { background-color: rgba(255, 255, 255, 0.02); }
+        .env-name { font-family: monospace; font-weight: 600; color: #60a5fa; }
+        .env-badge { display: inline-block; padding: 0.15rem 0.5rem; border-radius: var(--tag-radius); font-size: 0.75rem; background-color: rgba(148, 163, 184, 0.1); color: var(--text-muted); border: 1px solid var(--border-color); }
+        .env-badge.type-local { background-color: var(--green-bg); color: var(--green-text); border-color: rgba(22, 163, 74, 0.4); }
+        .env-badge.type-remote { background-color: var(--yellow-bg); color: var(--yellow-text); border-color: rgba(202, 138, 4, 0.4); }
+        .env-badge.os-win { background-color: rgba(59, 130, 246, 0.15); color: #60a5fa; border-color: rgba(59, 130, 246, 0.3); }
+        .env-badge.os-linux { background-color: rgba(34, 197, 94, 0.15); color: #4ade80; border-color: rgba(34, 197, 94, 0.3); }
+        .env-badge.tech-dotnet { background-color: rgba(118, 68, 138, 0.2); color: #c084fc; border-color: rgba(168, 100, 200, 0.4); }
+        .env-badge.tech-python { background-color: rgba(255, 215, 0, 0.15); color: #facc15; border-color: rgba(250, 204, 21, 0.4); }
+        .env-badge.tech-node { background-color: rgba(16, 185, 129, 0.15); color: #34d399; border-color: rgba(16, 185, 129, 0.4); }
+        .env-badge.tech-mixed { background-color: rgba(148, 163, 184, 0.1); color: var(--text-muted); border-color: var(--border-color); }
+        .env-dir { font-family: monospace; font-size: 0.8rem; color: var(--text-muted); max-width: 250px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .env-integrations { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+        .integration-badge { display: inline-flex; align-items: center; gap: 0.25rem; padding: 0.15rem 0.5rem; border-radius: var(--tag-radius); font-size: 0.75rem; background-color: rgba(148, 163, 184, 0.1); color: var(--text-muted); border: 1px solid var(--border-color); }
+        .integration-badge.github { background-color: rgba(255, 255, 255, 0.05); }
+        .integration-badge.filesystem { background-color: rgba(255, 215, 0, 0.1); color: #facc15; }
+        .integration-badge.xpectolive { background-color: rgba(168, 85, 247, 0.15); color: #c084fc; }
+        .action-buttons { display: flex; gap: 0.5rem; }
+        .empty-state { text-align: center; padding: 3rem; color: var(--text-muted); background-color: var(--surface-color); border: 1px solid var(--border-color); border-radius: 0.5rem; }
+        .empty-state-icon { font-size: 3rem; margin-bottom: 1rem; }
+        /* Modal */
+        #modal-overlay { display: none; position: fixed; inset: 0; background-color: rgba(0, 0, 0, 0.7); z-index: 200; }
+        #modal-overlay.open { display: flex; align-items: flex-start; justify-content: center; padding-top: 2rem; overflow-y: auto; }
+        #modal-dialog { background-color: var(--surface-color); border: 1px solid var(--border-color); border-radius: 0.75rem; box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5); width: 90%; max-width: 600px; margin: 0 auto; display: flex; flex-direction: column; }
+        .modal-header { display: flex; align-items: center; justify-content: space-between; padding: 1.25rem 1.5rem; border-bottom: 1px solid var(--border-color); }
+        .modal-title { font-size: 1.25rem; font-weight: 700; color: var(--text-color); }
+        .modal-close-btn { background: none; border: none; color: var(--text-muted); font-size: 1.5rem; cursor: pointer; padding: 0; width: 2rem; height: 2rem; display: flex; align-items: center; justify-content: center; }
+        .modal-close-btn:hover { color: var(--text-color); }
+        .modal-body { padding: 1.5rem; max-height: 60vh; overflow-y: auto; }
+        .modal-footer { display: flex; gap: 0.75rem; padding: 1.25rem 1.5rem; border-top: 1px solid var(--border-color); justify-content: flex-end; }
+        .form-section { margin-bottom: 1.5rem; padding-bottom: 1.5rem; border-bottom: 1px solid var(--border-color); }
+        .form-section:last-child { margin-bottom: 0; padding-bottom: 0; border-bottom: none; }
+        .form-section-title { font-size: 0.9rem; font-weight: 600; color: var(--text-color); margin-bottom: 1rem; display: flex; align-items: center; gap: 0.5rem; }
+        .form-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; }
+        .form-group { margin-bottom: 1rem; }
+        .form-group:last-child { margin-bottom: 0; }
+        .form-label { display: block; margin-bottom: 0.5rem; font-size: 0.875rem; font-weight: 600; color: var(--text-color); }
+        .form-label .required { color: var(--red); margin-left: 0.25rem; }
+        .form-input, .form-select, .form-textarea { width: 100%; background-color: var(--bg-color); border: 1px solid var(--border-color); color: var(--text-color); padding: 0.5rem 0.75rem; border-radius: var(--tag-radius); font-family: inherit; font-size: 0.875rem; transition: border-color 0.2s; }
+        .form-input:focus, .form-select:focus, .form-textarea:focus { outline: none; border-color: var(--primary-color); }
+        .form-textarea { resize: vertical; min-height: 60px; }
+        .form-hint { font-size: 0.75rem; color: var(--text-muted); margin-top: 0.25rem; }
+        .form-error { color: var(--red); font-size: 0.75rem; margin-top: 0.25rem; display: none; }
+        .form-error.show { display: block; }
+        /* Delete confirmation modal */
+        .delete-warning { background-color: var(--red-bg); border: 1px solid rgba(220, 38, 38, 0.4); border-radius: var(--tag-radius); padding: 1rem; margin-bottom: 1rem; }
+        .delete-warning-title { color: var(--red); font-weight: 600; margin-bottom: 0.5rem; }
+        /* Toast notification */
+        #toast-notification { display: none; position: fixed; bottom: 2rem; left: 2rem; background-color: var(--surface-color); border: 1px solid var(--border-color); border-radius: 0.5rem; padding: 1rem 1.25rem; font-size: 0.875rem; z-index: 300; }
+        #toast-notification.show { display: block; }
+        #toast-notification.success { border-left: 3px solid var(--green); }
+        #toast-notification.error { border-left: 3px solid var(--red); }
+        /* Loading state */
+        .loading { opacity: 0.6; pointer-events: none; }
+        /* Responsive */
+        @media (max-width: 768px) {
+            .environments-table { font-size: 0.85rem; }
+            .environments-table th, .environments-table td { padding: 0.65rem 0.75rem; }
+            .env-dir { display: none; }
+            .form-row { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+<header>
+    <h1>🌍 Environment Configuration</h1>
+    <nav class="header-nav">
+        <a href="/">💬 Chat</a>
+        <a href="/dashboard/">🗂️ Dashboard</a>
+        <a href="/open-work/">📋 Open Work</a>
+        <a href="/llm-traffic/">📊 LLM Traffic</a>
+    </nav>
+</header>
+
+<main>
+    <div class="page-header">
+        <div>
+            <h2 class="page-title">Configured Environments</h2>
+            <p class="page-description">Manage workspace configurations for agent environments</p>
+        </div>
+        <button class="btn btn-primary" onclick="openAddModal()">➕ Add Environment</button>
+    </div>
+
+    <div id="environments-container">
+        <div class="empty-state">
+            <div class="empty-state-icon">🌍</div>
+            <p>Loading environments...</p>
+        </div>
+    </div>
+</main>
+
+<!-- Add/Edit Environment Modal -->
+<div id="modal-overlay" onclick="if(event.target === this) closeModal()">
+  <div id="modal-dialog">
+    <div class="modal-header">
+        <div class="modal-title" id="modal-title">➕ Add Environment</div>
+        <button class="modal-close-btn" onclick="closeModal()" title="Close (Esc)">✕</button>
+    </div>
+    <div class="modal-body">
+        <form id="environment-form" onsubmit="submitEnvironmentForm(event)">
+            <!-- Basic Configuration -->
+            <div class="form-section">
+                <div class="form-section-title">📋 Basic Configuration</div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label">Name <span class="required">*</span></label>
+                        <input type="text" id="form-name" class="form-input" placeholder="e.g., production, staging" required pattern="[a-zA-Z0-9\-]+">
+                        <div class="form-hint">Alphanumeric with hyphens only</div>
+                        <div class="form-error" id="error-name"></div>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Type <span class="required">*</span></label>
+                        <select id="form-type" class="form-select" required>
+                            <option value="local">Local</option>
+                            <option value="remote">Remote</option>
+                        </select>
+                        <div class="form-error" id="error-type"></div>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label">Operating System <span class="required">*</span></label>
+                        <select id="form-os" class="form-select" required>
+                            <option value="win">Windows</option>
+                            <option value="linux">Linux</option>
+                        </select>
+                        <div class="form-error" id="error-os"></div>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Technology <span class="required">*</span></label>
+                        <select id="form-technology" class="form-select" required>
+                            <option value="dotnet">.NET</option>
+                            <option value="python">Python</option>
+                            <option value="node">Node.js</option>
+                            <option value="mixed">Mixed</option>
+                        </select>
+                        <div class="form-hint">Affects agent tooling availability</div>
+                        <div class="form-error" id="error-technology"></div>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Working Directory <span class="required">*</span></label>
+                    <input type="text" id="form-dir" class="form-input" placeholder="e.g., C:\Projects\MyApp or /home/user/projects" required>
+                    <div class="form-hint">Root directory for workspace operations</div>
+                    <div class="form-error" id="error-dir"></div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Wiki Directory (optional)</label>
+                    <input type="text" id="form-wiki-dir" class="form-input" placeholder="e.g., Docs or leave empty">
+                    <div class="form-hint">Override for wiki root path</div>
+                    <div class="form-error" id="error-wiki-dir"></div>
+                </div>
+            </div>
+
+            <!-- Issue Tracker Configuration -->
+            <div class="form-section">
+                <div class="form-section-title">🐙 Issue Tracker</div>
+                <div class="form-group">
+                    <label class="form-label">Type</label>
+                    <select id="form-issue-tracker-type" class="form-select" onchange="toggleIssueTrackerFields()">
+                        <option value="">None</option>
+                        <option value="github">GitHub</option>
+                        <option value="filesystem">Filesystem</option>
+                    </select>
+                    <div class="form-error" id="error-issue-tracker-type"></div>
+                </div>
+                <div id="issue-tracker-fields" style="display: none;">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label class="form-label">Owner/Organization <span class="required">*</span></label>
+                            <input type="text" id="form-issue-owner" class="form-input" placeholder="e.g., my-org">
+                            <div class="form-error" id="error-issue-owner"></div>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Repository <span class="required">*</span></label>
+                            <input type="text" id="form-issue-repository" class="form-input" placeholder="e.g., my-repo">
+                            <div class="form-error" id="error-issue-repository"></div>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Base URL</label>
+                        <input type="text" id="form-issue-base-url" class="form-input" placeholder="e.g., https://github.com">
+                        <div class="form-hint">Leave empty to use default</div>
+                        <div class="form-error" id="error-issue-base-url"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Wiki Configuration -->
+            <div class="form-section">
+                <div class="form-section-title">📖 Wiki</div>
+                <div class="form-group">
+                    <label class="form-label">Type</label>
+                    <select id="form-wiki-type" class="form-select" onchange="toggleWikiFields()">
+                        <option value="">None</option>
+                        <option value="filesystem">Filesystem</option>
+                        <option value="xpectolive">XpectoLive</option>
+                    </select>
+                    <div class="form-error" id="error-wiki-type"></div>
+                </div>
+                <div id="wiki-fields" style="display: none;">
+                    <div class="form-group">
+                        <label class="form-label">Root Path <span class="required">*</span></label>
+                        <input type="text" id="form-wiki-root-path" class="form-input" placeholder="e.g., Docs or Space ID">
+                        <div class="form-hint">Wiki root directory or XpectoLive Space ID</div>
+                        <div class="form-error" id="error-wiki-root-path"></div>
+                    </div>
+                </div>
+            </div>
+        </form>
+    </div>
+    <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+        <button class="btn btn-primary" id="btn-submit-form" onclick="submitEnvironmentForm(event)">Save Environment</button>
+    </div>
+  </div>
+</div>
+
+<!-- Delete Confirmation Modal -->
+<div id="delete-modal-overlay" onclick="if(event.target === this) closeDeleteModal()">
+  <div id="delete-modal-dialog" style="background-color: var(--surface-color); border: 1px solid var(--border-color); border-radius: 0.75rem; box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5); width: 90%; max-width: 450px; margin: 2rem auto;">
+    <div class="modal-header">
+        <div class="modal-title">⚠️ Confirm Delete</div>
+        <button class="modal-close-btn" onclick="closeDeleteModal()">✕</button>
+    </div>
+    <div class="modal-body">
+        <div class="delete-warning">
+            <div class="delete-warning-title">This action cannot be undone.</div>
+            <p>Are you sure you want to delete the environment "<strong id="delete-env-name"></strong>"?</p>
+        </div>
+        <p>This will remove the environment configuration from <code>Data/environments.json</code>.</p>
+    </div>
+    <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeDeleteModal()">Cancel</button>
+        <button class="btn btn-danger" id="btn-confirm-delete" onclick="confirmDelete()">Delete Environment</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast-notification"></div>
+
+<script>
+    const API_BASE = '/api/admin/environments';
+    let environments = [];
+    let editingEnvName = null;
+    let deleteEnvName = null;
+
+    // ── Fetch & Render ─────────────────────────────────────────────────────────
+
+    async function fetchEnvironments() {
+        try {
+            const res = await fetch(API_BASE);
+            if (!res.ok) throw new Error('Failed to fetch environments');
+            environments = await res.json();
+            renderEnvironments();
+        } catch (err) {
+            console.error('Error fetching environments:', err);
+            document.getElementById('environments-container').innerHTML = `
+                <div class="empty-state">
+                    <div class="empty-state-icon">❌</div>
+                    <p>Error loading environments: ${escapeHtml(err.message)}</p>
+                    <button class="btn btn-secondary" onclick="fetchEnvironments()">Retry</button>
+                </div>
+            `;
+        }
+    }
+
+    function renderEnvironments() {
+        const container = document.getElementById('environments-container');
+        
+        if (environments.length === 0) {
+            container.innerHTML = `
+                <div class="empty-state">
+                    <div class="empty-state-icon">🌍</div>
+                    <p>No environments configured yet.</p>
+                    <button class="btn btn-primary" onclick="openAddModal()">Add Your First Environment</button>
+                </div>
+            `;
+            return;
+        }
+
+        const rows = environments.map(env => `
+            <tr>
+                <td><span class="env-name">${escapeHtml(env.name)}</span></td>
+                <td>
+                    <span class="env-badge type-${escapeHtml(env.type?.toLowerCase() || 'local')}">${escapeHtml(env.type || 'local')}</span>
+                </td>
+                <td>
+                    <span class="env-badge os-${escapeHtml(env.os?.toLowerCase() || 'win')}">${escapeHtml(env.os || 'win')}</span>
+                </td>
+                <td>
+                    <span class="env-badge tech-${escapeHtml(env.technology?.toLowerCase() || 'dotnet')}">${escapeHtml(env.technology || 'dotnet')}</span>
+                </td>
+                <td><span class="env-dir" title="${escapeHtml(env.dir)}">${escapeHtml(env.dir)}</span></td>
+                <td>
+                    <div class="env-integrations">
+                        ${renderIntegrations(env)}
+                    </div>
+                </td>
+                <td>
+                    <div class="action-buttons">
+                        <button class="btn btn-secondary btn-sm" onclick="openEditModal('${escapeHtml(env.name)}')">✏️ Edit</button>
+                        <button class="btn btn-danger btn-sm" onclick="openDeleteModal('${escapeHtml(env.name)}')">🗑️ Delete</button>
+                    </div>
+                </td>
+            </tr>
+        `).join('');
+
+        container.innerHTML = `
+            <table class="environments-table">
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Type</th>
+                        <th>OS</th>
+                        <th>Technology</th>
+                        <th>Directory</th>
+                        <th>Integrations</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${rows}
+                </tbody>
+            </table>
+        `;
+    }
+
+    function renderIntegrations(env) {
+        const integrations = [];
+        
+        if (env.issueTracker?.type) {
+            const icon = env.issueTracker.type === 'github' ? '🐙' : '📁';
+            integrations.push(`<span class="integration-badge ${escapeHtml(env.issueTracker.type.toLowerCase())}">${icon} ${escapeHtml(env.issueTracker.type)}</span>`);
+        }
+        
+        if (env.wiki?.type) {
+            const icon = env.wiki.type === 'xpectolive' ? '📖' : '📁';
+            integrations.push(`<span class="integration-badge ${escapeHtml(env.wiki.type.toLowerCase())}">${icon} ${escapeHtml(env.wiki.type)}</span>`);
+        }
+        
+        return integrations.length > 0 ? integrations.join('') : '<span class="env-badge">None</span>';
+    }
+
+    // ── Modal Functions ───────────────────────────────────────────────────────
+
+    function openAddModal() {
+        editingEnvName = null;
+        document.getElementById('modal-title').textContent = '➕ Add Environment';
+        document.getElementById('btn-submit-form').textContent = 'Add Environment';
+        resetForm();
+        document.getElementById('modal-overlay').classList.add('open');
+        document.getElementById('form-name').focus();
+    }
+
+    function openEditModal(name) {
+        const env = environments.find(e => e.name === name);
+        if (!env) {
+            showToast(`Environment '${name}' not found`, 'error');
+            return;
+        }
+
+        editingEnvName = name;
+        document.getElementById('modal-title').textContent = `✏️ Edit Environment: ${escapeHtml(name)}`;
+        document.getElementById('btn-submit-form').textContent = 'Save Changes';
+
+        // Fill basic fields
+        document.getElementById('form-name').value = env.name || '';
+        document.getElementById('form-type').value = env.type || 'local';
+        document.getElementById('form-os').value = env.os || 'win';
+        document.getElementById('form-technology').value = env.technology || 'dotnet';
+        document.getElementById('form-dir').value = env.dir || '';
+        document.getElementById('form-wiki-dir').value = env.wikiDir || '';
+
+        // Fill issue tracker fields
+        document.getElementById('form-issue-tracker-type').value = env.issueTracker?.type || '';
+        toggleIssueTrackerFields();
+        if (env.issueTracker) {
+            document.getElementById('form-issue-owner').value = env.issueTracker.owner || '';
+            document.getElementById('form-issue-repository').value = env.issueTracker.repository || '';
+            document.getElementById('form-issue-base-url').value = env.issueTracker.baseUrl || '';
+        } else {
+            document.getElementById('form-issue-owner').value = '';
+            document.getElementById('form-issue-repository').value = '';
+            document.getElementById('form-issue-base-url').value = '';
+        }
+
+        // Fill wiki fields
+        document.getElementById('form-wiki-type').value = env.wiki?.type || '';
+        toggleWikiFields();
+        document.getElementById('form-wiki-root-path').value = env.wiki?.rootPath || '';
+
+        document.getElementById('modal-overlay').classList.add('open');
+    }
+
+    function closeModal() {
+        document.getElementById('modal-overlay').classList.remove('open');
+        resetForm();
+    }
+
+    function resetForm() {
+        document.getElementById('environment-form').reset();
+        document.getElementById('issue-tracker-fields').style.display = 'none';
+        document.getElementById('wiki-fields').style.display = 'none';
+        clearErrors();
+    }
+
+    function clearErrors() {
+        document.querySelectorAll('.form-error').forEach(el => el.classList.remove('show'));
+    }
+
+    function toggleIssueTrackerFields() {
+        const type = document.getElementById('form-issue-tracker-type').value;
+        document.getElementById('issue-tracker-fields').style.display = type ? '' : 'none';
+    }
+
+    function toggleWikiFields() {
+        const type = document.getElementById('form-wiki-type').value;
+        document.getElementById('wiki-fields').style.display = type ? '' : 'none';
+    }
+
+    // ── Form Submission ───────────────────────────────────────────────────────
+
+    async function submitEnvironmentForm(event) {
+        event.preventDefault();
+        clearErrors();
+
+        const name = document.getElementById('form-name').value.trim();
+        const type = document.getElementById('form-type').value;
+        const os = document.getElementById('form-os').value;
+        const technology = document.getElementById('form-technology').value;
+        const dir = document.getElementById('form-dir').value.trim();
+        const wikiDir = document.getElementById('form-wiki-dir').value.trim() || null;
+
+        const issueTrackerType = document.getElementById('form-issue-tracker-type').value;
+        const issueTracker = issueTrackerType ? {
+            type: issueTrackerType,
+            owner: document.getElementById('form-issue-owner').value.trim(),
+            repository: document.getElementById('form-issue-repository').value.trim(),
+            baseUrl: document.getElementById('form-issue-base-url').value.trim(),
+            projectTitles: {}
+        } : null;
+
+        const wikiType = document.getElementById('form-wiki-type').value;
+        const wiki = wikiType ? {
+            type: wikiType,
+            rootPath: document.getElementById('form-wiki-root-path').value.trim()
+        } : null;
+
+        // Validation
+        let hasErrors = false;
+
+        if (!name) {
+            showError('name', 'Name is required');
+            hasErrors = true;
+        } else if (!/^[a-zA-Z0-9\-]+$/.test(name)) {
+            showError('name', 'Name must be alphanumeric with hyphens only');
+            hasErrors = true;
+        }
+
+        if (!dir) {
+            showError('dir', 'Working directory is required');
+            hasErrors = true;
+        }
+
+        if (issueTracker && (!issueTracker.owner || !issueTracker.repository)) {
+            if (!issueTracker.owner) showError('issue-owner', 'Owner is required');
+            if (!issueTracker.repository) showError('issue-repository', 'Repository is required');
+            hasErrors = true;
+        }
+
+        if (wiki && !wiki.rootPath) {
+            showError('wiki-root-path', 'Root path is required');
+            hasErrors = true;
+        }
+
+        if (hasErrors) return;
+
+        const payload = {
+            name,
+            type,
+            os,
+            technology,
+            dir,
+            wikiDir,
+            issueTracker,
+            wiki
+        };
+
+        const submitBtn = document.getElementById('btn-submit-form');
+        submitBtn.disabled = true;
+        const originalText = submitBtn.textContent;
+        submitBtn.textContent = '⏳ Saving...';
+
+        try {
+            let res, data;
+            const isEditing = editingEnvName !== null;
+
+            if (isEditing) {
+                res = await fetch(`${API_BASE}/${encodeURIComponent(editingEnvName)}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+            } else {
+                res = await fetch(API_BASE, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+            }
+
+            data = await res.json();
+
+            if (!res.ok) {
+                const errorKey = data.error?.toLowerCase() || '';
+                if (errorKey.includes('name')) showError('name', data.error);
+                else if (errorKey.includes('already exists')) showError('name', data.error);
+                else showToast(data.error || 'Failed to save environment', 'error');
+                return;
+            }
+
+            closeModal();
+            showToast(`✅ Environment ${isEditing ? 'updated' : 'added'} successfully`, 'success');
+            await fetchEnvironments();
+
+        } catch (err) {
+            console.error('Error saving environment:', err);
+            showToast(`❌ Error: ${err.message}`, 'error');
+        } finally {
+            submitBtn.disabled = false;
+            submitBtn.textContent = originalText;
+        }
+    }
+
+    // ── Delete Functions ─────────────────────────────────────────────────────
+
+    function openDeleteModal(name) {
+        deleteEnvName = name;
+        document.getElementById('delete-env-name').textContent = name;
+        document.getElementById('delete-modal-overlay').classList.add('open');
+    }
+
+    function closeDeleteModal() {
+        document.getElementById('delete-modal-overlay').classList.remove('open');
+        deleteEnvName = null;
+    }
+
+    async function confirmDelete() {
+        if (!deleteEnvName) return;
+
+        const btn = document.getElementById('btn-confirm-delete');
+        btn.disabled = true;
+        btn.textContent = '⏳ Deleting...';
+
+        try {
+            const res = await fetch(`${API_BASE}/${encodeURIComponent(deleteEnvName)}`, {
+                method: 'DELETE'
+            });
+
+            if (!res.ok) {
+                const data = await res.json();
+                showToast(data.error || 'Failed to delete environment', 'error');
+                return;
+            }
+
+            closeDeleteModal();
+            showToast(`✅ Environment "${deleteEnvName}" deleted`, 'success');
+            await fetchEnvironments();
+
+        } catch (err) {
+            console.error('Error deleting environment:', err);
+            showToast(`❌ Error: ${err.message}`, 'error');
+        } finally {
+            btn.disabled = false;
+            btn.textContent = 'Delete Environment';
+        }
+    }
+
+    // ── Utilities ─────────────────────────────────────────────────────────────
+
+    function showError(field, message) {
+        const errorEl = document.getElementById(`error-${field}`);
+        if (errorEl) {
+            errorEl.textContent = message;
+            errorEl.classList.add('show');
+        }
+    }
+
+    function showToast(message, type = 'success') {
+        const toast = document.getElementById('toast-notification');
+        toast.textContent = message;
+        toast.className = `show ${type}`;
+        setTimeout(() => {
+            toast.classList.remove('show');
+        }, 4000);
+    }
+
+    function escapeHtml(str) {
+        if (!str) return '';
+        return String(str)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/'/g, '&#39;')
+            .replace(/"/g, '&quot;');
+    }
+
+    // ── Keyboard Shortcuts ───────────────────────────────────────────────────
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+            closeModal();
+            closeDeleteModal();
+        }
+    });
+
+    // ── Initialize ───────────────────────────────────────────────────────────
+    fetchEnvironments();
+</script>
+</body>
+</html>

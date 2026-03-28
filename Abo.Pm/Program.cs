@@ -61,6 +61,21 @@ async Task<List<Abo.Core.Connectors.ConnectorEnvironment>> GetConfiguredEnvironm
     return JsonSerializer.Deserialize<List<Abo.Core.Connectors.ConnectorEnvironment>>(envJson, new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? new();
 }
 
+// Helper to save environments to file
+async Task SaveEnvironmentsAsync(List<Abo.Core.Connectors.ConnectorEnvironment> envs, string filePath)
+{
+    var directory = Path.GetDirectoryName(filePath);
+    if (!string.IsNullOrEmpty(directory) && !Directory.Exists(directory))
+        Directory.CreateDirectory(directory);
+
+    var json = JsonSerializer.Serialize(envs, new JsonSerializerOptions 
+    { 
+        WriteIndented = true,
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+    });
+    await File.WriteAllTextAsync(filePath, json);
+}
+
 // API: Health / Status
 app.MapGet("/api/status", (IConfiguration config) =>
 {
@@ -80,6 +95,119 @@ app.MapGet("/api/environments", async () =>
     return Results.Ok(mapped);
 });
 
+// ── Admin API: Environment Management ─────────────────────────────────────
+
+// GET /api/admin/environments – Returns ALL environments for management UI
+app.MapGet("/api/admin/environments", async () =>
+{
+    var envs = await GetConfiguredEnvironmentsAsync();
+    return Results.Ok(envs);
+});
+
+// POST /api/admin/environments – Creates a new environment
+app.MapPost("/api/admin/environments", async ([FromBody] Abo.Core.Connectors.ConnectorEnvironment newEnv, Microsoft.Extensions.Caching.Memory.IMemoryCache cache) =>
+{
+    if (string.IsNullOrWhiteSpace(newEnv.Name))
+        return Results.BadRequest(new { error = "Name is required" });
+
+    // Validate name format (alphanumeric with hyphens)
+    if (!System.Text.RegularExpressions.Regex.IsMatch(newEnv.Name, @"^[a-zA-Z0-9\-]+$"))
+        return Results.BadRequest(new { error = "Name must be alphanumeric with hyphens only" });
+
+    var environmentsFile = Path.Combine(AppContext.BaseDirectory, "Data", "environments.json");
+    var envs = await GetConfiguredEnvironmentsAsync();
+
+    // Check for duplicate name
+    if (envs.Any(e => e.Name.Equals(newEnv.Name, StringComparison.OrdinalIgnoreCase)))
+        return Results.BadRequest(new { error = $"Environment '{newEnv.Name}' already exists" });
+
+    // Set defaults
+    newEnv.Type ??= "local";
+    newEnv.Os ??= "win";
+    newEnv.Technology ??= "dotnet";
+
+    // Validate IssueTracker if provided
+    if (newEnv.IssueTracker != null)
+    {
+        if (string.IsNullOrWhiteSpace(newEnv.IssueTracker.Type))
+            return Results.BadRequest(new { error = "IssueTracker.Type is required when IssueTracker is configured" });
+        if (string.IsNullOrWhiteSpace(newEnv.IssueTracker.Owner))
+            return Results.BadRequest(new { error = "IssueTracker.Owner is required when IssueTracker is configured" });
+        if (string.IsNullOrWhiteSpace(newEnv.IssueTracker.Repository))
+            return Results.BadRequest(new { error = "IssueTracker.Repository is required when IssueTracker is configured" });
+    }
+
+    envs.Add(newEnv);
+    await SaveEnvironmentsAsync(envs, environmentsFile);
+    cache.Remove("AllActiveIssues");
+
+    return Results.Created($"/api/admin/environments/{newEnv.Name}", newEnv);
+});
+
+// PUT /api/admin/environments/{name} – Updates an existing environment
+app.MapPut("/api/admin/environments/{name}", async (string name, [FromBody] Abo.Core.Connectors.ConnectorEnvironment updatedEnv, Microsoft.Extensions.Caching.Memory.IMemoryCache cache) =>
+{
+    if (string.IsNullOrWhiteSpace(name))
+        return Results.BadRequest(new { error = "Environment name is required" });
+
+    // If renaming, validate new name format
+    if (!name.Equals(updatedEnv.Name, StringComparison.OrdinalIgnoreCase))
+    {
+        if (!System.Text.RegularExpressions.Regex.IsMatch(updatedEnv.Name, @"^[a-zA-Z0-9\-]+$"))
+            return Results.BadRequest(new { error = "Name must be alphanumeric with hyphens only" });
+    }
+
+    var environmentsFile = Path.Combine(AppContext.BaseDirectory, "Data", "environments.json");
+    var envs = await GetConfiguredEnvironmentsAsync();
+
+    var existing = envs.FirstOrDefault(e => e.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
+    if (existing == null)
+        return Results.NotFound($"Environment '{name}' not found");
+
+    // Check for duplicate if name is being changed
+    if (!name.Equals(updatedEnv.Name, StringComparison.OrdinalIgnoreCase) &&
+        envs.Any(e => e.Name.Equals(updatedEnv.Name, StringComparison.OrdinalIgnoreCase)))
+        return Results.BadRequest(new { error = $"Environment '{updatedEnv.Name}' already exists" });
+
+    // Validate IssueTracker if provided
+    if (updatedEnv.IssueTracker != null)
+    {
+        if (string.IsNullOrWhiteSpace(updatedEnv.IssueTracker.Type))
+            return Results.BadRequest(new { error = "IssueTracker.Type is required when IssueTracker is configured" });
+        if (string.IsNullOrWhiteSpace(updatedEnv.IssueTracker.Owner))
+            return Results.BadRequest(new { error = "IssueTracker.Owner is required when IssueTracker is configured" });
+        if (string.IsNullOrWhiteSpace(updatedEnv.IssueTracker.Repository))
+            return Results.BadRequest(new { error = "IssueTracker.Repository is required when IssueTracker is configured" });
+    }
+
+    // Remove old entry and add updated one
+    envs.Remove(existing);
+    envs.Add(updatedEnv);
+    await SaveEnvironmentsAsync(envs, environmentsFile);
+    cache.Remove("AllActiveIssues");
+
+    return Results.Ok(updatedEnv);
+});
+
+// DELETE /api/admin/environments/{name} – Deletes an environment
+app.MapDelete("/api/admin/environments/{name}", async (string name, Microsoft.Extensions.Caching.Memory.IMemoryCache cache) =>
+{
+    if (string.IsNullOrWhiteSpace(name))
+        return Results.BadRequest(new { error = "Environment name is required" });
+
+    var environmentsFile = Path.Combine(AppContext.BaseDirectory, "Data", "environments.json");
+    var envs = await GetConfiguredEnvironmentsAsync();
+
+    var existing = envs.FirstOrDefault(e => e.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
+    if (existing == null)
+        return Results.NotFound($"Environment '{name}' not found");
+
+    envs.Remove(existing);
+    await SaveEnvironmentsAsync(envs, environmentsFile);
+    cache.Remove("AllActiveIssues");
+
+    return Results.NoContent();
+});
 
 
 // Helper to get all issues across environments
