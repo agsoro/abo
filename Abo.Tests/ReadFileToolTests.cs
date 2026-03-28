@@ -1,3 +1,4 @@
+using Xunit;
 using System.Text;
 using Abo.Core.Connectors;
 using Abo.Tools.Connector;
@@ -9,6 +10,7 @@ namespace Abo.Tests;
 /// Unit tests for the read_file tool — covers both LocalWorkspaceConnector.ReadFileAsync
 /// and ReadFileTool.ExecuteAsync.
 /// </summary>
+[Trait("Category", "Unit")]
 public class ReadFileToolTests : IDisposable
 {
     // -------------------------------------------------------------------------

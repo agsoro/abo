@@ -10,6 +10,7 @@ using Moq.Protected;
 
 namespace Abo.Tests;
 
+[Trait("Category", "Unit")]
 public class AgentSupervisorTests
 {
     private readonly Mock<IAgent> _quizAgentMock;

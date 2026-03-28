@@ -1,3 +1,5 @@
+using Xunit;
+
 namespace Abo.Tests;
 
 /// <summary>
@@ -5,6 +7,7 @@ namespace Abo.Tests;
 /// GitHubWikiConnector.CommitAndPushAsync via the commit message string.
 /// These tests assert the string-level transformation without requiring a live GitHub token.
 /// </summary>
+[Trait("Category", "Unit")]
 public class GitHubWikiConnectorPrefixTests
 {
     // Helper: mimics the commit message construction in CommitAndPushAsync

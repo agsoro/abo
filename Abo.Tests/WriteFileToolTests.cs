@@ -1,3 +1,4 @@
+using Xunit;
 using Abo.Core.Connectors;
 
 namespace Abo.Tests;
@@ -6,6 +7,7 @@ namespace Abo.Tests;
 /// Unit tests for the write_file tool — covers LocalWorkspaceConnector.WriteFileAsync
 /// markdown file restrictions in the abo environment.
 /// </summary>
+[Trait("Category", "Unit")]
 public class WriteFileToolTests : IDisposable
 {
     // -------------------------------------------------------------------------

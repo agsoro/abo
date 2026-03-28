@@ -7,6 +7,7 @@ using System.Text.Json;
 
 namespace Abo.Tests
 {
+    [Trait("Category", "Unit")]
     /// <summary>
     /// API Endpoint Tests for Issue #297: Testing & Integration
     /// Validates the /api/sessions and /api/interact endpoints work correctly

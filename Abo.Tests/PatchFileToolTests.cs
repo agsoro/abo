@@ -1,3 +1,4 @@
+using Xunit;
 using Abo.Core.Connectors;
 using Abo.Tools.Connector;
 using Moq;
@@ -8,6 +9,7 @@ namespace Abo.Tests;
 /// Unit tests for the patch_file tool — covers both LocalWorkspaceConnector.PatchFileAsync
 /// and PatchFileTool.ExecuteAsync.
 /// </summary>
+[Trait("Category", "Unit")]
 public class PatchFileToolTests : IDisposable
 {
     // -------------------------------------------------------------------------

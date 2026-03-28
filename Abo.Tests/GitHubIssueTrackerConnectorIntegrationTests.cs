@@ -6,6 +6,7 @@ using System.Text.Json;
 
 namespace Abo.Tests;
 
+[Trait("Category", "Integration")]
 public class GitHubIssueTrackerConnectorIntegrationTests
 {
     private readonly GitHubIssueTrackerConnector _connector;
