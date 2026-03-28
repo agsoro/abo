@@ -3,6 +3,7 @@ using Abo.Core;
 using Abo.Core.Connectors;
 using Abo.Integrations.Mattermost;
 using Abo.Integrations.XpectoLive;
+using Abo.Tools.Connector;
 using Abo.Tools;
 using Abo.Services;
 using Microsoft.AspNetCore.Mvc;
@@ -40,6 +41,7 @@ builder.Services.AddTransient<IAboTool, GetOpenWorkTool>();
 
 // Register Agents
 builder.Services.AddTransient<ManagerAgent>();
+builder.Services.AddTransient<IAboTool, SuggestAboFeatureTool>();
 builder.Services.AddTransient<IAgent, ManagerAgent>(sp => sp.GetRequiredService<ManagerAgent>());
 
 // Register Background Services
