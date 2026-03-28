@@ -754,6 +754,129 @@ app.MapPost("/api/issues/create", async ([FromBody] CreateIssueRequest req, ICon
     }
 });
 
+// API: Issues – Get notes for a specific issue (Issue #412, #413)
+app.MapGet("/api/issues/{id}/notes", async (string id, IConfiguration config, Microsoft.Extensions.Caching.Memory.IMemoryCache cache) =>
+{
+    var issues = await GetAllIssuesAsync(config, cache);
+    var issue = issues.FirstOrDefault(i => i.Id == id);
+    if (issue == null) return Results.NotFound($"Issue '{id}' not found.");
+
+    return Results.Ok(new { notes = issue.Notes ?? string.Empty });
+});
+
+// API: Issues – Update notes for a specific issue (Issue #412, #413)
+app.MapPatch("/api/issues/{id}/notes", async (string id, [FromBody] UpdateNotesRequest req, IConfiguration config, Microsoft.Extensions.Caching.Memory.IMemoryCache cache) =>
+{
+    if (string.IsNullOrWhiteSpace(id)) return Results.BadRequest(new { error = "Issue ID is required" });
+
+    try
+    {
+        // Find which environment this issue belongs to
+        var envs = await GetConfiguredEnvironmentsAsync();
+        Abo.Core.Connectors.IIssueTrackerConnector? tracker = null;
+        string? targetEnvName = null;
+
+        foreach (var env in envs.Where(e => e.IssueTracker != null))
+        {
+            if (env.IssueTracker!.Type.Equals("github", StringComparison.OrdinalIgnoreCase))
+            {
+                var testTracker = new Abo.Integrations.GitHub.GitHubIssueTrackerConnector(env.IssueTracker, config["Integrations:GitHub:Token"], env.Name);
+                try
+                {
+                    var testIssue = await testTracker.GetIssueAsync(id);
+                    if (testIssue != null)
+                    {
+                        tracker = testTracker;
+                        targetEnvName = env.Name;
+                        break;
+                    }
+                }
+                catch { continue; }
+            }
+            else if (env.IssueTracker.Type.Equals("filesystem", StringComparison.OrdinalIgnoreCase))
+            {
+                var testTracker = new Abo.Core.Connectors.FileSystemIssueTrackerConnector(env.Name);
+                try
+                {
+                    var testIssue = await testTracker.GetIssueAsync(id);
+                    if (testIssue != null)
+                    {
+                        tracker = testTracker;
+                        targetEnvName = env.Name;
+                        break;
+                    }
+                }
+                catch { continue; }
+            }
+        }
+
+        if (tracker == null)
+        {
+            return Results.NotFound($"Issue '{id}' not found in any configured environment.");
+        }
+
+        // Update the notes using the notes parameter
+        await tracker.UpdateIssueAsync(id, notes: req.Notes);
+
+        // Invalidate cache
+        cache.Remove("AllActiveIssues");
+
+        return Results.Ok(new { notes = req.Notes ?? string.Empty });
+    }
+    catch (Exception ex)
+    {
+        var logger = app.Services.GetRequiredService<ILogger<Program>>();
+        logger.LogError(ex, "Error updating notes for issue {IssueId}", id);
+        return Results.Problem($"Error updating notes: {ex.Message}");
+    }
+});
+
+// API: Issues – Get full issue details including notes (Issue #414)
+app.MapGet("/api/issues/{id}/details", async (string id, IConfiguration config) =>
+{
+    var envs = await GetConfiguredEnvironmentsAsync();
+
+    foreach (var env in envs.Where(e => e.IssueTracker != null))
+    {
+        Abo.Core.Connectors.IIssueTrackerConnector? tracker = null;
+        if (env.IssueTracker!.Type.Equals("github", StringComparison.OrdinalIgnoreCase))
+        {
+            tracker = new Abo.Integrations.GitHub.GitHubIssueTrackerConnector(env.IssueTracker, config["Integrations:GitHub:Token"], env.Name);
+        }
+        else if (env.IssueTracker.Type.Equals("filesystem", StringComparison.OrdinalIgnoreCase))
+        {
+            tracker = new Abo.Core.Connectors.FileSystemIssueTrackerConnector(env.Name);
+        }
+
+        if (tracker != null)
+        {
+            try
+            {
+                var issue = await tracker.GetIssueAsync(id, includeDetails: true);
+                if (issue != null)
+                {
+                    return Results.Ok(new
+                    {
+                        Id = issue.Id,
+                        Title = issue.Title,
+                        Body = issue.Body,
+                        State = issue.State,
+                        Project = issue.Project,
+                        Status = issue.Status,
+                        Type = issue.Type,
+                        Labels = issue.Labels,
+                        Notes = issue.Notes ?? string.Empty,
+                        Comments = issue.Comments
+                    });
+                }
+            }
+            catch { continue; }
+        }
+    }
+
+    return Results.NotFound($"Issue '{id}' not found.");
+});
+
 // API: Active Sessions – list currently active agent sessions
 app.MapGet("/api/sessions", (SessionService sessionService) =>
 {
@@ -981,6 +1104,11 @@ public class CreateIssueRequest
     public string Size { get; set; } = string.Empty;
     public string? Project { get; set; }
     public string? EnvironmentName { get; set; }
+}
+
+public class UpdateNotesRequest
+{
+    public string Notes { get; set; } = string.Empty;
 }
 
 public class InteractRequest

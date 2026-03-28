@@ -24,6 +24,9 @@
             --tag-radius: 0.25rem;
             --red: #dc2626;
             --red-hover: #b91c1c;
+            --purple: #9333ea;
+            --purple-bg: rgba(147, 51, 234, 0.15);
+            --purple-text: #c084fc;
         }
         * { box-sizing: border-box; }
         body { font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; background-color: var(--bg-color); color: var(--text-color); margin: 0; padding: 0; min-height: 100vh; }
@@ -65,6 +68,11 @@
         .env-tag { display: inline-block; padding: 0.15rem 0.5rem; border-radius: var(--tag-radius); font-size: 0.75rem; background-color: rgba(59, 130, 246, 0.1); color: #60a5fa; border: 1px solid rgba(59, 130, 246, 0.3); font-family: monospace; }
         .issue-link { display: inline-block; padding: 0.15rem 0.5rem; border-radius: var(--tag-radius); font-size: 0.75rem; background-color: var(--green-bg); color: var(--green-text); border: 1px solid rgba(22, 163, 74, 0.4); font-family: monospace; cursor: pointer; text-decoration: none; transition: all 0.2s; }
         .issue-link:hover { background-color: rgba(22, 163, 74, 0.25); text-decoration: underline; }
+        .notes-indicator { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: 50%; font-size: 0.65rem; font-weight: 700; cursor: pointer; transition: all 0.2s; flex-shrink: 0; }
+        .notes-indicator.has-notes { background-color: var(--purple-bg); color: var(--purple-text); border: 1px solid rgba(147, 51, 234, 0.4); }
+        .notes-indicator.has-notes:hover { background-color: rgba(147, 51, 234, 0.25); }
+        .notes-indicator.no-notes { background-color: rgba(148, 163, 184, 0.1); color: var(--text-muted); border: 1px solid var(--border-color); opacity: 0.5; }
+        .notes-indicator.no-notes:hover { opacity: 0.8; }
         .action-btn { background-color: var(--primary-color); color: #fff; border: none; border-radius: var(--tag-radius); padding: 0.35rem 0.85rem; font-size: 0.8rem; cursor: pointer; white-space: nowrap; transition: background-color 0.2s, opacity 0.2s; flex-shrink: 0; }
         .action-btn:hover:not(:disabled) { background-color: var(--primary-hover); }
         .action-btn:disabled { opacity: 0.5; cursor: not-allowed; background-color: var(--primary-color); animation: pulse-btn 1.5s ease-in-out infinite; }
@@ -96,6 +104,28 @@
         #toast-notification.show { display: block; }
         #toast-notification.success { border-left: 3px solid var(--green); }
         #toast-notification.error { border-left: 3px solid var(--red); }
+        /* Issue Detail Modal */
+        #detail-modal { display: none; position: fixed; inset: 0; background-color: rgba(0, 0, 0, 0.7); z-index: 200; }
+        #detail-modal.open { display: flex; align-items: center; justify-content: center; }
+        #detail-modal .modal-dialog { background-color: var(--surface-color); border: 1px solid var(--border-color); border-radius: 0.75rem; box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5); width: 90%; max-width: 700px; max-height: 90vh; display: flex; flex-direction: column; }
+        #detail-modal .modal-header { display: flex; align-items: flex-start; gap: 1rem; padding: 1.25rem 1.5rem; border-bottom: 1px solid var(--border-color); }
+        #detail-modal .modal-title { font-size: 1.15rem; font-weight: 700; color: var(--text-color); flex: 1; }
+        #detail-modal .modal-body { padding: 1.5rem; overflow-y: auto; flex: 1; }
+        .detail-section { margin-bottom: 1.5rem; }
+        .detail-section:last-child { margin-bottom: 0; }
+        .detail-label { font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.5rem; }
+        .detail-value { font-size: 0.9rem; color: var(--text-color); }
+        .detail-meta { display: flex; gap: 0.75rem; flex-wrap: wrap; margin-bottom: 1rem; }
+        .detail-body { background-color: var(--bg-color); border: 1px solid var(--border-color); border-radius: var(--tag-radius); padding: 1rem; font-size: 0.875rem; color: var(--text-color); white-space: pre-wrap; word-break: break-word; max-height: 200px; overflow-y: auto; }
+        .notes-textarea { width: 100%; min-height: 120px; background-color: var(--bg-color); border: 1px solid var(--border-color); color: var(--text-color); padding: 0.75rem; border-radius: var(--tag-radius); font-family: inherit; font-size: 0.875rem; resize: vertical; transition: border-color 0.2s; }
+        .notes-textarea:focus { outline: none; border-color: var(--purple); }
+        .notes-textarea::placeholder { color: var(--text-muted); }
+        .notes-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 0.5rem; }
+        .char-count { font-size: 0.75rem; color: var(--text-muted); }
+        .save-status { font-size: 0.75rem; color: var(--text-muted); display: flex; align-items: center; gap: 0.35rem; }
+        .save-status.saving { color: var(--yellow); }
+        .save-status.saved { color: var(--green); }
+        .save-status.error { color: var(--red); }
         /* Action Status Overlay */
         .action-status { position: fixed; bottom: 2rem; right: 6rem; background-color: var(--surface-color); border: 1px solid var(--border-color); border-radius: var(--tag-radius); padding: 0.75rem 1.25rem; color: var(--text-color); font-size: 0.875rem; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4); display: flex; align-items: center; gap: 0.75rem; z-index: 150; animation: slideIn 0.3s ease-out; }
         @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
@@ -153,11 +183,53 @@
     <div class="modal-footer"><button class="modal-btn modal-btn-secondary" onclick="closeCreateIssueModal()">Cancel</button><button class="modal-btn modal-btn-primary" id="btn-submit-form" onclick="submitCreateIssueForm(event)">Create Issue</button></div>
   </div>
 </div>
+
+<!-- Issue Detail Modal -->
+<div id="detail-modal" onclick="if(event.target === this) closeDetailModal()">
+  <div class="modal-dialog">
+    <div class="modal-header">
+      <div>
+        <div class="modal-title" id="detail-title">Issue Details</div>
+        <div style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.25rem;" id="detail-id">#123</div>
+      </div>
+      <button class="modal-close-btn" onclick="closeDetailModal()" title="Close (Esc)">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="detail-section">
+        <div class="detail-label">Status</div>
+        <div class="detail-meta">
+          <span class="env-tag" id="detail-env">abo</span>
+          <span class="step-badge" id="detail-step">work</span>
+          <span class="step-badge" style="background-color: var(--green-bg); color: var(--green-text); border-color: rgba(22, 163, 74, 0.4);" id="detail-state">Open</span>
+        </div>
+      </div>
+      <div class="detail-section">
+        <div class="detail-label">Description</div>
+        <div class="detail-body" id="detail-body">Loading...</div>
+      </div>
+      <div class="detail-section">
+        <div class="detail-label">📝 Notes</div>
+        <textarea id="detail-notes" class="notes-textarea" placeholder="Add notes, annotations, or additional context about this issue..." maxlength="2000" oninput="handleNotesInput()"></textarea>
+        <div class="notes-footer">
+          <span class="char-count" id="notes-char-count">0 / 2000</span>
+          <span class="save-status" id="notes-save-status"></span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
 <div id="toast-notification"></div>
 <script>
         let allIssues = [];
         let activeSessions = [];
         let availableEnvironments = [];
+
+        // Current issue details state
+        let currentDetailIssueId = null;
+        let notesSaveTimeout = null;
+        let notesLastSavedValue = '';
+        let notesHasUnsavedChanges = false;
 
         // Mapping from stepId to action label and orchestrator command
         const STEP_ACTION_MAPPING = {
@@ -309,6 +381,152 @@
             }
         }
 
+        // ── Issue Detail Modal Functions ─────────────────────────────────────
+
+        async function openDetailModal(issueId) {
+            currentDetailIssueId = issueId;
+            const modal = document.getElementById('detail-modal');
+            
+            // Reset notes state
+            notesLastSavedValue = '';
+            notesHasUnsavedChanges = false;
+            clearNotesSaveTimeout();
+            document.getElementById('notes-save-status').className = 'save-status';
+            document.getElementById('notes-save-status').textContent = '';
+            
+            try {
+                const response = await fetch(`/api/issues/${encodeURIComponent(issueId)}/details`);
+                if (!response.ok) {
+                    throw new Error('Failed to fetch issue details');
+                }
+                const issue = await response.json();
+                
+                // Populate modal
+                document.getElementById('detail-id').textContent = `#${issue.id}`;
+                document.getElementById('detail-title').textContent = issue.title;
+                document.getElementById('detail-env').textContent = issue.labels?.find(l => l.startsWith('env: '))?.substring(5) || '—';
+                document.getElementById('detail-step').textContent = issue.status || '—';
+                document.getElementById('detail-state').textContent = issue.state === 'open' ? 'Open' : issue.state === 'closed' ? 'Closed' : issue.state;
+                document.getElementById('detail-body').textContent = issue.body || 'No description provided.';
+                
+                // Set notes
+                const notesTextarea = document.getElementById('detail-notes');
+                notesTextarea.value = issue.notes || '';
+                notesLastSavedValue = issue.notes || '';
+                updateNotesCharCount();
+                
+                modal.classList.add('open');
+                notesTextarea.focus();
+            } catch (err) {
+                console.error('Error fetching issue details:', err);
+                showToast(`Failed to load details for issue #${issueId}`, 'error');
+            }
+        }
+
+        function closeDetailModal() {
+            // Save any unsaved notes before closing
+            if (notesHasUnsavedChanges && currentDetailIssueId) {
+                saveNotesNow();
+            }
+            
+            const modal = document.getElementById('detail-modal');
+            modal.classList.remove('open');
+            currentDetailIssueId = null;
+            clearNotesSaveTimeout();
+        }
+
+        function handleNotesInput() {
+            if (!currentDetailIssueId) return;
+            
+            const notesTextarea = document.getElementById('detail-notes');
+            const currentValue = notesTextarea.value;
+            const saveStatus = document.getElementById('notes-save-status');
+            
+            updateNotesCharCount();
+            
+            // Check if there are unsaved changes
+            notesHasUnsavedChanges = currentValue !== notesLastSavedValue;
+            
+            if (notesHasUnsavedChanges) {
+                saveStatus.className = 'save-status saving';
+                saveStatus.innerHTML = '⏳ Saving...';
+                
+                // Debounce the save (500ms)
+                clearNotesSaveTimeout();
+                notesSaveTimeout = setTimeout(() => {
+                    saveNotesNow();
+                }, 500);
+            }
+        }
+
+        function clearNotesSaveTimeout() {
+            if (notesSaveTimeout) {
+                clearTimeout(notesSaveTimeout);
+                notesSaveTimeout = null;
+            }
+        }
+
+        function updateNotesCharCount() {
+            const notesTextarea = document.getElementById('detail-notes');
+            const charCount = document.getElementById('notes-char-count');
+            const length = notesTextarea.value.length;
+            charCount.textContent = `${length} / 2000`;
+            charCount.style.color = length > 1800 ? 'var(--yellow)' : '';
+        }
+
+        async function saveNotesNow() {
+            if (!currentDetailIssueId) return;
+            
+            const notesTextarea = document.getElementById('detail-notes');
+            const notes = notesTextarea.value;
+            const saveStatus = document.getElementById('notes-save-status');
+            
+            try {
+                const response = await fetch(`/api/issues/${encodeURIComponent(currentDetailIssueId)}/notes`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ notes: notes })
+                });
+                
+                if (!response.ok) {
+                    throw new Error('Failed to save notes');
+                }
+                
+                notesLastSavedValue = notes;
+                notesHasUnsavedChanges = false;
+                
+                saveStatus.className = 'save-status saved';
+                saveStatus.innerHTML = '✓ Auto-saved';
+                
+                // Update the notes indicator in the issue list
+                updateNotesIndicator(currentDetailIssueId, notes);
+                
+                // Clear the "saved" status after 2 seconds
+                setTimeout(() => {
+                    if (!notesHasUnsavedChanges && currentDetailIssueId) {
+                        saveStatus.className = 'save-status';
+                        saveStatus.textContent = '';
+                    }
+                }, 2000);
+                
+            } catch (err) {
+                console.error('Error saving notes:', err);
+                saveStatus.className = 'save-status error';
+                saveStatus.innerHTML = '❌ Error saving';
+                showToast(`Failed to save notes for issue #${currentDetailIssueId}`, 'error');
+            }
+        }
+
+        function updateNotesIndicator(issueId, notes) {
+            const indicator = document.querySelector(`[data-issue-id="${escapeHtml(issueId)}"] .notes-indicator`);
+            if (indicator) {
+                const hasNotes = notes && notes.trim().length > 0;
+                indicator.className = `notes-indicator ${hasNotes ? 'has-notes' : 'no-notes'}`;
+                indicator.textContent = hasNotes ? '📝' : '💭';
+                indicator.title = hasNotes ? 'View/Edit notes' : 'Add notes';
+            }
+        }
+
         // ── Enhanced Data Fetching with Aggressive Polling ────────────────────
 
         function startAggressivePolling() {
@@ -377,7 +595,10 @@
                 e.preventDefault();
                 openCreateIssueModal();
             }
-            if (e.key === 'Escape') closeCreateIssueModal();
+            if (e.key === 'Escape') {
+                closeCreateIssueModal();
+                closeDetailModal();
+            }
         });
 
         // ── Modal Functions ────────────────────────────────────────────────────
@@ -540,6 +761,9 @@
                     const btn = mapping 
                         ? `<button class="action-btn" onclick="triggerAction('${escapeHtml(i.id)}', '${escapeHtml(i.stepId)}')">${escapeHtml(mapping.label)}</button>`
                         : '';
+                    
+                    // Notes indicator - will be updated with actual notes status via fetch
+                    const notesIndicatorHtml = `<span class="notes-indicator no-notes" onclick="openDetailModal('${escapeHtml(i.id)}')" title="Add notes" data-issue-id="${escapeHtml(i.id)}">💭</span>`;
 
                     return `<div class="issue-row">
                       <span class="issue-id">#${escapeHtml(i.id)}</span>
@@ -551,6 +775,7 @@
                           <span class="step-badge" style="opacity: 0.7">${escapeHtml(i.stepId)}</span>
                         </div>
                       </div>
+                      ${notesIndicatorHtml}
                       ${btn}
                     </div>`;
                 }).join('');
@@ -649,6 +874,7 @@
             if (normalPollingInterval) clearInterval(normalPollingInterval);
             if (aggressivePollingInterval) clearInterval(aggressivePollingInterval);
             getActiveIssueIds().forEach(issueId => cleanupActionEntry(issueId));
+            clearNotesSaveTimeout();
         });
     </script>
 </body>

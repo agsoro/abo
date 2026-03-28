@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using Abo.Core.Connectors;
 using Abo.Contracts.Models;
 
@@ -24,6 +25,13 @@ public class GitHubIssueTrackerConnector : IIssueTrackerConnector
     private static readonly Dictionary<string, (string Project, string Status, string Type, DateTime CachedAt)> _enrichmentCache
         = new(StringComparer.OrdinalIgnoreCase);
     private static readonly TimeSpan _enrichmentCacheTtl = TimeSpan.FromSeconds(60);
+
+    // Notes delimiter pattern for GitHub: stores notes in issue body
+    // Format: body content, then --- **ABO Notes:** ...notes...
+    private static readonly Regex NotesDelimiterRegex = new Regex(
+        @"^-{3}\s*\*\*ABO Notes:\*\*\s*$",
+        RegexOptions.Multiline | RegexOptions.IgnoreCase
+    );
 
     public GitHubIssueTrackerConnector(IssueTrackerConfig config, string? issueTrackerToken = null, string? environmentName = null)
     {
@@ -87,9 +95,11 @@ public class GitHubIssueTrackerConnector : IIssueTrackerConnector
             throw new Exception($"GitHub GraphQL API Error ({(int)response.StatusCode}): {response.ReasonPhrase}\n{content}");
         }
 
-        if (throwGraphQLErrors && content.Contains("\"errors\":")) {
+        if (throwGraphQLErrors && content.Contains("\"errors\":"))
+        {
             using var doc = JsonDocument.Parse(content);
-            if (throwGraphQLErrors && doc.RootElement.TryGetProperty("errors", out var errorsProp)) {
+            if (throwGraphQLErrors && doc.RootElement.TryGetProperty("errors", out var errorsProp))
+            {
                 if (errorsProp.ValueKind == JsonValueKind.Array && errorsProp.GetArrayLength() > 0)
                 {
                     var firstError = errorsProp[0].GetProperty("message").GetString();
@@ -102,6 +112,71 @@ public class GitHubIssueTrackerConnector : IIssueTrackerConnector
         }
 
         return content;
+    }
+
+    /// <summary>
+    /// Extracts ABO notes from the issue body.
+    /// Format: body content, then --- **ABO Notes:** ...notes...
+    /// </summary>
+    private static string ExtractNotesFromBody(string body)
+    {
+        if (string.IsNullOrWhiteSpace(body))
+            return string.Empty;
+
+        // Find the ABO Notes delimiter pattern
+        var match = NotesDelimiterRegex.Match(body);
+        if (match.Success)
+        {
+            // Extract everything after the delimiter
+            var notesStartIndex = match.Index + match.Length;
+            var notesContent = body.Substring(notesStartIndex).Trim();
+            return notesContent;
+        }
+
+        return string.Empty;
+    }
+
+    /// <summary>
+    /// Removes ABO notes section from body content.
+    /// </summary>
+    private static string RemoveNotesFromBody(string body)
+    {
+        if (string.IsNullOrWhiteSpace(body))
+            return string.Empty;
+
+        // Find and remove the ABO Notes section
+        var match = NotesDelimiterRegex.Match(body);
+        if (match.Success)
+        {
+            // Get content before the delimiter and trim
+            var contentBefore = body.Substring(0, match.Index).TrimEnd();
+            return contentBefore;
+        }
+
+        return body;
+    }
+
+    /// <summary>
+    /// Replaces or adds the ABO Notes section in the body.
+    /// </summary>
+    private static string SetNotesInBody(string body, string notes)
+    {
+        // First, remove any existing notes section
+        var bodyWithoutNotes = RemoveNotesFromBody(body);
+
+        if (string.IsNullOrWhiteSpace(notes))
+        {
+            // No notes to add, return body without notes section
+            return bodyWithoutNotes;
+        }
+
+        // Add notes section with delimiter
+        if (string.IsNullOrWhiteSpace(bodyWithoutNotes))
+        {
+            return $"---\n**ABO Notes:**\n{notes}";
+        }
+
+        return $"{bodyWithoutNotes}\n\n---\n**ABO Notes:**\n{notes}";
     }
 
     /// <summary>
@@ -260,7 +335,8 @@ query($owner: String!) {
                 
                 if (content.TryGetProperty("issueType", out var typeEl) && typeEl.ValueKind == JsonValueKind.Object)
                 {
-                    if (typeEl.TryGetProperty("name", out var typeNameEl)) {
+                    if (typeEl.TryGetProperty("name", out var typeNameEl))
+                    {
                         var tv = typeNameEl.GetString();
                         if (!string.IsNullOrWhiteSpace(tv)) typeStr = tv;
                     }
@@ -283,6 +359,10 @@ query($owner: String!) {
                         }
                     }
                 }
+
+                // Extract notes from body
+                var notes = ExtractNotesFromBody(body);
+
                 var record = new IssueRecord
                 {
                     Id = numStr,
@@ -293,7 +373,8 @@ query($owner: String!) {
                     Project = logicalKey ?? "",
                     Status = status,
                     Type = typeStr,
-                    Labels = labelsList
+                    Labels = labelsList,
+                    Notes = notes
                 };
 
                 // Deduplicate by issue number (last-write wins for cross-project issues)
@@ -360,6 +441,9 @@ query($owner: String!) {
         var record = ghIssue?.ToRecord(_environmentName);
         if (record != null) 
         {
+            // Extract notes from body for GitHub issues
+            record.Notes = ExtractNotesFromBody(record.Body);
+
             await EnrichIssuesWithProjectFieldsAsync(new List<IssueRecord> { record });
             
             if (includeDetails)
@@ -426,11 +510,21 @@ query($owner: String!) {
         return record;
     }
 
-    public async Task<IssueRecord> UpdateIssueAsync(string issueId, string? title = null, string? body = null, string? state = null, string[]? labels = null, string? project = null, string? status = null, string? type = null, string? size = null)
+    public async Task<IssueRecord> UpdateIssueAsync(string issueId, string? title = null, string? body = null, string? state = null, string[]? labels = null, string? project = null, string? status = null, string? type = null, string? size = null, string? notes = null)
     {
+        // Get current issue to handle notes properly (merge with existing body)
+        var existingIssue = await GetIssueAsync(issueId);
+        string updatedBody = body ?? existingIssue?.Body ?? string.Empty;
+
+        // If notes are being updated, merge them into the body
+        if (notes != null)
+        {
+            updatedBody = SetNotesInBody(updatedBody, notes);
+        }
+
         var reqObj = new Dictionary<string, object>();
         if (title != null) reqObj["title"] = title;
-        if (body != null) reqObj["body"] = body;
+        if (body != null || notes != null) reqObj["body"] = updatedBody;
         if (state != null) reqObj["state"] = state;
 
         List<string>? updatedLabels = null;
@@ -440,7 +534,6 @@ query($owner: String!) {
         }
         else if (project != null || size != null || type != null || status != null)
         {
-            var existingIssue = await GetIssueAsync(issueId);
             if (existingIssue != null) 
             {
                 updatedLabels = existingIssue.Labels;
@@ -473,6 +566,9 @@ query($owner: String!) {
         var json = await SendGitHubRequestAsync(req);
         var ghIssue = JsonSerializer.Deserialize<GitHubIssue>(json, _jsonOptions);
         var record = ghIssue?.ToRecord(_environmentName) ?? new IssueRecord();
+
+        // Set the notes on the returned record
+        record.Notes = notes ?? existingIssue?.Notes ?? ExtractNotesFromBody(record.Body);
 
         if (!string.IsNullOrWhiteSpace(record.NodeId)) {
             await EnrichIssuesWithProjectFieldsAsync(new List<IssueRecord> { record });
