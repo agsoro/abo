@@ -435,6 +435,81 @@ public class FileSystemWikiConnector : IWikiConnector
         }
     }
 
+    /// <inheritdoc />
+    public Task<string> ListWikiAsync(string path)
+    {
+        try
+        {
+            var searchPath = string.IsNullOrWhiteSpace(path) || path == "."
+                ? _wikiRoot
+                : GetFullPath(path.TrimStart('/', '\\'));
+
+            if (!Directory.Exists(searchPath))
+            {
+                return Task.FromResult($"Error: Wiki path '{path}' does not exist.");
+            }
+
+            var result = new System.Text.StringBuilder();
+            BuildTree(searchPath, _wikiRoot, "", result);
+
+            var output = result.ToString();
+            return Task.FromResult(string.IsNullOrWhiteSpace(output)
+                ? $"Wiki path '{path}' is empty."
+                : output.TrimEnd());
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return Task.FromResult("Error: Access denied to wiki path.");
+        }
+        catch (Exception ex)
+        {
+            return Task.FromResult($"Error listing wiki: {ex.Message}");
+        }
+    }
+
+    private void BuildTree(string currentPath, string rootPath, string indent, System.Text.StringBuilder result)
+    {
+        // Get directories and files
+        var directories = Directory.GetDirectories(currentPath)
+            .Select(d => new { IsDir = true, Name = Path.GetFileName(d), FullPath = d })
+            .Concat(Directory.GetFiles(currentPath, "*.md")
+                .Select(f => new { IsDir = false, Name = Path.GetFileName(f), FullPath = f }))
+            .OrderBy(x => x.IsDir ? 0 : 1) // Directories first
+            .ThenBy(x => x.Name, StringComparer.OrdinalIgnoreCase);
+
+        var entries = directories.ToList();
+        for (int i = 0; i < entries.Count; i++)
+        {
+            var entry = entries[i];
+            bool isLast = (i == entries.Count - 1);
+
+            // Determine the prefix and connector
+            string prefix;
+            string connector;
+
+            if (isLast)
+            {
+                prefix = indent + "└── ";
+                connector = indent + "    ";
+            }
+            else
+            {
+                prefix = indent + "├── ";
+                connector = indent + "│   ";
+            }
+
+            if (entry.IsDir)
+            {
+                result.AppendLine(prefix + "[DIR] " + entry.Name);
+                BuildTree(entry.FullPath, rootPath, indent + connector, result);
+            }
+            else
+            {
+                result.AppendLine(prefix + entry.Name);
+            }
+        }
+    }
+
     private static string? ExtractTitle(string content)
     {
         // Try to extract title from first H1 heading (# Title)

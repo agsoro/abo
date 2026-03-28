@@ -143,6 +143,48 @@ public class XpectoLiveWikiConnector : IWikiConnector
         }
     }
 
+    /// <inheritdoc />
+    public async Task<string> ListWikiAsync(string path)
+    {
+        try
+        {
+            // For XpectoLive, we list pages from the space info API
+            // The path parameter is ignored since the API doesn't support directory-like navigation
+            var spaceInfo = await _client.GetSpaceInfoAsync(_spaceId);
+
+            if (!spaceInfo.Any())
+            {
+                return $"Wiki space '{_spaceId}' is empty.";
+            }
+
+            // Sort pages by title for a tree-like view
+            var sortedPages = spaceInfo
+                .OrderBy(p => p.PageTitle, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            var result = new System.Text.StringBuilder();
+            result.AppendLine($"Wiki space: {_spaceId}");
+            result.AppendLine(new string('-', 40));
+
+            foreach (var page in sortedPages)
+            {
+                var pageId = page.PageID ?? "unknown";
+                var title = page.PageTitle ?? "Untitled";
+                result.AppendLine($"  ├── {title} (ID: {pageId})");
+            }
+
+            result.AppendLine(new string('-', 40));
+            result.AppendLine($"Total: {sortedPages.Count} page(s)");
+
+            return result.ToString();
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return "Error: Access denied to wiki space.";
+        }
+        catch (Exception ex) { return $"Error listing wiki: {ex.Message}"; }
+    }
+
     private string ApplyPatch(string originalContent, string patch)
     {
         var originalLines = originalContent.Split('\n');
@@ -246,7 +288,7 @@ public class XpectoLiveWikiConnector : IWikiConnector
                 {
                     if (originalLineIndex >= originalLines.Length)
                     {
-                        return $"Error: Patch hunk line {hunkLineIndex + 1} does not match file content.";
+                        return $"Error: Patch target line {originalLineIndex + 1} is out of range.";
                     }
 
                     resultLines.Add(originalLines[originalLineIndex]);
