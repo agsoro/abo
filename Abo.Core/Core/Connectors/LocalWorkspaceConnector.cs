@@ -325,6 +325,209 @@ public class LocalWorkspaceConnector : IWorkspaceConnector
     }
 
     // -----------------------------------------------------------------------
+    // PatchFileAsync Implementation — Unified Diff/Patch Application
+    // -----------------------------------------------------------------------
+
+    /// <inheritdoc />
+    public async Task<string> PatchFileAsync(string relativePath, string patch)
+    {
+        // Security: Get full path (prevents directory traversal)
+        var path = GetFullPath(relativePath);
+
+        // 1. Read existing file or start with empty content
+        string originalContent = string.Empty;
+        if (File.Exists(path))
+        {
+            try
+            {
+                originalContent = await File.ReadAllTextAsync(path);
+            }
+            catch (Exception ex)
+            {
+                return $"Error reading file '{relativePath}': {ex.Message}";
+            }
+        }
+
+        // Split into lines for processing
+        var originalLines = originalContent.Split('\n');
+
+        // 2. Parse the unified diff/patch
+        var lines = patch.Split('\n');
+        int lineIndex = 0;
+
+        // Parse header: --- a/file.txt and +++ b/file.txt
+        if (lineIndex >= lines.Length || !lines[lineIndex].StartsWith("--- "))
+        {
+            return "Error: Invalid patch format - missing '---' header.";
+        }
+        lineIndex++;
+
+        if (lineIndex >= lines.Length || !lines[lineIndex].StartsWith("+++ "))
+        {
+            return "Error: Invalid patch format - missing '+++' header.";
+        }
+        lineIndex++;
+
+        // Parse hunks
+        var resultLines = new List<string>();
+        int originalLineIndex = 0;
+
+        while (lineIndex < lines.Length)
+        {
+            var currentLine = lines[lineIndex];
+
+            // Skip any non-hunk header lines (like comments or garbage)
+            if (!currentLine.StartsWith("@@ "))
+            {
+                lineIndex++;
+                continue;
+            }
+
+            // Parse hunk header: @@ -oldStart,oldCount +newStart,newCount @@
+            var hunkMatch = Regex.Match(currentLine, @"@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@");
+            if (!hunkMatch.Success)
+            {
+                return "Error: Invalid patch format - missing hunk header '@@'.";
+            }
+
+            int hunkOldStart = int.Parse(hunkMatch.Groups[1].Value);
+            int hunkOldCount = hunkMatch.Groups[2].Success ? int.Parse(hunkMatch.Groups[2].Value) : 1;
+            int hunkNewStart = int.Parse(hunkMatch.Groups[3].Value);
+            int hunkNewCount = hunkMatch.Groups[4].Success ? int.Parse(hunkMatch.Groups[4].Value) : 1;
+
+            lineIndex++;
+
+            // 3. Apply patches (hunk-by-hunk, supporting context lines)
+            // Copy context lines before the hunk (lines from current position to hunk start - 1)
+            while (originalLineIndex < hunkOldStart - 1)
+            {
+                if (originalLineIndex >= originalLines.Length)
+                {
+                    return $"Error: Patch target line {originalLineIndex + 1} is out of range.";
+                }
+                resultLines.Add(originalLines[originalLineIndex]);
+                originalLineIndex++;
+            }
+
+            // Process hunk body
+            int hunkEnd = originalLineIndex + hunkOldCount;
+            int hunkLineIndex = 0;
+
+            while (hunkLineIndex < hunkOldCount + hunkNewCount + 1) // +1 for potential hunk trailer "\"
+            {
+                if (lineIndex >= lines.Length) break;
+
+                currentLine = lines[lineIndex];
+
+                // Hunk trailer
+                if (currentLine == "\\")
+                {
+                    lineIndex++;
+                    hunkLineIndex++;
+                    continue;
+                }
+
+                // Skip empty lines at end of hunk
+                if (string.IsNullOrEmpty(currentLine) && lineIndex == lines.Length - 1)
+                {
+                    break;
+                }
+
+                char lineType = currentLine.Length > 0 ? currentLine[0] : ' ';
+
+                if (lineType == '-')
+                {
+                    // Deletion - skip original line
+                    string expectedContent = currentLine.Length > 1 ? currentLine.Substring(1) : "";
+
+                    // Verify context matches
+                    if (originalLineIndex >= originalLines.Length)
+                    {
+                        return $"Error: Patch hunk line {hunkLineIndex + 1} does not match file content.";
+                    }
+
+                    var actualContent = originalLines[originalLineIndex];
+                    // Handle both cases where original may or may not have trailing newline char
+                    if (!actualContent.TrimEnd('\r').EndsWith(expectedContent.TrimEnd('\r')))
+                    {
+                        return $"Error: Patch hunk line {hunkLineIndex + 1} does not match file content.";
+                    }
+
+                    originalLineIndex++;
+                    hunkLineIndex++;
+                }
+                else if (lineType == '+')
+                {
+                    // Addition - add new line
+                    string newContent = currentLine.Length > 1 ? currentLine.Substring(1) : "";
+                    resultLines.Add(newContent);
+                    lineIndex++;
+                    hunkLineIndex++;
+                }
+                else if (lineType == ' ')
+                {
+                    // Context line - copy original line
+                    string expectedContent = currentLine.Length > 1 ? currentLine.Substring(1) : "";
+
+                    if (originalLineIndex >= originalLines.Length)
+                    {
+                        return $"Error: Patch target line {originalLineIndex + 1} is out of range.";
+                    }
+
+                    var actualContent = originalLines[originalLineIndex];
+                    // Compare trimmed content (handling potential newline characters)
+                    if (!actualContent.TrimEnd('\r').EndsWith(expectedContent.TrimEnd('\r')))
+                    {
+                        return $"Error: Patch hunk line {hunkLineIndex + 1} does not match file content.";
+                    }
+
+                    resultLines.Add(actualContent);
+                    originalLineIndex++;
+                    lineIndex++;
+                    hunkLineIndex++;
+                }
+                else if (currentLine.StartsWith("\\"))
+                {
+                    // Hunk trailer
+                    lineIndex++;
+                    hunkLineIndex++;
+                }
+                else
+                {
+                    // Unknown line type, skip
+                    lineIndex++;
+                    hunkLineIndex++;
+                }
+            }
+        }
+
+        // Copy any remaining lines from original file
+        while (originalLineIndex < originalLines.Length)
+        {
+            resultLines.Add(originalLines[originalLineIndex]);
+            originalLineIndex++;
+        }
+
+        // 4. Write the modified content back
+        try
+        {
+            var dir = Path.GetDirectoryName(path);
+            if (dir != null && !Directory.Exists(dir))
+            {
+                Directory.CreateDirectory(dir);
+            }
+
+            var newContent = string.Join("\n", resultLines);
+            await File.WriteAllTextAsync(path, newContent);
+            return $"Successfully applied patch to '{relativePath}'.";
+        }
+        catch (Exception ex)
+        {
+            return $"Error writing file '{relativePath}': {ex.Message}";
+        }
+    }
+
+    // -----------------------------------------------------------------------
     // HTTP GET Tool Implementation — FA-01 bis FA-08 + Sicherheitsmaßnahmen
     // -----------------------------------------------------------------------
 

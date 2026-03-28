@@ -22,6 +22,14 @@ public interface IWorkspaceConnector
     Task<string> SearchRegexAsync(string relativePath, string pattern, int limitLinesPerFile);
 
     /// <summary>
+    /// Applies a unified diff/patch to a file.
+    /// </summary>
+    /// <param name="relativePath">Target file path (relative to workspace).</param>
+    /// <param name="patch">Unified diff format patch string.</param>
+    /// <returns>Success message or descriptive error.</returns>
+    Task<string> PatchFileAsync(string relativePath, string patch);
+
+    /// <summary>
     /// Führt einen HTTP GET Request an die angegebene URL aus.
     /// </summary>
     /// <param name="url">Die vollständige URL (muss http:// oder https:// beginnen).</param>
