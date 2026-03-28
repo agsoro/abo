@@ -101,7 +101,7 @@ public static class WorkflowEngine
                     Call `conclude_step` with one of these keywords. Include any standard context in the mandatory `notes` parameter. 
                     - 'triage_ok' -> Moves issue to release planning.
                     - 'reject_duplicate' -> Marks issue as invalid and ends the flow.",
-                    AllowedTools = new List<string> { "conclude_step", "list_issues", "get_issue", "update_issue", "get_wiki_page", "read_file", "list_dir", "search_wiki" }
+                    AllowedTools = new List<string> { "conclude_step", "list_issues", "get_issue", "update_issue", "get_wiki_page", "read_file", "list_dir", "search_wiki", "list_wiki" }
                 },
                 Transitions = new Dictionary<string, WorkflowTransition>(StringComparer.OrdinalIgnoreCase)
                 {
@@ -232,7 +232,7 @@ public static class WorkflowEngine
                     - 'implementation_completed' -> Development successfully completed, moves to QA review.
                     - 'pause_work' -> Pauses the workflow for this issue (to be resumed later).
                     - 'need_help' -> Escalates to the customer for clarification.",
-                    AllowedTools = new List<string> { "conclude_step", "read_file", "write_file", "patch_file", "patch_wiki_page", "delete_file", "list_dir", "mkdir", "git", "dotnet", "python", "shell", "search_regex", "http_get", "get_issue", "get_wiki_page", "update_wiki_page", "search_wiki" }
+                    AllowedTools = new List<string> { "conclude_step", "read_file", "write_file", "patch_file", "patch_wiki_page", "delete_file", "list_dir", "mkdir", "git", "dotnet", "python", "shell", "search_regex", "http_get", "get_issue", "get_wiki_page", "update_wiki_page", "search_wiki", "list_wiki" }
                 },
                 Transitions = new Dictionary<string, WorkflowTransition>(StringComparer.OrdinalIgnoreCase)
                 {
@@ -267,7 +267,7 @@ public static class WorkflowEngine
                     - 'docs_completed' -> Writing successfully completed, moves to QA review.
                     - 'pause_work' -> Pauses the workflow for this issue (to be resumed later).
                     - 'need_help' -> Escalates to the customer for clarification.",
-                    AllowedTools = new List<string> { "conclude_step", "read_file", "list_dir", "git", "get_issue", "get_wiki_page", "create_wiki_page", "update_wiki_page", "search_wiki" }
+                    AllowedTools = new List<string> { "conclude_step", "read_file", "list_dir", "git", "get_issue", "get_wiki_page", "create_wiki_page", "update_wiki_page", "search_wiki", "list_wiki" }
                 },
                 Transitions = new Dictionary<string, WorkflowTransition>(StringComparer.OrdinalIgnoreCase)
                     {
@@ -295,7 +295,7 @@ public static class WorkflowEngine
                     Call `conclude_step` with one of these keywords. Include your test findings and review context in the mandatory `notes` parameter.
                     - 'solution_accepted' -> Review successfully completed, moves to Release.
                     - 'solution_rejected' -> Review failed, moves back to Solution Planning.",
-                    AllowedTools = new List<string> { "conclude_step", "read_file", "list_dir", "git", "dotnet", "python", "shell", "search_regex", "http_get", "get_issue", "get_wiki_page", "search_wiki" }
+                    AllowedTools = new List<string> { "conclude_step", "read_file", "list_dir", "git", "dotnet", "python", "shell", "search_regex", "http_get", "get_issue", "get_wiki_page", "search_wiki", "list_wiki" }
                 },
                 Transitions = new Dictionary<string, WorkflowTransition>(StringComparer.OrdinalIgnoreCase)
                 {
@@ -323,7 +323,7 @@ public static class WorkflowEngine
                     Call `conclude_step` with one of these keywords. Include your review findings in the mandatory `notes` parameter.
                     - 'solution_accepted' -> Documentation successfully completed.
                     - 'solution_rejected' -> Review failed, moves back to Documentation Updates.",
-                    AllowedTools = new List<string> { "conclude_step", "read_file", "list_dir", "git", "search_regex", "http_get", "get_issue", "get_wiki_page", "search_wiki" }
+                    AllowedTools = new List<string> { "conclude_step", "read_file", "list_dir", "git", "search_regex", "http_get", "get_issue", "get_wiki_page", "search_wiki", "list_wiki" }
                 },
                 Transitions = new Dictionary<string, WorkflowTransition>(StringComparer.OrdinalIgnoreCase)
                 {
