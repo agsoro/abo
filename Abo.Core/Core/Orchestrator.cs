@@ -120,6 +120,7 @@ public class Orchestrator
 
                 if (string.IsNullOrWhiteSpace(request.Model))
                 {
+                    _sessionService.MarkSessionCompleted(sessionId);
                     return "Error: AI Model has become unconfigured during the agent loop. Please check 'Config:ModelName' in appsettings.json.";
                 }
 
@@ -280,6 +281,7 @@ public class Orchestrator
                 {
                     _logger.LogError($"API Error: {responseString}");
                     await _trafficLoggerService.LogTrafficAsync(sessionId, "ERROR", responseString);
+                    _sessionService.MarkSessionCompleted(sessionId);
                     return $"Error: {httpResponse.StatusCode} - {responseString}";
                 }
 
@@ -290,6 +292,7 @@ public class Orchestrator
 
                 if (choice == null)
                 {
+                    _sessionService.MarkSessionCompleted(sessionId);
                     return "Error: No response from model.";
                 }
 
@@ -370,6 +373,7 @@ public class Orchestrator
                             var resultNotes = toolResult.Substring(AgentSentinels.ConcludeStepResult.Length);
                             _logger.LogInformation($"[Session: {sessionId}] conclude_step sentinel detected. Terminating agent loop immediately.");
                             await _trafficLoggerService.LogConsumptionAsync(sessionId, currentModelName, totalCalls, totalInputTokens, totalOutputTokens, totalCost, issueId);
+                            _sessionService.MarkSessionCompleted(sessionId);
                             return resultNotes;
                         }
 
@@ -381,6 +385,7 @@ public class Orchestrator
                             var contextNotes = toolResult.Substring(AgentSentinels.PostponeTaskResult.Length);
                             _logger.LogInformation($"[Session: {sessionId}] postpone_task sentinel detected. Terminating agent loop gracefully.");
                             await _trafficLoggerService.LogConsumptionAsync(sessionId, currentModelName, totalCalls, totalInputTokens, totalOutputTokens, totalCost, issueId);
+                            _sessionService.MarkSessionCompleted(sessionId);
                             return $"[POSTPONED] {contextNotes}";
                         }
 
@@ -412,11 +417,13 @@ public class Orchestrator
 
                 if (terminateAfterSynthesis)
                 {
+                    _sessionService.MarkSessionCompleted(sessionId);
                     return finalOutput;
                 }
 
                 if (terminateAfterSynthesis || choice.Message.ToolCalls == null || choice.Message.ToolCalls.Count == 0)
                 {
+                    _sessionService.MarkSessionCompleted(sessionId);
                     return finalOutput;
                 }
             }
@@ -429,6 +436,7 @@ public class Orchestrator
             {
                 await _trafficLoggerService.LogConsumptionAsync(sessionId, currentModelName, totalCalls, totalInputTokens, totalOutputTokens, totalCost, issueId);
             }
+            _sessionService.MarkSessionCompleted(sessionId);
             return $"Error: {ex.Message}";
         }
 
@@ -437,7 +445,8 @@ public class Orchestrator
         {
             await _trafficLoggerService.LogConsumptionAsync(sessionId, currentModelName, totalCalls, totalInputTokens, totalOutputTokens, totalCost, issueId);
         }
-
+        
+        _sessionService.MarkSessionCompleted(sessionId);
         return "Error: Max agent loops reached.";
     }
 

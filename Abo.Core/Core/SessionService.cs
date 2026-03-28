@@ -11,6 +11,18 @@ public class SessionService
     private readonly ConcurrentDictionary<string, List<ChatMessage>> _history = new();
     private readonly ConcurrentDictionary<string, DateTime> _lastActivity = new();
     private readonly ConcurrentDictionary<string, (string IssueId, string? Title)> _currentIssue = new();
+    
+    /// <summary>
+    /// Tracks completed sessions with their completion timestamps.
+    /// Sessions are automatically removed after the retention period.
+    /// </summary>
+    private readonly ConcurrentDictionary<string, DateTime> _completedSessions = new();
+    
+    /// <summary>
+    /// How long to keep completed sessions in the tracking dictionary before cleanup.
+    /// </summary>
+    private static readonly TimeSpan CompletedSessionRetention = TimeSpan.FromMinutes(60);
+    
     private const int MaxHistoryMessages = 20;
 
     public List<ChatMessage> GetHistory(string sessionId)
@@ -59,6 +71,7 @@ public class SessionService
         _history.TryRemove(sessionId, out _);
         _lastActivity.TryRemove(sessionId, out _);
         _currentIssue.TryRemove(sessionId, out _);
+        _completedSessions.TryRemove(sessionId, out _);
     }
 
     /// <summary>
@@ -98,6 +111,93 @@ public class SessionService
     public void ClearCurrentIssue(string sessionId)
     {
         _currentIssue.TryRemove(sessionId, out _);
+    }
+
+    /// <summary>
+    /// Marks a session as completed. This clears the last activity entry so the session
+    /// drops from the active sessions list, and records the completion timestamp for
+    /// tracking purposes.
+    /// </summary>
+    public void MarkSessionCompleted(string sessionId)
+    {
+        // Remove from active tracking
+        _lastActivity.TryRemove(sessionId, out _);
+        
+        // Record completion timestamp
+        _completedSessions[sessionId] = DateTime.UtcNow;
+    }
+
+    /// <summary>
+    /// Checks if a session was explicitly completed.
+    /// </summary>
+    public bool IsSessionCompleted(string sessionId)
+    {
+        // Check if it's in the completed sessions dictionary
+        if (_completedSessions.TryGetValue(sessionId, out var completedAt))
+        {
+            // Clean up if the session has been completed beyond retention period
+            if (DateTime.UtcNow - completedAt > CompletedSessionRetention)
+            {
+                _completedSessions.TryRemove(sessionId, out _);
+                return false;
+            }
+            return true;
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// Returns a list of recently completed sessions.
+    /// Sessions are included if they were completed within the retention period.
+    /// </summary>
+    public List<SessionInfo> GetCompletedSessions()
+    {
+        var cutoff = DateTime.UtcNow - CompletedSessionRetention;
+        var result = new List<SessionInfo>();
+
+        foreach (var (sessionId, completedAt) in _completedSessions)
+        {
+            // Skip expired entries
+            if (completedAt < cutoff)
+            {
+                _completedSessions.TryRemove(sessionId, out _);
+                continue;
+            }
+
+            // Get message count and other info from history
+            int messageCount = 0;
+            string lastRole = "—";
+            if (_history.TryGetValue(sessionId, out var history))
+            {
+                messageCount = history.Count;
+                lastRole = history.LastOrDefault()?.Role ?? "—";
+            }
+
+            // Get current issue context if available
+            var (issueId, issueTitle) = GetCurrentIssue(sessionId);
+
+            result.Add(new SessionInfo
+            {
+                SessionId = sessionId,
+                MessageCount = messageCount,
+                LastActivity = completedAt,
+                LastRole = lastRole,
+                CurrentIssueId = issueId,
+                CurrentIssueTitle = issueTitle,
+                IsCompleted = true
+            });
+        }
+
+        return result.OrderByDescending(s => s.LastActivity).ToList();
+    }
+
+    /// <summary>
+    /// Clears a specific completed session from tracking.
+    /// Used for cleanup when a completed session is no longer needed.
+    /// </summary>
+    public void ClearCompletedSession(string sessionId)
+    {
+        _completedSessions.TryRemove(sessionId, out _);
     }
 
     /// <summary>
@@ -161,4 +261,9 @@ public class SessionInfo
     /// The title of the issue currently being processed by this session, if any.
     /// </summary>
     public string? CurrentIssueTitle { get; set; }
+    
+    /// <summary>
+    /// Indicates whether this session has been explicitly completed (via stop or conclude_step).
+    /// </summary>
+    public bool IsCompleted { get; set; }
 }
