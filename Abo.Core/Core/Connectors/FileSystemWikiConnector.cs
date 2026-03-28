@@ -47,6 +47,33 @@ public class FileSystemWikiConnector : IWikiConnector
         return path;
     }
 
+    private void CleanupEmptyDirectories(string? directoryPath)
+    {
+        var currentDir = directoryPath;
+        while (!string.IsNullOrWhiteSpace(currentDir) &&
+               currentDir.StartsWith(_wikiRoot, StringComparison.OrdinalIgnoreCase) &&
+               !string.Equals(currentDir, _wikiRoot, StringComparison.OrdinalIgnoreCase) &&
+               Directory.Exists(currentDir))
+        {
+            if (!Directory.EnumerateFileSystemEntries(currentDir).Any())
+            {
+                try
+                {
+                    Directory.Delete(currentDir);
+                }
+                catch
+                {
+                    break;
+                }
+                currentDir = Path.GetDirectoryName(currentDir);
+            }
+            else
+            {
+                break;
+            }
+        }
+    }
+
     public async Task<string> GetPageAsync(string path)
     {
         try
@@ -174,6 +201,9 @@ public class FileSystemWikiConnector : IWikiConnector
             }
 
             File.Move(sourcePath, destPath, overwrite: false);
+            
+            CleanupEmptyDirectories(Path.GetDirectoryName(sourcePath));
+            
             var relDest = Path.GetRelativePath(_wikiRoot, destPath);
             return Task.FromResult($"Successfully moved wiki page to: {relDest}");
         }

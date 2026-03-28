@@ -14,7 +14,7 @@ public class GitHubWikiConnector : IWikiConnector
     {
         _token = token;
         _repoUrl = $"https://x-access-token:{token}@github.com/{owner}/{repo}.wiki.git";
-        _cloneDir = Path.GetFullPath(environment.WikiDir);
+        _cloneDir = Path.GetFullPath(environment.WikiDir ?? throw new ArgumentException("WikiDir cannot be null", nameof(environment)));
     }
 
     private async Task SyncWikiAsync()
@@ -90,6 +90,33 @@ public class GitHubWikiConnector : IWikiConnector
             return path + ".md";
         }
         return path;
+    }
+
+    private void CleanupEmptyDirectories(string? directoryPath)
+    {
+        var currentDir = directoryPath;
+        while (!string.IsNullOrWhiteSpace(currentDir) &&
+               currentDir.StartsWith(_cloneDir, StringComparison.OrdinalIgnoreCase) &&
+               !string.Equals(currentDir, _cloneDir, StringComparison.OrdinalIgnoreCase) &&
+               Directory.Exists(currentDir))
+        {
+            if (!Directory.EnumerateFileSystemEntries(currentDir).Any())
+            {
+                try
+                {
+                    Directory.Delete(currentDir);
+                }
+                catch
+                {
+                    break;
+                }
+                currentDir = Path.GetDirectoryName(currentDir);
+            }
+            else
+            {
+                break;
+            }
+        }
     }
 
     public async Task<string> GetPageAsync(string path)
@@ -240,6 +267,9 @@ public class GitHubWikiConnector : IWikiConnector
             }
 
             File.Move(sourcePath, destPath, overwrite: false);
+            
+            CleanupEmptyDirectories(Path.GetDirectoryName(sourcePath));
+            
             var relDest = Path.GetRelativePath(_cloneDir, destPath);
             await CommitAndPushAsync($"Move wiki page: {pathOrId} -> {relDest}");
 
