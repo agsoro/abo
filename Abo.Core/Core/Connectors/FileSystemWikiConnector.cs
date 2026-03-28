@@ -10,8 +10,16 @@ public class FileSystemWikiConnector : IWikiConnector
     public FileSystemWikiConnector(ConnectorEnvironment environment)
     {
         _environment = environment;
-        var subPath = _environment.Wiki?.RootPath ?? "docs";
-        _wikiRoot = Path.GetFullPath(Path.Combine(_environment.Dir, subPath.TrimStart('/', '\\')));
+        
+        if (!string.IsNullOrWhiteSpace(_environment.WikiDir))
+        {
+            _wikiRoot = Path.GetFullPath(_environment.WikiDir);
+        }
+        else
+        {
+            var subPath = _environment.Wiki?.RootPath ?? "docs";
+            _wikiRoot = Path.GetFullPath(Path.Combine(_environment.Dir, subPath.TrimStart('/', '\\')));
+        }
         
         if (!Directory.Exists(_wikiRoot))
         {

@@ -37,6 +37,13 @@ public class ConnectorEnvironment
     public string Dir { get; set; } = string.Empty;
 
     /// <summary>
+    /// Optional explicit wiki directory path. If specified, overrides connector-specific defaults.
+    /// For GitHub wiki: use this as the clone directory directly.
+    /// For filesystem wiki: use this as the wiki root directory.
+    /// </summary>
+    public string? WikiDir { get; set; }
+
+    /// <summary>
     /// IssueTracker configured for this environment (e.g., github, jira).
     /// </summary>
     public IssueTrackerConfig? IssueTracker { get; set; }
