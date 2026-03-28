@@ -82,6 +82,19 @@ public class LocalWorkspaceConnector : IWorkspaceConnector
 
     public async Task<string> WriteFileAsync(string relativePath, string content)
     {
+        // Block non-README .md files in abo environment
+        if (_environment.Name.Equals("abo", StringComparison.OrdinalIgnoreCase))
+        {
+            var fileName = Path.GetFileName(relativePath);
+            if (fileName.EndsWith(".md", StringComparison.OrdinalIgnoreCase) &&
+                !fileName.Equals("README.md", StringComparison.OrdinalIgnoreCase))
+            {
+                return "Error: Writing .md files is restricted in the abo environment. " +
+                       "For task-level information, use issue comments (add_issue_comment tool). " +
+                       "For architectural/global information, use the wiki (create_wiki_page, update_wiki_page tools).";
+            }
+        }
+
         var path = GetFullPath(relativePath);
         try
         {
@@ -420,7 +433,7 @@ public class LocalWorkspaceConnector : IWorkspaceConnector
                 currentLine = lines[lineIndex];
 
                 // Hunk trailer
-                if (currentLine == "\\")
+                if (currentLine == @"\")
                 {
                     lineIndex++;
                     hunkLineIndex++;
@@ -471,7 +484,7 @@ public class LocalWorkspaceConnector : IWorkspaceConnector
 
                     if (originalLineIndex >= originalLines.Length)
                     {
-                        return $"Error: Patch target line {originalLineIndex + 1} is out of range.";
+                        return $"Error: Patch target line {originalLineIndex + 1} does not match file content.";
                     }
 
                     var actualContent = originalLines[originalLineIndex];
@@ -486,7 +499,7 @@ public class LocalWorkspaceConnector : IWorkspaceConnector
                     lineIndex++;
                     hunkLineIndex++;
                 }
-                else if (currentLine.StartsWith("\\"))
+                else if (currentLine.StartsWith(@"\"))
                 {
                     // Hunk trailer
                     lineIndex++;
