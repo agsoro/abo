@@ -22,21 +22,4 @@ public static class AgentSentinels
     /// Format: [POSTPONE_TASK_RESULT]:{contextNotes}
     /// </summary>
     public const string PostponeTaskResult = "[POSTPONE_TASK_RESULT]:";
-
-    /// <summary>
-    /// Signal used by the specialist agent to indicate the consultation is complete.
-    /// Format: [CONSULTATION_COMPLETE]
-    /// </summary>
-    public const string ConsultationComplete = "[CONSULTATION_COMPLETE]";
-
-    /// <summary>
-    /// Signal used by the specialist agent to indicate more information is needed.
-    /// Format: [NEEDS_MORE_INFO]
-    /// </summary>
-    public const string NeedsMoreInfo = "[NEEDS_MORE_INFO]";
-
-    /// <summary>
-    /// Sentinel marker for the Orchestrator to detect consultation termination.
-    /// </summary>
-    public const string ConsultationTerminate = "[CONSULTATION_TERMINATE]";
 }
