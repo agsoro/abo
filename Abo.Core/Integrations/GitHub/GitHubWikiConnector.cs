@@ -14,9 +14,7 @@ public class GitHubWikiConnector : IWikiConnector
     {
         _token = token;
         _repoUrl = $"https://x-access-token:{token}@github.com/{owner}/{repo}.wiki.git";
-        _cloneDir = string.IsNullOrWhiteSpace(environment.WikiDir)
-            ? Path.GetFullPath(Path.Combine(environment.Dir, ".github-wiki"))
-            : Path.GetFullPath(environment.WikiDir);
+        _cloneDir = Path.GetFullPath(environment.WikiDir);
     }
 
     private async Task SyncWikiAsync()
@@ -104,7 +102,7 @@ public class GitHubWikiConnector : IWikiConnector
             await SyncWikiAsync();
             var fullPath = GetFullPath(EnsureMdExtension(path));
             if (!File.Exists(fullPath)) return $"Error: Wiki page '{path}' does not exist.";
-            
+
             return await File.ReadAllTextAsync(fullPath);
         }
         catch (Exception ex)
@@ -164,6 +162,9 @@ public class GitHubWikiConnector : IWikiConnector
         {
             if (string.IsNullOrWhiteSpace(query)) return "Error: Search query cannot be empty.";
 
+            // Split query into individual terms, removing empty entries (e.g., double spaces)
+            var searchTerms = query.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+
             await SyncWikiAsync();
 
             var files = Directory.GetFiles(_cloneDir, "*.md", SearchOption.AllDirectories);
@@ -171,15 +172,21 @@ public class GitHubWikiConnector : IWikiConnector
 
             foreach (var file in files)
             {
+                var fileName = Path.GetFileNameWithoutExtension(file);
                 var content = await File.ReadAllTextAsync(file);
-                if (content.Contains(query, StringComparison.OrdinalIgnoreCase) || 
-                    Path.GetFileNameWithoutExtension(file).Contains(query, StringComparison.OrdinalIgnoreCase))
+
+                // Check if ANY search term matches either the content or the filename
+                bool isMatch = searchTerms.Any(term =>
+                    content.Contains(term, StringComparison.OrdinalIgnoreCase) ||
+                    fileName.Contains(term, StringComparison.OrdinalIgnoreCase));
+
+                if (isMatch)
                 {
                     results.Add(Path.GetRelativePath(_cloneDir, file));
                 }
             }
 
-            if (!results.Any()) return $"No pages found matching '{query}'.";
+            if (!results.Any()) return $"No pages found matching any terms in '{query}'.";
 
             return $"Found in {results.Count} pages:\n- " + string.Join("\n- ", results);
         }
