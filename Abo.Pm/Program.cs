@@ -1,5 +1,6 @@
 using Abo.Agents;
 using Abo.Core;
+using Abo.Core.Connectors;
 using Abo.Integrations.Mattermost;
 using Abo.Integrations.XpectoLive;
 using Abo.Tools;
@@ -274,6 +275,126 @@ async Task<Abo.Core.Connectors.IIssueTrackerConnector?> GetTrackerForEnvironment
         return new Abo.Core.Connectors.FileSystemIssueTrackerConnector(env.Name);
     }
 
+    return null;
+}
+
+// Helper to get a wiki connector by environment name
+async Task<IWikiConnector?> GetWikiConnectorForEnvironmentAsync(string environmentName, IServiceProvider services)
+{
+    var envs = await GetConfiguredEnvironmentsAsync();
+    var env = envs.FirstOrDefault(e => e.Name.Equals(environmentName, StringComparison.OrdinalIgnoreCase));
+    
+    if (env == null)
+        return null;
+
+    // Check if environment has wiki configured
+    if (env.Wiki == null || string.IsNullOrWhiteSpace(env.Wiki.Type))
+    {
+        // Fall back to filesystem wiki based on environment directory
+        return new FileSystemWikiConnector(env);
+    }
+
+    // Create appropriate wiki connector based on type
+    if (env.Wiki.Type.Equals("filesystem", StringComparison.OrdinalIgnoreCase))
+    {
+        return new FileSystemWikiConnector(env);
+    }
+    else if (env.Wiki.Type.Equals("xpectolive", StringComparison.OrdinalIgnoreCase))
+    {
+        // Get XpectoLive client from services
+        var wikiClient = services.GetRequiredService<IXpectoLiveWikiClient>();
+        return new XpectoLiveWikiConnector(wikiClient, env.Wiki.RootPath);
+    }
+
+    // Default to filesystem
+    return new FileSystemWikiConnector(env);
+}
+
+// ── Wiki API: ABO Dashboard Wiki Integration ─────────────────────────────────
+
+// GET /api/wiki/{environmentName}/pages – Lists all wiki pages for an environment
+app.MapGet("/api/wiki/{environmentName}/pages", async (string environmentName, string? parentPath, IServiceProvider services) =>
+{
+    try
+    {
+        var connector = await GetWikiConnectorForEnvironmentAsync(environmentName, services);
+        if (connector == null)
+        {
+            return Results.NotFound($"Environment '{environmentName}' not found");
+        }
+
+        var pages = await connector.ListPagesAsync(parentPath);
+        var mapped = pages.Select(p => new
+        {
+            path = p.Path,
+            title = p.Title,
+            lastModified = p.LastModified,
+            parentPath = p.ParentPath
+        }).ToList();
+
+        return Results.Ok(mapped);
+    }
+    catch (Exception ex)
+    {
+        return Results.Problem($"Error listing wiki pages: {ex.Message}");
+    }
+});
+
+// GET /api/wiki/{environmentName}/page/{*path} – Gets a specific wiki page
+app.MapGet("/api/wiki/{environmentName}/page/{**path}", async (string environmentName, string path, IServiceProvider services) =>
+{
+    try
+    {
+        var connector = await GetWikiConnectorForEnvironmentAsync(environmentName, services);
+        if (connector == null)
+        {
+            return Results.NotFound($"Environment '{environmentName}' not found");
+        }
+
+        var content = await connector.GetPageAsync(path);
+        
+        if (content.StartsWith("Error:"))
+        {
+            return Results.NotFound(content);
+        }
+
+        // Extract title from content (first H1 heading)
+        var title = ExtractTitleFromMarkdown(content) ?? Path.GetFileNameWithoutExtension(path);
+        
+        // Get page metadata (for filesystem wiki, we can get last modified)
+        DateTime? lastModified = null;
+        if (connector is FileSystemWikiConnector fsConnector)
+        {
+            // We don't have direct access to the file info from the connector interface
+            // The lastModified will be available in the page summary endpoint
+        }
+
+        return Results.Ok(new
+        {
+            path = path,
+            content = content,
+            title = title,
+            lastModified = lastModified
+        });
+    }
+    catch (Exception ex)
+    {
+        return Results.Problem($"Error getting wiki page: {ex.Message}");
+    }
+});
+
+// Helper to extract title from markdown content
+static string? ExtractTitleFromMarkdown(string content)
+{
+    var lines = content.Split('\n');
+    foreach (var line in lines)
+    {
+        var trimmed = line.Trim();
+        if (trimmed.StartsWith("# "))
+        {
+            return trimmed.Substring(2).Trim();
+        }
+    }
     return null;
 }
 

@@ -117,6 +117,32 @@ public class XpectoLiveWikiConnector : IWikiConnector
         catch (Exception ex) { return $"Error patching wiki page: {ex.Message}"; }
     }
 
+    /// <inheritdoc />
+    public async Task<IEnumerable<WikiPageSummary>> ListPagesAsync(string? parentPath = null)
+    {
+        try
+        {
+            var spaceInfo = await _client.GetSpaceInfoAsync(_spaceId);
+            
+            // Filter by parent if specified (SpacePageInfo doesn't have ParentID, so we list all pages)
+            // The parentPath parameter is kept for interface compatibility but filtering by parent
+            // is not supported by the current XpectoLive API
+            var pages = spaceInfo
+                .Select(p => new WikiPageSummary(
+                    p.PageID ?? "",
+                    p.PageTitle ?? "Untitled",
+                    p.ActionTimestamp,
+                    null))   // ParentID not available in SpacePageInfo
+                .ToList();
+
+            return pages.OrderBy(p => p.Title);
+        }
+        catch
+        {
+            return Array.Empty<WikiPageSummary>();
+        }
+    }
+
     private string ApplyPatch(string originalContent, string patch)
     {
         var originalLines = originalContent.Split('\n');
@@ -220,7 +246,7 @@ public class XpectoLiveWikiConnector : IWikiConnector
                 {
                     if (originalLineIndex >= originalLines.Length)
                     {
-                        return $"Error: Patch target line {originalLineIndex + 1} is out of range.";
+                        return $"Error: Patch hunk line {hunkLineIndex + 1} does not match file content.";
                     }
 
                     resultLines.Add(originalLines[originalLineIndex]);

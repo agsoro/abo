@@ -347,7 +347,7 @@ public class FileSystemWikiConnector : IWikiConnector
                     // Context line - copy original line
                     if (originalLineIndex >= originalLines.Length)
                     {
-                        return $"Error: Patch target line {originalLineIndex + 1} is out of range.";
+                        return $"Error: Patch target line {hunkLineIndex + 1} does not match file content.";
                     }
 
                     resultLines.Add(originalLines[originalLineIndex]);
@@ -381,5 +381,72 @@ public class FileSystemWikiConnector : IWikiConnector
         {
             return $"Error writing wiki page '{path}': {ex.Message}";
         }
+    }
+
+    /// <inheritdoc />
+    public Task<IEnumerable<WikiPageSummary>> ListPagesAsync(string? parentPath = null)
+    {
+        try
+        {
+            var searchDir = string.IsNullOrWhiteSpace(parentPath)
+                ? _wikiRoot
+                : GetFullPath(parentPath.TrimStart('/', '\\'));
+
+            if (!Directory.Exists(searchDir))
+            {
+                return Task.FromResult<IEnumerable<WikiPageSummary>>(Array.Empty<WikiPageSummary>());
+            }
+
+            var files = Directory.GetFiles(searchDir, "*.md", SearchOption.AllDirectories);
+            var pages = new List<WikiPageSummary>();
+
+            foreach (var file in files)
+            {
+                try
+                {
+                    var relativePath = Path.GetRelativePath(_wikiRoot, file);
+                    var content = File.ReadAllText(file);
+                    var title = ExtractTitle(content) ?? Path.GetFileNameWithoutExtension(file);
+                    var lastModified = File.GetLastWriteTimeUtc(file);
+                    
+                    // Determine parent path from directory structure
+                    var fileDir = Path.GetDirectoryName(file);
+                    string? parent = null;
+                    if (!string.IsNullOrWhiteSpace(fileDir) && 
+                        !fileDir.Equals(_wikiRoot, StringComparison.OrdinalIgnoreCase))
+                    {
+                        parent = Path.GetRelativePath(_wikiRoot, fileDir);
+                    }
+
+                    pages.Add(new WikiPageSummary(relativePath, title, lastModified, parent));
+                }
+                catch
+                {
+                    // Skip files that can't be read
+                }
+            }
+
+            return Task.FromResult<IEnumerable<WikiPageSummary>>(
+                pages.OrderBy(p => p.ParentPath).ThenBy(p => p.Title));
+        }
+        catch
+        {
+            return Task.FromResult<IEnumerable<WikiPageSummary>>(Array.Empty<WikiPageSummary>());
+        }
+    }
+
+    private static string? ExtractTitle(string content)
+    {
+        // Try to extract title from first H1 heading (# Title)
+        var lines = content.Split('\n');
+        foreach (var line in lines)
+        {
+            var trimmed = line.Trim();
+            if (trimmed.StartsWith("# "))
+            {
+                return trimmed.Substring(2).Trim();
+            }
+        }
+        return null;
     }
 }

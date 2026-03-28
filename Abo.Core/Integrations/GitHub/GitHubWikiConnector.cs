@@ -316,6 +316,74 @@ public class GitHubWikiConnector : IWikiConnector
         }
     }
 
+    /// <inheritdoc />
+    public async Task<IEnumerable<WikiPageSummary>> ListPagesAsync(string? parentPath = null)
+    {
+        try
+        {
+            await SyncWikiAsync();
+
+            var searchDir = string.IsNullOrWhiteSpace(parentPath)
+                ? _cloneDir
+                : GetFullPath(parentPath.TrimStart('/', '\\'));
+
+            if (!Directory.Exists(searchDir))
+            {
+                return Enumerable.Empty<WikiPageSummary>();
+            }
+
+            var files = Directory.GetFiles(searchDir, "*.md", SearchOption.AllDirectories);
+            var pages = new List<WikiPageSummary>();
+
+            foreach (var file in files)
+            {
+                try
+                {
+                    var relativePath = Path.GetRelativePath(_cloneDir, file);
+                    var content = await File.ReadAllTextAsync(file);
+                    var title = ExtractTitle(content) ?? Path.GetFileNameWithoutExtension(file);
+                    var lastModified = File.GetLastWriteTimeUtc(file);
+                    
+                    // Determine parent path from directory structure
+                    var fileDir = Path.GetDirectoryName(file);
+                    string? parent = null;
+                    if (!string.IsNullOrWhiteSpace(fileDir) && 
+                        !fileDir.Equals(_cloneDir, StringComparison.OrdinalIgnoreCase))
+                    {
+                        parent = Path.GetRelativePath(_cloneDir, fileDir);
+                    }
+
+                    pages.Add(new WikiPageSummary(relativePath, title, lastModified, parent));
+                }
+                catch
+                {
+                    // Skip files that can't be read
+                }
+            }
+
+            return pages.OrderBy(p => p.ParentPath).ThenBy(p => p.Title);
+        }
+        catch
+        {
+            return Enumerable.Empty<WikiPageSummary>();
+        }
+    }
+
+    private static string? ExtractTitle(string content)
+    {
+        // Try to extract title from first H1 heading (# Title)
+        var lines = content.Split('\n');
+        foreach (var line in lines)
+        {
+            var trimmed = line.Trim();
+            if (trimmed.StartsWith("# "))
+            {
+                return trimmed.Substring(2).Trim();
+            }
+        }
+        return null;
+    }
+
     private string ApplyPatch(string originalContent, string patch)
     {
         var originalLines = originalContent.Split('\n');
