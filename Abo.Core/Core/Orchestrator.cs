@@ -34,6 +34,291 @@ public class Orchestrator
         return _sessionService.GetHistory(sessionId);
     }
 
+    /// <summary>
+    /// Runs a specialist consultation loop. The specialist agent runs on a different LLM
+    /// than the caller, has no tools, and communicates in a turn-based protocol.
+    /// </summary>
+    /// <param name="request">The consultation request details.</param>
+    /// <returns>The result of the consultation.</returns>
+    public async Task<ConsultationResult> RunConsultationAsync(ConsultationRequest request)
+    {
+        var result = new ConsultationResult
+        {
+            ConsultationId = request.ConsultationId,
+            ModelUsed = SelectSpecialistModel(request.SpecialistDomain)
+        };
+
+        var apiEndpoint = _configuration["Config:ApiEndpoint"] ?? throw new InvalidOperationException("API Endpoint not configured.");
+        var apiKey = _configuration["Config:ApiKey"] ?? string.Empty;
+        var defaultLanguage = _configuration["Config:DefaultLanguage"] ?? "en-us";
+        var specialistModel = result.ModelUsed;
+
+        // Create a dedicated session for this consultation
+        var consultationSessionId = $"consult-{request.ConsultationId}";
+
+        _logger.LogInformation($"[Consultation: {request.ConsultationId}] Starting consultation with specialist (model: {specialistModel})");
+        _logger.LogInformation($"[Consultation: {request.ConsultationId}] Domain: {request.SpecialistDomain ?? "general"}, Task: {request.TaskDescription[..Math.Min(100, request.TaskDescription.Length)]}...");
+
+        // Create the specialist agent (consultation-specific, not delegation specialist)
+        var specialist = new ConsultationSpecialistAgent(request.SpecialistDomain, request.TaskDescription, request.ContextSummary);
+        var systemPrompt = specialist.GenerateSystemPrompt();
+
+        // Initialize consultation messages
+        var messages = new List<ChatMessage>
+        {
+            new ChatMessage { Role = "system", Content = $"{systemPrompt}\n\n[CONTEXT] The default language for all responses '{defaultLanguage}', code/docu is 'en-us'" }
+        };
+
+        // Track usage
+        int totalCalls = 0;
+        int totalInputTokens = 0;
+        int totalOutputTokens = 0;
+        double totalCost = 0.0;
+        int currentTurn = 0;
+        int maxTurns = 5; // Maximum turns for consultation
+        int maxFollowUpRounds = 2;
+        int followUpRoundsUsed = 0;
+        bool awaitingFollowUp = false;
+        bool consultationComplete = false;
+        bool needsMoreInfo = false;
+        string? pendingInfoRequest = null;
+        string accumulatedContent = string.Empty;
+
+        try
+        {
+            while (currentTurn < maxTurns)
+            {
+                currentTurn++;
+
+                // Build the request
+                var requestBody = new ChatCompletionRequest
+                {
+                    Model = specialistModel,
+                    Messages = messages,
+                    Tools = specialist.GetToolDefinitions() // Empty for specialist
+                };
+
+                // Add provider-specific instructions
+                if (specialistModel.StartsWith("openai/", StringComparison.OrdinalIgnoreCase))
+                {
+                    var systemMsg = messages.FirstOrDefault(m => m.Role == "system");
+                    if (systemMsg != null)
+                    {
+                        systemMsg.Content += "\n\n[PROVIDER INSTRUCTION] Keep your responses strictly exact, accurate, brief, short and concise. Do not repeat stuff or use excessive pleasantries.";
+                    }
+                }
+
+                _logger.LogInformation($"[Consultation: {request.ConsultationId}] [Turn {currentTurn}] Sending request to specialist");
+
+                var jsonRequest = JsonSerializer.Serialize(requestBody, new JsonSerializerOptions { WriteIndented = true });
+                await _trafficLoggerService.LogTrafficAsync(consultationSessionId, "CONSULTATION_REQUEST", jsonRequest);
+
+                var httpRequest = new HttpRequestMessage(HttpMethod.Post, apiEndpoint)
+                {
+                    Content = new StringContent(jsonRequest, System.Text.Encoding.UTF8, "application/json")
+                };
+
+                if (!string.IsNullOrEmpty(apiKey))
+                {
+                    httpRequest.Headers.Add("Authorization", $"Bearer {apiKey}");
+                }
+
+                var httpResponse = await _httpClient.SendAsync(httpRequest);
+                var responseString = await httpResponse.Content.ReadAsStringAsync();
+
+                if (!httpResponse.IsSuccessStatusCode)
+                {
+                    _logger.LogError($"[Consultation: {request.ConsultationId}] API Error: {responseString}");
+                    await _trafficLoggerService.LogTrafficAsync(consultationSessionId, "ERROR", responseString);
+                    result.Success = false;
+                    result.TerminationReason = "API error";
+                    result.SpecialistResponse = $"Error: {httpResponse.StatusCode}";
+                    return result;
+                }
+
+                await _trafficLoggerService.LogTrafficAsync(consultationSessionId, "CONSULTATION_RESPONSE", responseString);
+
+                var aiResponse = JsonSerializer.Deserialize<ChatCompletionResponse>(responseString);
+                var choice = aiResponse?.Choices.FirstOrDefault();
+
+                if (choice == null)
+                {
+                    result.Success = false;
+                    result.TerminationReason = "No response from model";
+                    result.SpecialistResponse = "Error: No response from specialist model.";
+                    return result;
+                }
+
+                // Track usage
+                totalCalls++;
+                if (aiResponse?.Usage != null)
+                {
+                    totalInputTokens += aiResponse.Usage.PromptTokens;
+                    totalOutputTokens += aiResponse.Usage.CompletionTokens;
+                    totalCost += aiResponse.Usage.Cost ?? 0.0;
+                }
+
+                var assistantContent = choice.Message.Content ?? string.Empty;
+                accumulatedContent = string.IsNullOrEmpty(accumulatedContent)
+                    ? assistantContent
+                    : accumulatedContent + "\n\n" + assistantContent;
+
+                // Add assistant response to messages
+                messages.Add(choice.Message);
+
+                // Check for termination signals (defined in AgentSentinels per Issue #406)
+                if (assistantContent.Contains(AgentSentinels.ConsultationComplete))
+                {
+                    _logger.LogInformation($"[Consultation: {request.ConsultationId}] Specialist signaled consultation complete");
+                    consultationComplete = true;
+                    result.TerminationReason = "Specialist concluded the consultation";
+                    break;
+                }
+
+                // Check for [CONCLUSION] signal
+                if (assistantContent.Contains("[CONCLUSION]"))
+                {
+                    _logger.LogInformation($"[Consultation: {request.ConsultationId}] Specialist signaled conclusion");
+                    consultationComplete = true;
+                    result.TerminationReason = "Specialist provided final conclusion";
+                    break;
+                }
+
+                if (assistantContent.Contains(AgentSentinels.NeedsMoreInfo))
+                {
+                    _logger.LogInformation($"[Consultation: {request.ConsultationId}] Specialist needs more information");
+                    needsMoreInfo = true;
+                    pendingInfoRequest = ExtractInfoRequest(assistantContent);
+
+                    if (followUpRoundsUsed < maxFollowUpRounds)
+                    {
+                        // The caller needs to provide more information
+                        // For now, we'll add a prompt asking for more context
+                        followUpRoundsUsed++;
+                        var followUpPrompt = new ChatMessage
+                        {
+                            Role = "user",
+                            Content = "[FOLLOW-UP REQUEST] The calling agent has provided the following additional context to help answer your question:\n\n" +
+                                     "(The calling agent will provide this information in the next turn. Please wait for their response or if you have enough context, provide your recommendation now.)"
+                        };
+                        messages.Add(followUpPrompt);
+                        await Task.Delay(100); // Brief pause before next turn
+                        continue;
+                    }
+                    else
+                    {
+                        result.TerminationReason = "Max follow-up rounds reached";
+                        break;
+                    }
+                }
+
+                // Check if we should continue for follow-up questions
+                if (!awaitingFollowUp && currentTurn >= 2)
+                {
+                    // After initial response, check if specialist wants to ask questions
+                    if (assistantContent.Contains("[ASKING_FOLLOW_UP]"))
+                    {
+                        awaitingFollowUp = true;
+                        // Continue to get the follow-up question answered
+                        var followUpPrompt = new ChatMessage
+                        {
+                            Role = "user",
+                            Content = "[FOLLOW-UP PROMPT] Please provide your follow-up question. Remember to keep it concise and specific."
+                        };
+                        messages.Add(followUpPrompt);
+                        continue;
+                    }
+                }
+
+                // If we've done the initial response and follow-up, we're done
+                if (currentTurn >= 3 && !needsMoreInfo)
+                {
+                    result.TerminationReason = "Normal consultation completion";
+                    consultationComplete = true;
+                    break;
+                }
+            }
+
+            // Build final result
+            result.Success = consultationComplete || !needsMoreInfo;
+            result.SpecialistResponse = CleanConsultationResponse(accumulatedContent);
+            result.TurnsTaken = currentTurn;
+            result.TotalInputTokens = totalInputTokens;
+            result.TotalOutputTokens = totalOutputTokens;
+            result.TotalCost = totalCost;
+            result.NeedsMoreInfo = needsMoreInfo;
+            result.InfoRequest = pendingInfoRequest;
+
+            _logger.LogInformation($"[Consultation: {request.ConsultationId}] Consultation ended. Success: {result.Success}, Turns: {result.TurnsTaken}, Cost: ${result.TotalCost:F4}");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, $"[Consultation: {request.ConsultationId}] Consultation failed");
+            result.Success = false;
+            result.TerminationReason = $"Exception: {ex.Message}";
+            result.SpecialistResponse = $"Consultation failed: {ex.Message}";
+        }
+
+        // Log consumption
+        await _trafficLoggerService.LogConsumptionAsync(consultationSessionId, specialistModel, totalCalls, totalInputTokens, totalOutputTokens, totalCost, request.IssueId);
+
+        return result;
+    }
+
+    /// <summary>
+    /// Selects a specialist model based on the domain. The specialist model should be different
+    /// from the caller's model for optimal perspective diversity.
+    /// </summary>
+    private string SelectSpecialistModel(string? domain)
+    {
+        // Try to use CapableModelName if configured (different from generic ModelName)
+        var capableModel = _configuration["Config:CapableModelName"];
+        var defaultModel = _configuration["Config:ModelName"] ?? string.Empty;
+
+        // Prefer capable model for specialized tasks
+        if (!string.IsNullOrEmpty(capableModel))
+        {
+            // Additional logic could select based on domain here
+            _logger.LogInformation($"[Specialist Model Selection] Using CapableModel: {capableModel}");
+            return capableModel;
+        }
+
+        // Fallback to default model
+        _logger.LogInformation($"[Specialist Model Selection] Using default model: {defaultModel}");
+        return defaultModel;
+    }
+
+    /// <summary>
+    /// Extracts the information request from a specialist response containing [NEEDS_MORE_INFO].
+    /// </summary>
+    private static string ExtractInfoRequest(string content)
+    {
+        var marker = AgentSentinels.NeedsMoreInfo;
+        var index = content.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
+        if (index >= 0)
+        {
+            return content[(index + marker.Length)..].Trim();
+        }
+        return "The specialist needs more context to provide a recommendation.";
+    }
+
+    /// <summary>
+    /// Cleans the consultation response by removing internal markers and formatting.
+    /// </summary>
+    private static string CleanConsultationResponse(string content)
+    {
+        // Remove internal markers (defined in AgentSentinels per Issue #406)
+        var cleaned = content
+            .Replace("[CONSULTATION_COMPLETE]", "")
+            .Replace("[CONCLUSION]", "")
+            .Replace("[NEEDS_MORE_INFO]", "")
+            .Replace("[CONSULTATION_TERMINATE]", "")
+            .Replace("[ASKING_FOLLOW_UP]", "")
+            .Trim();
+
+        return cleaned;
+    }
+
     public async Task<string> RunAgentLoopAsync(IAgent agent, string userMessage, string sessionId, string? userName = null, string? userId = null, string? issueId = null)
     {
         var apiEndpoint = _configuration["Config:ApiEndpoint"] ?? throw new InvalidOperationException("API Endpoint not configured.");
