@@ -20,20 +20,22 @@ builder.Services.AddSingleton<SessionService>();
 builder.Services.AddSingleton<UserService>();
 builder.Services.AddSingleton<Abo.Core.Services.TrafficLoggerService>();
 
-// Register AuthService from Abo.Core (replaces inline class)
+// Register SessionStore service (must be registered before AuthService)
 var dataDirectory = Path.Combine(AppContext.BaseDirectory, "Data");
-builder.Services.AddSingleton(sp => new Abo.Core.Services.AuthService(
-    dataDirectory,
-    Microsoft.Extensions.Options.Options.Create(new Abo.Core.Services.AuthOptions()),
-    sp.GetRequiredService<ILogger<Abo.Core.Services.AuthService>>()
-));
-
-// Register SessionStore service
 builder.Services.AddSingleton<ISessionStore>(sp =>
     new Abo.Core.Services.SessionStoreService(
         dataDirectory,
         sp.GetRequiredService<ILogger<Abo.Core.Services.SessionStoreService>>()
     ));
+
+// Register AuthService from Abo.Core (replaces inline class)
+// Uses factory method to inject ISessionStore
+builder.Services.AddSingleton(sp => new Abo.Core.Services.AuthService(
+    dataDirectory,
+    Microsoft.Extensions.Options.Options.Create(new Abo.Core.Services.AuthOptions()),
+    sp.GetRequiredService<ILogger<Abo.Core.Services.AuthService>>(),
+    sp.GetRequiredService<ISessionStore>()
+));
 
 builder.Services.AddHttpClient<Orchestrator>(client => client.Timeout = TimeSpan.FromSeconds(600));
 builder.Services.AddHttpClient<AgentSupervisor>(client => client.Timeout = TimeSpan.FromSeconds(600));

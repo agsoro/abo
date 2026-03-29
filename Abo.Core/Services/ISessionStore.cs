@@ -18,6 +18,11 @@ public interface ISessionStore
     Task<WebSession?> GetSessionAsync(string token);
 
     /// <summary>
+    /// Gets all sessions (including expired ones).
+    /// </summary>
+    Task<IReadOnlyList<WebSession>> GetAllSessionsAsync();
+
+    /// <summary>
     /// Removes a session by token.
     /// </summary>
     Task DeleteSessionAsync(string token);

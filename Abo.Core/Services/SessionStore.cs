@@ -83,6 +83,13 @@ public class SessionStoreService : ISessionStore
     }
 
     /// <inheritdoc />
+    public async Task<IReadOnlyList<WebSession>> GetAllSessionsAsync()
+    {
+        var store = await LoadSessionsAsync();
+        return store.Sessions.AsReadOnly();
+    }
+
+    /// <inheritdoc />
     public async Task DeleteSessionAsync(string token)
     {
         var store = await LoadSessionsAsync();
