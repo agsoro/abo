@@ -1,5 +1,6 @@
 using Abo.Agents;
 using Abo.Core;
+using Abo.Core.Models;
 using Abo.Core.Services;
 using Abo.Core.Connectors;
 using Abo.Integrations.Mattermost;
@@ -29,10 +30,10 @@ builder.Services.AddSingleton<ISessionStore>(sp =>
     ));
 
 // Register AuthService from Abo.Core (replaces inline class)
-// Uses factory method to inject ISessionStore
+// Uses configuration-based options for Auth settings
 builder.Services.AddSingleton(sp => new Abo.Core.Services.AuthService(
     dataDirectory,
-    Microsoft.Extensions.Options.Options.Create(new Abo.Core.Services.AuthOptions()),
+    Microsoft.Extensions.Options.Options.Create(new Abo.Core.Services.AuthOptions { SessionExpirationHours = 24, DefaultPasswordLength = 16 }),
     sp.GetRequiredService<ILogger<Abo.Core.Services.AuthService>>(),
     sp.GetRequiredService<ISessionStore>()
 ));
@@ -184,43 +185,67 @@ async Task SaveEnvironmentsAsync(List<Abo.Core.Connectors.ConnectorEnvironment> 
 var authService = app.Services.GetRequiredService<Abo.Core.Services.AuthService>();
 
 // POST /api/auth/login – Authenticate user and return token
-app.MapPost("/api/auth/login", async (LoginRequest req, Abo.Core.Services.AuthService authService) =>
+app.MapPost("/api/auth/login", async (
+    HttpContext context,
+    Abo.Core.Services.AuthService authService,
+    ILogger<Program> logger) =>
 {
+    var req = new LoginRequest();
+    // bind from context.Request.Body
+    req.Username = context.Request.Form["username"].FirstOrDefault() ?? "";
+    req.Password = context.Request.Form["password"].FirstOrDefault() ?? "";
+    
     if (string.IsNullOrWhiteSpace(req.Username) || string.IsNullOrWhiteSpace(req.Password))
     {
-        return Results.BadRequest(new { detail = "Username and password are required" });
+        return Results.BadRequest(new ErrorResponse { Error = "Username and password are required" });
     }
 
-    var (success, token, error) = await authService.LoginAsync(req.Username, req.Password);
+    var ipAddress = context.Connection.RemoteIpAddress?.ToString();
+    var userAgent = context.Request.Headers.UserAgent.FirstOrDefault();
+    
+    var (success, token, error) = await authService.LoginAsync(
+        req.Username, req.Password, ipAddress, userAgent);
+    
     if (!success)
     {
+        logger.LogWarning("Failed login attempt for user: {Username}", req.Username);
         return Results.Unauthorized();
     }
 
-    return Results.Ok(new { token = token, username = req.Username });
+    logger.LogInformation("User {Username} logged in successfully", req.Username);
+    
+    return Results.Ok(new LoginResponse 
+    { 
+        Token = token ?? "",
+        Username = req.Username,
+        ExpiresAt = DateTime.UtcNow.AddHours(24) // or get from AuthOptions
+    });
 });
 
-// POST /api/auth/register – Register a new user (public endpoint)
-app.MapPost("/api/auth/register", async (RegisterRequest req, Abo.Core.Services.AuthService authService) =>
+// POST /api/auth/logout – Logout user
+app.MapPost("/api/auth/logout", async (
+    HttpContext context,
+    Abo.Core.Services.AuthService authService,
+    ILogger<Program> logger) =>
 {
-    if (string.IsNullOrWhiteSpace(req.Username))
+    // Use HttpContext extension or manual token extraction
+    var authHeader = context.Request.Headers.Authorization.FirstOrDefault();
+    if (!string.IsNullOrEmpty(authHeader) && authHeader.StartsWith("Bearer "))
     {
-        return Results.BadRequest(new { error = "Username is required" });
+        var token = authHeader.Substring("Bearer ".Length).Trim();
+        await authService.LogoutAsync(token);
+        logger.LogInformation("User logged out");
     }
-
-    var (success, password, error) = await authService.CreateUserAsync(req.Username);
-    if (!success)
-    {
-        return Results.BadRequest(new { error = error });
-    }
-
-    return Results.Ok(new { message = "User registered successfully", username = req.Username });
+    return Results.NoContent();
 });
 
-// GET /api/auth/me – Get current user info (validates token - already validated by middleware)
-app.MapGet("/api/auth/me", async (HttpRequest request, Abo.Core.Services.AuthService authService) =>
+// GET /api/auth/me – Get current user info
+app.MapGet("/api/auth/me", async (
+    HttpContext context,
+    Abo.Core.Services.AuthService authService,
+    ILogger<Program> logger) =>
 {
-    var authHeader = request.Headers.Authorization.FirstOrDefault();
+    var authHeader = context.Request.Headers.Authorization.FirstOrDefault();
     if (string.IsNullOrEmpty(authHeader) || !authHeader.StartsWith("Bearer "))
     {
         return Results.Unauthorized();
@@ -228,30 +253,90 @@ app.MapGet("/api/auth/me", async (HttpRequest request, Abo.Core.Services.AuthSer
 
     var token = authHeader.Substring("Bearer ".Length).Trim();
     var (isValid, username) = await authService.ValidateSessionAsync(token);
+    
     if (!isValid || username == null)
     {
         return Results.Unauthorized();
     }
 
-    var user = await authService.GetUserAsync(username);
-    if (user == null)
+    return Results.Ok(new UserInfoResponse 
+    { 
+        Username = username, 
+        IsAuthenticated = true 
+    });
+});
+
+// POST /api/auth/init-password – Create user with initial password (Admin only)
+app.MapPost("/api/auth/init-password", async (
+    HttpContext context,
+    [FromBody] InitPasswordRequest req,
+    Abo.Core.Services.AuthService authService,
+    MattermostClient mattermostClient,
+    ILogger<Program> logger) =>
+{
+    // Validate admin role
+    var authHeader = context.Request.Headers.Authorization.FirstOrDefault();
+    if (string.IsNullOrEmpty(authHeader) || !authHeader.StartsWith("Bearer "))
     {
         return Results.Unauthorized();
     }
 
-    return Results.Ok(new { username = user.Username, roles = user.Roles });
+    var token = authHeader.Substring("Bearer ".Length).Trim();
+    var (isValid, username) = await authService.ValidateSessionAsync(token);
+    
+    if (!isValid || username == null)
+    {
+        return Results.Unauthorized();
+    }
+
+    // Check admin role
+    var user = await authService.GetUserAsync(username);
+    if (user == null || !user.Roles.Contains("admin"))
+    {
+        logger.LogWarning("Non-admin user {Username} attempted to access init-password", username);
+        return Results.Forbid();
+    }
+
+    if (string.IsNullOrWhiteSpace(req.Username))
+    {
+        return Results.BadRequest(new ErrorResponse { Error = "Username is required" });
+    }
+
+    var (success, password, error) = await authService.CreateUserAsync(
+        req.Username,
+        new List<string> { "user" },
+        mattermostClient,
+        req.MattermostUsername);
+
+    if (!success)
+    {
+        return Results.BadRequest(new ErrorResponse { Error = error ?? "Failed to create user" });
+    }
+
+    logger.LogInformation("Admin {AdminUser} created user {NewUser}", username, req.Username);
+    
+    return Results.Ok(new InitPasswordResponse 
+    { 
+        Message = "User created successfully. Initial password sent via Mattermost if configured.",
+        Username = req.Username 
+    });
 });
 
-// POST /api/auth/logout – Logout user (client should discard token)
-app.MapPost("/api/auth/logout", async (HttpRequest request, Abo.Core.Services.AuthService authService) =>
+// POST /api/auth/register – Register a new user (public endpoint)
+app.MapPost("/api/auth/register", async ([FromBody] RegisterRequest req, Abo.Core.Services.AuthService authService) =>
 {
-    var authHeader = request.Headers.Authorization.FirstOrDefault();
-    if (!string.IsNullOrEmpty(authHeader) && authHeader.StartsWith("Bearer "))
+    if (string.IsNullOrWhiteSpace(req.Username))
     {
-        var token = authHeader.Substring("Bearer ".Length).Trim();
-        await authService.LogoutAsync(token);
+        return Results.BadRequest(new ErrorResponse { Error = "Username is required" });
     }
-    return Results.Ok(new { message = "Logged out successfully" });
+
+    var (success, password, error) = await authService.CreateUserAsync(req.Username);
+    if (!success)
+    {
+        return Results.BadRequest(new ErrorResponse { Error = error ?? "Registration failed" });
+    }
+
+    return Results.Ok(new { message = "User registered successfully", username = req.Username });
 });
 
 // API: Health / Status
@@ -907,17 +992,9 @@ if (app.Services.GetRequiredService<IConfiguration>() is IConfigurationRoot conf
 app.Run();
 
 // ── Request Models ──────────────────────────────────────────────────────────
-
-public class LoginRequest
-{
-    public string Username { get; set; } = string.Empty;
-    public string Password { get; set; } = string.Empty;
-}
-
-public class RegisterRequest
-{
-    public string Username { get; set; } = string.Empty;
-}
+// Note: Auth DTOs (LoginRequest, RegisterRequest, InitPasswordRequest, LoginResponse, 
+// UserInfoResponse, InitPasswordResponse, ErrorResponse) are defined in 
+// Abo.Core.Models namespace in Abo.Core/Models/AuthDtos.cs
 
 public class CreateIssueRequest
 {
@@ -965,4 +1042,13 @@ public class InteractRequest
     /// Used alongside IssueId for enhanced user feedback on the dashboard.
     /// </summary>
     public string? IssueTitle { get; set; }
+}
+
+/// <summary>
+/// Request model for user registration. Only Username is required.
+/// Note: This uses the same properties as LoginRequest but Password is optional for registration.
+/// </summary>
+public class RegisterRequest
+{
+    public string Username { get; set; } = string.Empty;
 }
