@@ -55,6 +55,9 @@ builder.Services.Configure<MattermostOptions>(builder.Configuration.GetSection("
 builder.Services.AddHttpClient<MattermostClient>();
 builder.Services.AddHostedService<MattermostListenerService>();
 
+// Register AuthCleanupService for background session cleanup
+builder.Services.AddHostedService<AuthCleanupService>();
+
 // Register Tools
 builder.Services.AddTransient<IAboTool, GetSystemTimeTool>();
 
