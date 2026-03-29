@@ -28,6 +28,13 @@ builder.Services.AddSingleton(sp => new Abo.Core.Services.AuthService(
     sp.GetRequiredService<ILogger<Abo.Core.Services.AuthService>>()
 ));
 
+// Register SessionStore service
+builder.Services.AddSingleton<ISessionStore>(sp =>
+    new Abo.Core.Services.SessionStoreService(
+        dataDirectory,
+        sp.GetRequiredService<ILogger<Abo.Core.Services.SessionStoreService>>()
+    ));
+
 builder.Services.AddHttpClient<Orchestrator>(client => client.Timeout = TimeSpan.FromSeconds(600));
 builder.Services.AddHttpClient<AgentSupervisor>(client => client.Timeout = TimeSpan.FromSeconds(600));
 
