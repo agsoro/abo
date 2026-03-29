@@ -439,26 +439,26 @@ query($owner: String!) {
 
     public async Task<IssueRecord> UpdateIssueAsync(string issueId, string? title = null, string? body = null, string? state = null, string[]? labels = null, string? project = null, string? status = null, string? type = null, string? size = null, string? notes = null)
     {
-        // If notes are provided, we need to fetch existing issue to merge notes into body
-        string? existingBody = null;
+        // If notes are provided, we need to embed them into the body
         if (notes != null)
         {
-            var existingIssue = await GetIssueAsync(issueId);
-            if (existingIssue != null)
+            if (body != null)
             {
-                // Extract current notes from existing body to avoid duplication
-                var currentNotes = ExtractNotes(existingIssue.Body, out existingBody);
-                
-                // If notes parameter is empty string, we're removing notes
-                if (string.IsNullOrWhiteSpace(notes))
+                // Use caller's body directly, embed notes into it
+                body = string.IsNullOrWhiteSpace(notes) 
+                    ? body  // Empty notes: keep body as-is (no notes section to add)
+                    : EmbedNotes(body, notes);
+            }
+            else
+            {
+                // Fetch existing body only when we need to merge notes into it
+                // Note: existingIssue.Body is already clean (notes stripped by ToRecord via GetIssueAsync)
+                var existingIssue = await GetIssueAsync(issueId);
+                if (existingIssue != null)
                 {
-                    // notes = null means remove notes section entirely
-                    body = existingBody;
-                }
-                else
-                {
-                    // Append/replace notes section
-                    body = EmbedNotes(existingBody, notes);
+                    body = string.IsNullOrWhiteSpace(notes) 
+                        ? existingIssue.Body  // Empty notes: use clean body (removes existing notes section)
+                        : EmbedNotes(existingIssue.Body, notes);  // Add/replace notes section
                 }
             }
         }
@@ -1079,7 +1079,7 @@ query($nodeId: ID!) {
                 }
             }
 
-            // Extract Notes from body
+            // Extract Notes from body (uses the static method from the outer class)
             var notes = ExtractNotes(body ?? string.Empty, out var bodyWithoutNotes);
 
             return new IssueRecord
@@ -1094,30 +1094,6 @@ query($nodeId: ID!) {
                 Labels = labelsList,
                 Notes = notes
             };
-        }
-
-        /// <summary>
-        /// Extracts the Notes section from an issue body and returns the body without the notes section.
-        /// </summary>
-        private static string ExtractNotes(string body, out string remainingBody)
-        {
-            const string delimiter = "\n\n---\n\n## Notes\n\n";
-            if (string.IsNullOrWhiteSpace(body))
-            {
-                remainingBody = string.Empty;
-                return string.Empty;
-            }
-
-            var delimiterIndex = body.LastIndexOf(delimiter, StringComparison.Ordinal);
-            if (delimiterIndex >= 0)
-            {
-                remainingBody = body.Substring(0, delimiterIndex).TrimEnd();
-                var notesContent = body.Substring(delimiterIndex + delimiter.Length);
-                return notesContent;
-            }
-
-            remainingBody = body;
-            return string.Empty;
         }
     }
 }
