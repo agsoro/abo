@@ -1,5 +1,6 @@
 using Abo.Agents;
 using Abo.Core;
+using Abo.Core.Services;
 using Abo.Core.Connectors;
 using Abo.Integrations.Mattermost;
 using Abo.Integrations.XpectoLive;
@@ -30,6 +31,9 @@ builder.Services.AddSingleton(sp => new Abo.Core.Services.AuthService(
 builder.Services.AddHttpClient<Orchestrator>(client => client.Timeout = TimeSpan.FromSeconds(600));
 builder.Services.AddHttpClient<AgentSupervisor>(client => client.Timeout = TimeSpan.FromSeconds(600));
 
+// Register ConsultationService (depends on Orchestrator which is registered via AddHttpClient)
+builder.Services.AddSingleton<IConsultationService, ConsultationService>();
+
 // Register Integrations
 builder.Services.Configure<XpectoLiveOptions>(builder.Configuration.GetSection("Integrations:XpectoLive"));
 builder.Services.AddHttpClient<XpectoLiveClient>();
@@ -47,6 +51,7 @@ builder.Services.AddTransient<IAboTool, StartIssueTool>();
 builder.Services.AddTransient<IAboTool, ListActiveIssuesTool>();
 builder.Services.AddTransient<IAboTool, GetEnvironmentsTool>();
 builder.Services.AddTransient<IAboTool, GetOpenWorkTool>();
+builder.Services.AddTransient<IAboTool, ConsultSpecialistTool>();
 
 // Register Agents
 builder.Services.AddTransient<ManagerAgent>();
