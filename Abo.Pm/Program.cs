@@ -61,6 +61,21 @@ builder.Services.AddHostedService<CronjobAutoStartService>();
 
 var app = builder.Build();
 
+// Initialize CEO user on startup
+var authServiceStartup = app.Services.GetRequiredService<Abo.Core.Services.AuthService>();
+var mattermostClientStartup = app.Services.GetRequiredService<MattermostClient>();
+var mattermostOptionsStartup = app.Services.GetRequiredService<Microsoft.Extensions.Options.IOptions<MattermostOptions>>().Value;
+
+try
+{
+    await authServiceStartup.InitializeAsync(mattermostClientStartup, mattermostOptionsStartup.CeoUserName);
+}
+catch (Exception ex)
+{
+    var logger = app.Services.GetRequiredService<ILogger<Program>>();
+    logger.LogError(ex, "Failed to initialize CEO user on startup");
+}
+
 app.UseDefaultFiles(); // Serves `/index.html` automatically for `/`
 app.UseStaticFiles();  // Serves wwwroot static files
 
