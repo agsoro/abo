@@ -28,9 +28,9 @@ public class AuthOptions
 public class AuthService
 {
     private readonly string _credentialsPath;
-    private readonly string _sessionsPath;
     private readonly AuthOptions _options;
     private readonly ILogger<AuthService> _logger;
+    private readonly ISessionStore _sessionStore;
     private readonly SemaphoreSlim _lock = new(1, 1);
 
     /// <summary>
@@ -41,12 +41,13 @@ public class AuthService
     public AuthService(
         string dataDirectory,
         IOptions<AuthOptions> options,
-        ILogger<AuthService> logger)
+        ILogger<AuthService> logger,
+        ISessionStore sessionStore)
     {
         _credentialsPath = Path.Combine(dataDirectory, "credentials.json");
-        _sessionsPath = Path.Combine(dataDirectory, "sessions.json");
         _options = options.Value;
         _logger = logger;
+        _sessionStore = sessionStore;
 
         EnsureDataDirectoryExists(dataDirectory);
     }
@@ -178,7 +179,7 @@ public class AuthService
         await SaveCredentialsAsync(store);
 
         // Create session
-        var token = GenerateSessionToken();
+        var token = SessionStoreService.GenerateSessionToken();
         var session = new WebSession
         {
             Token = token,
@@ -189,9 +190,7 @@ public class AuthService
             UserAgent = userAgent
         };
 
-        var sessions = await LoadSessionsAsync();
-        sessions.Sessions.Add(session);
-        await SaveSessionsAsync(sessions);
+        await _sessionStore.SaveSessionAsync(session);
 
         _logger.LogInformation("User {Username} logged in successfully", username);
         return (true, token, null);
@@ -202,16 +201,14 @@ public class AuthService
     /// </summary>
     public async Task<bool> LogoutAsync(string token)
     {
-        var sessions = await LoadSessionsAsync();
-        var session = sessions.Sessions.FirstOrDefault(s => s.Token == token);
+        var session = await _sessionStore.GetSessionAsync(token);
 
         if (session == null)
         {
             return false;
         }
 
-        sessions.Sessions.Remove(session);
-        await SaveSessionsAsync(sessions);
+        await _sessionStore.DeleteSessionAsync(token);
 
         _logger.LogInformation("User {Username} logged out", session.Username);
         return true;
@@ -227,20 +224,10 @@ public class AuthService
             return (false, null);
         }
 
-        var sessions = await LoadSessionsAsync();
-        var session = sessions.Sessions.FirstOrDefault(s => s.Token == token);
+        var session = await _sessionStore.GetSessionAsync(token);
 
         if (session == null)
         {
-            return (false, null);
-        }
-
-        if (session.IsExpired)
-        {
-            // Clean up expired session
-            sessions.Sessions.Remove(session);
-            await SaveSessionsAsync(sessions);
-            _logger.LogDebug("Expired session removed for user: {Username}", session.Username);
             return (false, null);
         }
 
@@ -373,21 +360,7 @@ public class AuthService
         _logger.LogInformation("Password changed for user {Username}", username);
 
         // Invalidate all existing sessions for this user (they need to re-login)
-        var sessions = await LoadSessionsAsync();
-        var userSessions = sessions.Sessions.Where(s =>
-            s.Username.Equals(username, StringComparison.OrdinalIgnoreCase)).ToList();
-
-        foreach (var session in userSessions)
-        {
-            sessions.Sessions.Remove(session);
-        }
-
-        if (userSessions.Any())
-        {
-            await SaveSessionsAsync(sessions);
-            _logger.LogInformation("Invalidated {Count} sessions for user {Username} after password change",
-                userSessions.Count, username);
-        }
+        await InvalidateUserSessionsAsync(username);
 
         return (true, null);
     }
@@ -420,19 +393,7 @@ public class AuthService
         _logger.LogInformation("Password reset for user {Username}", username);
 
         // Invalidate all sessions for this user
-        var sessions = await LoadSessionsAsync();
-        var userSessions = sessions.Sessions.Where(s =>
-            s.Username.Equals(username, StringComparison.OrdinalIgnoreCase)).ToList();
-
-        foreach (var session in userSessions)
-        {
-            sessions.Sessions.Remove(session);
-        }
-
-        if (userSessions.Any())
-        {
-            await SaveSessionsAsync(sessions);
-        }
+        await InvalidateUserSessionsAsync(username);
 
         // Send new password via Mattermost if configured
         if (mattermostClient != null && !string.IsNullOrWhiteSpace(targetUsername))
@@ -483,19 +444,7 @@ public class AuthService
         await SaveCredentialsAsync(store);
 
         // Invalidate all sessions for this user
-        var sessions = await LoadSessionsAsync();
-        var userSessions = sessions.Sessions.Where(s =>
-            s.Username.Equals(username, StringComparison.OrdinalIgnoreCase)).ToList();
-
-        foreach (var session in userSessions)
-        {
-            sessions.Sessions.Remove(session);
-        }
-
-        if (userSessions.Any())
-        {
-            await SaveSessionsAsync(sessions);
-        }
+        await InvalidateUserSessionsAsync(username);
 
         _logger.LogInformation("User {Username} deleted", username);
         return (true, null);
@@ -545,19 +494,7 @@ public class AuthService
         await SaveCredentialsAsync(store);
 
         // Invalidate all sessions for this user
-        var sessions = await LoadSessionsAsync();
-        var userSessions = sessions.Sessions.Where(s =>
-            s.Username.Equals(username, StringComparison.OrdinalIgnoreCase)).ToList();
-
-        foreach (var session in userSessions)
-        {
-            sessions.Sessions.Remove(session);
-        }
-
-        if (userSessions.Any())
-        {
-            await SaveSessionsAsync(sessions);
-        }
+        await InvalidateUserSessionsAsync(username);
 
         _logger.LogInformation("User {Username} deactivated and all sessions invalidated", username);
         return (true, null);
@@ -589,21 +526,31 @@ public class AuthService
     /// </summary>
     public async Task CleanupExpiredSessionsAsync()
     {
-        var sessions = await LoadSessionsAsync();
-        var expired = sessions.Sessions.Where(s => s.IsExpired).ToList();
-
-        if (expired.Any())
-        {
-            foreach (var session in expired)
-            {
-                sessions.Sessions.Remove(session);
-            }
-            await SaveSessionsAsync(sessions);
-            _logger.LogInformation("Cleaned up {Count} expired sessions", expired.Count);
-        }
+        await _sessionStore.CleanupExpiredSessionsAsync();
     }
 
     #region Private Helper Methods
+
+    /// <summary>
+    /// Invalidates all sessions for a specific user.
+    /// </summary>
+    private async Task InvalidateUserSessionsAsync(string username)
+    {
+        var allSessions = await _sessionStore.GetAllSessionsAsync();
+        var userSessions = allSessions.Where(s =>
+            s.Username.Equals(username, StringComparison.OrdinalIgnoreCase)).ToList();
+
+        foreach (var session in userSessions)
+        {
+            await _sessionStore.DeleteSessionAsync(session.Token);
+        }
+
+        if (userSessions.Any())
+        {
+            _logger.LogInformation("Invalidated {Count} sessions for user {Username}",
+                userSessions.Count, username);
+        }
+    }
 
     private async Task<CredentialsStore> LoadCredentialsAsync()
     {
@@ -645,46 +592,6 @@ public class AuthService
         }
     }
 
-    private async Task<SessionStore> LoadSessionsAsync()
-    {
-        await _lock.WaitAsync();
-        try
-        {
-            if (!File.Exists(_sessionsPath))
-            {
-                return new SessionStore();
-            }
-
-            var json = await File.ReadAllTextAsync(_sessionsPath);
-            return JsonSerializer.Deserialize<SessionStore>(json, new JsonSerializerOptions
-            {
-                PropertyNameCaseInsensitive = true
-            }) ?? new SessionStore();
-        }
-        finally
-        {
-            _lock.Release();
-        }
-    }
-
-    private async Task SaveSessionsAsync(SessionStore store)
-    {
-        await _lock.WaitAsync();
-        try
-        {
-            var json = JsonSerializer.Serialize(store, new JsonSerializerOptions
-            {
-                WriteIndented = true,
-                PropertyNamingPolicy = JsonNamingPolicy.CamelCase
-            });
-            await File.WriteAllTextAsync(_sessionsPath, json);
-        }
-        finally
-        {
-            _lock.Release();
-        }
-    }
-
     private static string HashPassword(string password)
     {
         return BCrypt.Net.BCrypt.HashPassword(password, BcryptWorkFactor);
@@ -700,14 +607,6 @@ public class AuthService
         {
             return false;
         }
-    }
-
-    private static string GenerateSessionToken()
-    {
-        var bytes = new byte[32]; // 256 bits
-        using var rng = RandomNumberGenerator.Create();
-        rng.GetBytes(bytes);
-        return Convert.ToBase64String(bytes).Replace("+", "-").Replace("/", "_").TrimEnd('=');
     }
 
     private static string GenerateSecurePassword(int length)
