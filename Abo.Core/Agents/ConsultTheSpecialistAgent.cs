@@ -7,7 +7,7 @@ namespace Abo.Agents;
 /// A specialist agent that provides expert consultation on complex tasks.
 /// Runs without tools, on a different LLM than the caller, and generates its own system prompt.
 /// </summary>
-public class SpecialistAgent : IAgent
+public class ConsultTheSpecialistAgent : IAgent
 {
     private readonly string _specialistDomain;
     private readonly string _taskDescription;
@@ -19,12 +19,12 @@ public class SpecialistAgent : IAgent
     public bool RequiresReviewModel => false;
 
     /// <summary>
-    /// Creates a new SpecialistAgent with the specified context.
+    /// Creates a new ConsultTheSpecialistAgent with the specified context.
     /// </summary>
     /// <param name="specialistDomain">The domain of expertise (e.g., "architecture", "security").</param>
     /// <param name="taskDescription">The specific task to consult on.</param>
     /// <param name="contextSummary">Broader context for the consultation.</param>
-    public SpecialistAgent(string? specialistDomain, string taskDescription, string contextSummary)
+    public ConsultTheSpecialistAgent(string? specialistDomain, string taskDescription, string contextSummary)
     {
         _specialistDomain = specialistDomain ?? "general";
         _taskDescription = taskDescription;
@@ -163,7 +163,7 @@ Start your consultation response now. Be thorough but focused on the task at han
 
     public Task<string> HandleToolCallAsync(ToolCall toolCall)
     {
-        // This should never be called as SpecialistAgent has no tools
-        return Task.FromResult("[ERROR] SpecialistAgent has no tools available.");
+        // This should never be called as ConsultTheSpecialistAgent has no tools
+        return Task.FromResult("[ERROR] ConsultTheSpecialistAgent has no tools available.");
     }
 }

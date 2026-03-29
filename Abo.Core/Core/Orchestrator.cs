@@ -60,7 +60,7 @@ public class Orchestrator
         _logger.LogInformation($"[Consultation: {request.ConsultationId}] Domain: {request.SpecialistDomain ?? "general"}, Task: {request.TaskDescription[..Math.Min(100, request.TaskDescription.Length)]}...");
 
         // Create the specialist agent
-        var specialist = new SpecialistAgent(request.SpecialistDomain, request.TaskDescription, request.ContextSummary);
+        var specialist = new ConsultTheSpecialistAgent(request.SpecialistDomain, request.TaskDescription, request.ContextSummary);
         var systemPrompt = specialist.GenerateSystemPrompt();
 
         // Initialize consultation messages
