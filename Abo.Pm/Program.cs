@@ -497,6 +497,69 @@ app.MapGet("/api/issues/{id}/status", async (string id, IConfiguration config, M
     });
 });
 
+// API: Issues – fetch notes for a specific issue by ID
+app.MapGet("/api/issues/{id}/notes", async (string id, IConfiguration config, Microsoft.Extensions.Caching.Memory.IMemoryCache cache) =>
+{
+    try
+    {
+        var issues = await GetAllIssuesAsync(config, cache);
+        var issue = issues.FirstOrDefault(i => i.Id == id);
+        if (issue == null)
+        {
+            return Results.NotFound(new { error = $"Issue '{id}' not found" });
+        }
+
+        return Results.Ok(new { notes = issue.Notes ?? string.Empty });
+    }
+    catch (Exception ex)
+    {
+        var logger = app.Services.GetRequiredService<ILogger<Program>>();
+        logger.LogError(ex, "Error fetching notes for issue {IssueId}", id);
+        return Results.Problem($"Error fetching notes: {ex.Message}");
+    }
+});
+
+// API: Issues – update notes for a specific issue by ID
+app.MapPatch("/api/issues/{id}/notes", async (string id, [FromBody] UpdateIssueNotesRequest req, IConfiguration config, Microsoft.Extensions.Caching.Memory.IMemoryCache cache) =>
+{
+    if (req == null)
+    {
+        return Results.BadRequest(new { error = "Request body is required" });
+    }
+
+    try
+    {
+        var issues = await GetAllIssuesAsync(config, cache);
+        var issue = issues.FirstOrDefault(i => i.Id == id);
+        if (issue == null)
+        {
+            return Results.NotFound(new { error = $"Issue '{id}' not found" });
+        }
+
+        // Determine which environment this issue belongs to
+        var envName = issue.Labels.FirstOrDefault(l => l.StartsWith("env: ", StringComparison.OrdinalIgnoreCase))?.Substring(5).Trim() ?? "";
+        
+        var tracker = await GetTrackerForEnvironmentAsync(envName, config);
+        if (tracker == null)
+        {
+            return Results.InternalServerError(new { error = "Could not resolve issue tracker for this environment" });
+        }
+
+        var updatedIssue = await tracker.UpdateIssueAsync(id, notes: req.Notes);
+        
+        // Invalidate cache since notes are part of issue data
+        cache.Remove("AllActiveIssues");
+
+        return Results.Ok(new { notes = updatedIssue.Notes ?? string.Empty });
+    }
+    catch (Exception ex)
+    {
+        var logger = app.Services.GetRequiredService<ILogger<Program>>();
+        logger.LogError(ex, "Error updating notes for issue {IssueId}", id);
+        return Results.Problem($"Error updating notes: {ex.Message}");
+    }
+});
+
 // API: Issues – create a new issue (Issue #287)
 app.MapPost("/api/issues/create", async ([FromBody] CreateIssueRequest req, IConfiguration config, Microsoft.Extensions.Caching.Memory.IMemoryCache cache) =>
 {
@@ -891,6 +954,11 @@ public class CreateIssueRequest
     public string Size { get; set; } = string.Empty;
     public string? Project { get; set; }
     public string? EnvironmentName { get; set; }
+}
+
+public class UpdateIssueNotesRequest
+{
+    public string? Notes { get; set; }
 }
 
 public class InteractRequest

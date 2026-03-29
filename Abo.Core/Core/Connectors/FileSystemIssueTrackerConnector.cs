@@ -110,7 +110,7 @@ public class FileSystemIssueTrackerConnector : IIssueTrackerConnector
         return issue;
     }
 
-    public async Task<IssueRecord> UpdateIssueAsync(string issueId, string? title = null, string? body = null, string? state = null, string[]? labels = null, string? project = null, string? status = null, string? type = null, string? size = null)
+    public async Task<IssueRecord> UpdateIssueAsync(string issueId, string? title = null, string? body = null, string? state = null, string[]? labels = null, string? project = null, string? status = null, string? type = null, string? size = null, string? notes = null)
     {
         var records = await LoadRecordsAsync();
         var issue = records.FirstOrDefault(r => r.Id == issueId);
@@ -141,6 +141,8 @@ public class FileSystemIssueTrackerConnector : IIssueTrackerConnector
                 issue.Labels.Add($"size: {size}");
             }
         }
+
+        if (notes != null) issue.Notes = notes;
 
         await SaveRecordsAsync(records);
         return issue;
