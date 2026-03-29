@@ -45,23 +45,23 @@ public class Orchestrator
         var result = new ConsultationResult
         {
             ConsultationId = request.ConsultationId,
-            ModelUsed = SelectSpecialistModel(request.SpecialistDomain)
+            ModelUsed = SelectConsultantModel(request.SpecialistDomain)
         };
 
         var apiEndpoint = _configuration["Config:ApiEndpoint"] ?? throw new InvalidOperationException("API Endpoint not configured.");
         var apiKey = _configuration["Config:ApiKey"] ?? string.Empty;
         var defaultLanguage = _configuration["Config:DefaultLanguage"] ?? "en-us";
-        var specialistModel = result.ModelUsed;
+        var consultantModel = result.ModelUsed;
 
         // Create a dedicated session for this consultation
         var consultationSessionId = $"consult-{request.ConsultationId}";
 
-        _logger.LogInformation($"[Consultation: {request.ConsultationId}] Starting consultation with specialist (model: {specialistModel})");
+        _logger.LogInformation($"[Consultation: {request.ConsultationId}] Starting consultation with consultant (model: {consultantModel})");
         _logger.LogInformation($"[Consultation: {request.ConsultationId}] Domain: {request.SpecialistDomain ?? "general"}, Task: {request.TaskDescription[..Math.Min(100, request.TaskDescription.Length)]}...");
 
-        // Create the specialist agent
-        var specialist = new SpecialistAgent(request.SpecialistDomain, request.TaskDescription, request.ContextSummary);
-        var systemPrompt = specialist.GenerateSystemPrompt();
+        // Create the consultant agent
+        var consultant = new ConsultantAgent(request.SpecialistDomain, request.TaskDescription, request.ContextSummary);
+        var systemPrompt = consultant.GenerateSystemPrompt();
 
         // Initialize consultation messages
         var messages = new List<ChatMessage>
@@ -93,13 +93,13 @@ public class Orchestrator
                 // Build the request
                 var requestBody = new ChatCompletionRequest
                 {
-                    Model = specialistModel,
+                    Model = consultantModel,
                     Messages = messages,
-                    Tools = specialist.GetToolDefinitions() // Empty for specialist
+                    Tools = consultant.GetToolDefinitions() // Empty for consultant
                 };
 
                 // Add provider-specific instructions
-                if (specialistModel.StartsWith("openai/", StringComparison.OrdinalIgnoreCase))
+                if (consultantModel.StartsWith("openai/", StringComparison.OrdinalIgnoreCase))
                 {
                     var systemMsg = messages.FirstOrDefault(m => m.Role == "system");
                     if (systemMsg != null)
@@ -108,7 +108,7 @@ public class Orchestrator
                     }
                 }
 
-                _logger.LogInformation($"[Consultation: {request.ConsultationId}] [Turn {currentTurn}] Sending request to specialist");
+                _logger.LogInformation($"[Consultation: {request.ConsultationId}] [Turn {currentTurn}] Sending request to consultant");
 
                 var jsonRequest = JsonSerializer.Serialize(requestBody, new JsonSerializerOptions { WriteIndented = true });
                 await _trafficLoggerService.LogTrafficAsync(consultationSessionId, "CONSULTATION_REQUEST", jsonRequest);
@@ -145,7 +145,7 @@ public class Orchestrator
                 {
                     result.Success = false;
                     result.TerminationReason = "No response from model";
-                    result.SpecialistResponse = "Error: No response from specialist model.";
+                    result.SpecialistResponse = "Error: No response from consultant model.";
                     return result;
                 }
 
@@ -169,15 +169,15 @@ public class Orchestrator
                 // Check for termination signals
                 if (assistantContent.Contains(AgentSentinels.ConsultationComplete))
                 {
-                    _logger.LogInformation($"[Consultation: {request.ConsultationId}] Specialist signaled consultation complete");
+                    _logger.LogInformation($"[Consultation: {request.ConsultationId}] Consultant signaled consultation complete");
                     consultationComplete = true;
-                    result.TerminationReason = "Specialist concluded the consultation";
+                    result.TerminationReason = "Consultant concluded the consultation";
                     break;
                 }
 
                 if (assistantContent.Contains(AgentSentinels.NeedsMoreInfo))
                 {
-                    _logger.LogInformation($"[Consultation: {request.ConsultationId}] Specialist needs more information");
+                    _logger.LogInformation($"[Consultation: {request.ConsultationId}] Consultant needs more information");
                     needsMoreInfo = true;
                     pendingInfoRequest = ExtractInfoRequest(assistantContent);
 
@@ -206,7 +206,7 @@ public class Orchestrator
                 // Check if we should continue for follow-up questions
                 if (!awaitingFollowUp && currentTurn >= 2)
                 {
-                    // After initial response, check if specialist wants to ask questions
+                    // After initial response, check if consultant wants to ask questions
                     if (assistantContent.Contains("[ASKING_FOLLOW_UP]"))
                     {
                         awaitingFollowUp = true;
@@ -251,16 +251,16 @@ public class Orchestrator
         }
 
         // Log consumption
-        await _trafficLoggerService.LogConsumptionAsync(consultationSessionId, specialistModel, totalCalls, totalInputTokens, totalOutputTokens, totalCost, request.IssueId);
+        await _trafficLoggerService.LogConsumptionAsync(consultationSessionId, consultantModel, totalCalls, totalInputTokens, totalOutputTokens, totalCost, request.IssueId);
 
         return result;
     }
 
     /// <summary>
-    /// Selects a specialist model based on the domain. The specialist model should be different
+    /// Selects a consultant model based on the domain. The consultant model should be different
     /// from the caller's model for optimal perspective diversity.
     /// </summary>
-    private string SelectSpecialistModel(string? domain)
+    private string SelectConsultantModel(string? domain)
     {
         // Try to use CapableModelName if configured (different from generic ModelName)
         var capableModel = _configuration["Config:CapableModelName"];
@@ -270,17 +270,17 @@ public class Orchestrator
         if (!string.IsNullOrEmpty(capableModel))
         {
             // Additional logic could select based on domain here
-            _logger.LogInformation($"[Specialist Model Selection] Using CapableModel: {capableModel}");
+            _logger.LogInformation($"[Consultant Model Selection] Using CapableModel: {capableModel}");
             return capableModel;
         }
 
         // Fallback to default model
-        _logger.LogInformation($"[Specialist Model Selection] Using default model: {defaultModel}");
+        _logger.LogInformation($"[Consultant Model Selection] Using default model: {defaultModel}");
         return defaultModel;
     }
 
     /// <summary>
-    /// Extracts the information request from a specialist response containing [NEEDS_MORE_INFO].
+    /// Extracts the information request from a consultant response containing [NEEDS_MORE_INFO].
     /// </summary>
     private static string ExtractInfoRequest(string content)
     {
@@ -290,7 +290,7 @@ public class Orchestrator
         {
             return content[(index + marker.Length)..].Trim();
         }
-        return "The specialist needs more context to provide a recommendation.";
+        return "The consultant needs more context to provide a recommendation.";
     }
 
     /// <summary>
@@ -640,7 +640,7 @@ public class Orchestrator
                         _sessionService.AddMessage(sessionId, toolResponseMsg);
                         request.Messages.Add(toolResponseMsg);
 
-                        // Sentinel pattern: SpecialistAgent.conclude_step returns [CONCLUDE_STEP_RESULT]:<resultNotes>
+                        // Sentinel pattern: ConsultantAgent.conclude_step returns [CONCLUDE_STEP_RESULT]:<resultNotes>
                         // on success. Detect it here and immediately surface the resultNotes to the caller,
                         // eliminating the extra LLM synthesis round-trip. Mirrors the [TERMINATE_MANAGER_LOOP] pattern.
                         if (toolResult.StartsWith(AgentSentinels.ConcludeStepResult))
@@ -653,7 +653,7 @@ public class Orchestrator
                         }
 
                         // Change C: PostponeTaskResult sentinel detection — immediately after ConcludeStepResult detection.
-                        // SpecialistAgent.postpone_task returns [POSTPONE_TASK_RESULT]:{contextNotes}.
+                        // ConsultantAgent.postpone_task returns [POSTPONE_TASK_RESULT]:{contextNotes}.
                         // Detect it here and return [POSTPONED] {contextNotes} to the caller without advancing the workflow step.
                         if (toolResult.StartsWith(AgentSentinels.PostponeTaskResult))
                         {

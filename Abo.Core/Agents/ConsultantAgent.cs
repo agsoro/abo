@@ -4,27 +4,27 @@ using Abo.Contracts.OpenAI;
 namespace Abo.Agents;
 
 /// <summary>
-/// A specialist agent that provides expert consultation on complex tasks.
+/// A consultant agent that provides expert consultation on complex tasks.
 /// Runs without tools, on a different LLM than the caller, and generates its own system prompt.
 /// </summary>
-public class SpecialistAgent : IAgent
+public class ConsultantAgent : IAgent
 {
     private readonly string _specialistDomain;
     private readonly string _taskDescription;
     private readonly string _contextSummary;
 
-    public string Name => "SpecialistAgent";
+    public string Name => "ConsultantAgent";
     public string Description => "Expert consultant agent that provides specialized knowledge and recommendations on complex tasks.";
     public bool RequiresCapableModel => false;
     public bool RequiresReviewModel => false;
 
     /// <summary>
-    /// Creates a new SpecialistAgent with the specified context.
+    /// Creates a new ConsultantAgent with the specified context.
     /// </summary>
     /// <param name="specialistDomain">The domain of expertise (e.g., "architecture", "security").</param>
     /// <param name="taskDescription">The specific task to consult on.</param>
     /// <param name="contextSummary">Broader context for the consultation.</param>
-    public SpecialistAgent(string? specialistDomain, string taskDescription, string contextSummary)
+    public ConsultantAgent(string? specialistDomain, string taskDescription, string contextSummary)
     {
         _specialistDomain = specialistDomain ?? "general";
         _taskDescription = taskDescription;
@@ -38,9 +38,9 @@ public class SpecialistAgent : IAgent
     public string SystemPrompt { get; private set; } = string.Empty;
 
     /// <summary>
-    /// Generates a comprehensive system prompt for the specialist based on the consultation context.
+    /// Generates a comprehensive system prompt for the consultant based on the consultation context.
     /// </summary>
-    /// <returns>A detailed system prompt for the specialist agent.</returns>
+    /// <returns>A detailed system prompt for the consultant agent.</returns>
     public string GenerateSystemPrompt()
     {
         var domainGuidance = GetDomainGuidance(_specialistDomain);
@@ -157,13 +157,13 @@ Start your consultation response now. Be thorough but focused on the task at han
 
     public List<ToolDefinition> GetToolDefinitions()
     {
-        // Specialist agents have NO tools - they are pure advisory agents
+        // Consultant agents have NO tools - they are pure advisory agents
         return new List<ToolDefinition>();
     }
 
     public Task<string> HandleToolCallAsync(ToolCall toolCall)
     {
-        // This should never be called as SpecialistAgent has no tools
-        return Task.FromResult("[ERROR] SpecialistAgent has no tools available.");
+        // This should never be called as ConsultantAgent has no tools
+        return Task.FromResult("[ERROR] ConsultantAgent has no tools available.");
     }
 }
