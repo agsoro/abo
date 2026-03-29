@@ -34,6 +34,7 @@ public class CronjobAutoStartService : BackgroundService
     /// Ensures only one <see cref="RunCycleAsync"/> execution is active at a time.
     /// </summary>
     private readonly SemaphoreSlim _cycleSemaphore = new SemaphoreSlim(1, 1);
+    private static int _loopDelay = 5;
 
     public CronjobAutoStartService(
         IServiceProvider serviceProvider,
@@ -111,7 +112,7 @@ public class CronjobAutoStartService : BackgroundService
         var now = DateTime.UtcNow;
         var nextMark = now.Date
             .AddHours(now.Hour)
-            .AddMinutes(now.Minute + 5);
+            .AddMinutes(now.Minute + _loopDelay);
         return nextMark - now;
     }
 
@@ -140,56 +141,25 @@ public class CronjobAutoStartService : BackgroundService
             var issues = await GetAllIssuesAsync(config);
             var openIssues = issues.Where(i => !string.Equals(i.State, "closed", StringComparison.OrdinalIgnoreCase)).ToList();
 
-            // 2. Build CEO notification message
-            var sb = new StringBuilder();
-            sb.AppendLine($"⏰ Cronjob triggered at {triggerTime:yyyy-MM-dd HH:mm} UTC.");
-            sb.AppendLine();
-
-            if (openIssues.Any())
-            {
-                sb.AppendLine("**📋 Starting work on open issues:**");
-                var byProject = openIssues.GroupBy(i => string.IsNullOrWhiteSpace(i.Project) ? "Unassigned" : i.Project);
-                foreach (var group in byProject)
-                {
-                    sb.AppendLine();
-                    sb.AppendLine($"*{group.Key}*:");
-                    foreach (var issue in group)
-                    {
-                        var step = Abo.Core.WorkflowEngine.ResolveStatusFallback(issue);
-                        var role = Abo.Core.WorkflowEngine.GetStepInfo(issue)?.Role?.RoleId ?? "Any";
-                        var envName = issue.Labels.FirstOrDefault(l => l.StartsWith("env: ", StringComparison.OrdinalIgnoreCase))?.Substring(5).Trim() ?? "?";
-                        sb.AppendLine($"- [{issue.Id}] {issue.Title} (Env: {envName}, Step: {step}, Role: {role})");
-                    }
-                }
-            }
-            else
-            {
-                sb.AppendLine("No open work found — skipping ManagerAgent invocation.");
-            }
-
-            // 3. Send DM to CEO
-            if (!string.IsNullOrEmpty(mattermostOptions.CeoUserName))
-            {
-                try
-                {
-                    await mattermostClient.SendDirectMessageAsync(mattermostOptions.CeoUserName, sb.ToString());
-                    _logger.LogInformation("CronjobAutoStartService: CEO notification sent.");
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "CronjobAutoStartService: Failed to send CEO notification via Mattermost.");
-                }
-            }
-            else
-            {
-                _logger.LogWarning("CronjobAutoStartService: CeoUserName is not configured — skipping Mattermost notification.");
-            }
 
             // 4. Invoke ManagerAgent if there are open issues
             if (openIssues.Any())
             {
                 var subSessionId = $"cronjob-{triggerTime:yyyyMMddHHmm}";
                 _logger.LogInformation("CronjobAutoStartService: Invoking ManagerAgent (session: {SessionId}).", subSessionId);
+
+                if (openIssues.Count > 5)
+                {
+                    _loopDelay = 1;
+                }
+                else if (openIssues.Count > 2)
+                {
+                    _loopDelay = 2;
+                }
+                else
+                {
+                    _loopDelay = 10;
+                }
 
                 try
                 {
@@ -215,6 +185,7 @@ public class CronjobAutoStartService : BackgroundService
             else
             {
                 _logger.LogInformation("CronjobAutoStartService: No open issues found — ManagerAgent not invoked.");
+                _loopDelay = 30;
             }
         }
         catch (Exception ex)

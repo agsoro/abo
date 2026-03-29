@@ -166,12 +166,21 @@ public class Orchestrator
                 // Add assistant response to messages
                 messages.Add(choice.Message);
 
-                // Check for termination signals
+                // Check for termination signals (defined in AgentSentinels per Issue #406)
                 if (assistantContent.Contains(AgentSentinels.ConsultationComplete))
                 {
                     _logger.LogInformation($"[Consultation: {request.ConsultationId}] Specialist signaled consultation complete");
                     consultationComplete = true;
                     result.TerminationReason = "Specialist concluded the consultation";
+                    break;
+                }
+
+                // Check for [CONCLUSION] signal
+                if (assistantContent.Contains("[CONCLUSION]"))
+                {
+                    _logger.LogInformation($"[Consultation: {request.ConsultationId}] Specialist signaled conclusion");
+                    consultationComplete = true;
+                    result.TerminationReason = "Specialist provided final conclusion";
                     break;
                 }
 
@@ -298,9 +307,10 @@ public class Orchestrator
     /// </summary>
     private static string CleanConsultationResponse(string content)
     {
-        // Remove internal markers
+        // Remove internal markers (defined in AgentSentinels per Issue #406)
         var cleaned = content
             .Replace("[CONSULTATION_COMPLETE]", "")
+            .Replace("[CONCLUSION]", "")
             .Replace("[NEEDS_MORE_INFO]", "")
             .Replace("[CONSULTATION_TERMINATE]", "")
             .Replace("[ASKING_FOLLOW_UP]", "")

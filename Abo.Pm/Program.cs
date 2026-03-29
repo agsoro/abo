@@ -1,15 +1,17 @@
 using Abo.Agents;
 using Abo.Core;
 using Abo.Core.Connectors;
-using Abo.Core.Models;
 using Abo.Integrations.Mattermost;
 using Abo.Integrations.XpectoLive;
-using Abo.Services;
+using Abo.Tools.Connector;
 using Abo.Tools;
+using Abo.Services;
 using Microsoft.AspNetCore.Mvc;
 using System.Text.Json;
-using System.Text.RegularExpressions;
 using Microsoft.Extensions.Caching.Memory;
+using System.Collections.Concurrent;
+using System.Security.Cryptography;
+using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -19,22 +21,9 @@ builder.Services.AddMemoryCache();
 builder.Services.AddSingleton<SessionService>();
 builder.Services.AddSingleton<UserService>();
 builder.Services.AddSingleton<Abo.Core.Services.TrafficLoggerService>();
+builder.Services.AddSingleton<AuthService>(); // Register AuthService
 builder.Services.AddHttpClient<Orchestrator>(client => client.Timeout = TimeSpan.FromSeconds(600));
 builder.Services.AddHttpClient<AgentSupervisor>(client => client.Timeout = TimeSpan.FromSeconds(600));
-
-// Register Auth Service
-var dataDirectory = Path.Combine(AppContext.BaseDirectory, "Data");
-builder.Services.Configure<Abo.Core.Services.AuthOptions>(builder.Configuration.GetSection("Auth"));
-builder.Services.AddSingleton<Abo.Core.Services.AuthService>(sp =>
-{
-    var options = sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<Abo.Core.Services.AuthOptions>>();
-
-    // Ensure data directory exists
-    if (!Directory.Exists(dataDirectory))
-        Directory.CreateDirectory(dataDirectory);
-
-    return new Abo.Core.Services.AuthService(dataDirectory, options, sp.GetRequiredService<ILogger<Abo.Core.Services.AuthService>>());
-});
 
 // Register Integrations
 builder.Services.Configure<XpectoLiveOptions>(builder.Configuration.GetSection("Integrations:XpectoLive"));
@@ -56,6 +45,7 @@ builder.Services.AddTransient<IAboTool, GetOpenWorkTool>();
 
 // Register Agents
 builder.Services.AddTransient<ManagerAgent>();
+builder.Services.AddTransient<IAboTool, SuggestAboFeatureTool>();
 builder.Services.AddTransient<IAgent, ManagerAgent>(sp => sp.GetRequiredService<ManagerAgent>());
 
 // Register Background Services
@@ -63,7 +53,6 @@ builder.Services.AddSingleton<StartupStatusService>();
 builder.Services.AddSingleton<Abo.Core.OpenRouterModelSelector>();
 builder.Services.AddHostedService<EnvironmentValidationService>();
 builder.Services.AddHostedService<CronjobAutoStartService>();
-builder.Services.AddHostedService<AuthCleanupService>();
 
 var app = builder.Build();
 
@@ -94,6 +83,60 @@ async Task SaveEnvironmentsAsync(List<Abo.Core.Connectors.ConnectorEnvironment> 
     await File.WriteAllTextAsync(filePath, json);
 }
 
+// ── Authentication API ──────────────────────────────────────────────────────
+
+// Get AuthService instance
+var authService = app.Services.GetRequiredService<AuthService>();
+
+// POST /api/auth/login – Authenticate user and return token
+app.MapPost("/api/auth/login", (LoginRequest req, AuthService authService) =>
+{
+    if (string.IsNullOrWhiteSpace(req.Username) || string.IsNullOrWhiteSpace(req.Password))
+    {
+        return Results.BadRequest(new { detail = "Username and password are required" });
+    }
+
+    var user = authService.Authenticate(req.Username, req.Password);
+    if (user == null)
+    {
+        return Results.Unauthorized();
+    }
+
+    var token = authService.GenerateToken(user);
+    return Results.Ok(new { token = token, username = user.Username });
+});
+
+// GET /api/auth/me – Get current user info (validates token)
+app.MapGet("/api/auth/me", (HttpRequest request, AuthService authService) =>
+{
+    var authHeader = request.Headers.Authorization.FirstOrDefault();
+    if (string.IsNullOrEmpty(authHeader) || !authHeader.StartsWith("Bearer "))
+    {
+        return Results.Unauthorized();
+    }
+
+    var token = authHeader.Substring("Bearer ".Length).Trim();
+    var user = authService.ValidateToken(token);
+    if (user == null)
+    {
+        return Results.Unauthorized();
+    }
+
+    return Results.Ok(new { username = user.Username, loginTime = user.LoginTime });
+});
+
+// POST /api/auth/logout – Logout user (client should discard token)
+app.MapPost("/api/auth/logout", (HttpRequest request, AuthService authService) =>
+{
+    var authHeader = request.Headers.Authorization.FirstOrDefault();
+    if (!string.IsNullOrEmpty(authHeader) && authHeader.StartsWith("Bearer "))
+    {
+        var token = authHeader.Substring("Bearer ".Length).Trim();
+        authService.InvalidateToken(token);
+    }
+    return Results.Ok(new { message = "Logged out successfully" });
+});
+
 // API: Health / Status
 app.MapGet("/api/status", (IConfiguration config) =>
 {
@@ -113,251 +156,6 @@ app.MapGet("/api/environments", async () =>
     return Results.Ok(mapped);
 });
 
-// ── Authentication API ─────────────────────────────────────────────────────────
-
-// Extract Bearer token from Authorization header
-string? ExtractBearerToken(HttpContext context)
-{
-    var authHeader = context.Request.Headers.Authorization.FirstOrDefault();
-    if (string.IsNullOrEmpty(authHeader) || !authHeader.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
-        return null;
-    return authHeader.Substring(7);
-}
-
-// Require authentication middleware helper
-async Task<(bool IsAuthenticated, string? Username)> RequireAuthAsync(HttpContext context, Abo.Core.Services.AuthService authService)
-{
-    var token = ExtractBearerToken(context);
-    if (string.IsNullOrEmpty(token))
-        return (false, null);
-
-    var (valid, username) = await authService.ValidateSessionAsync(token);
-    return (valid, username);
-}
-
-// POST /api/auth/login – Authenticate user and return session token
-app.MapPost("/api/auth/login", async (
-    [FromBody] LoginRequest request,
-    Abo.Core.Services.AuthService authService,
-    HttpContext context) =>
-{
-    var ipAddress = context.Connection.RemoteIpAddress?.ToString();
-    var userAgent = context.Request.Headers.UserAgent.FirstOrDefault();
-
-    var (success, token, error) = await authService.LoginAsync(
-        request.Username,
-        request.Password,
-        ipAddress,
-        userAgent);
-
-    if (!success)
-    {
-        return Results.Unauthorized();
-    }
-
-    return Results.Ok(new { Token = token, Username = request.Username });
-});
-
-// POST /api/auth/logout – Invalidate session token
-app.MapPost("/api/auth/logout", async (
-    HttpContext context,
-    Abo.Core.Services.AuthService authService) =>
-{
-    var token = ExtractBearerToken(context);
-    if (string.IsNullOrEmpty(token))
-        return Results.BadRequest(new { error = "No token provided" });
-
-    await authService.LogoutAsync(token);
-    return Results.Ok(new { message = "Logged out successfully" });
-});
-
-// GET /api/auth/me – Get current authenticated user info
-app.MapGet("/api/auth/me", async (
-    HttpContext context,
-    Abo.Core.Services.AuthService authService) =>
-{
-    var (isAuthenticated, username) = await RequireAuthAsync(context, authService);
-    if (!isAuthenticated || string.IsNullOrEmpty(username))
-    {
-        return Results.Unauthorized();
-    }
-
-    var user = await authService.GetUserAsync(username);
-    if (user == null)
-    {
-        return Results.NotFound();
-    }
-
-    return Results.Ok(new
-    {
-        Username = user.Username,
-        Roles = user.Roles,
-        PasswordChanged = user.PasswordChanged,
-        CreatedAt = user.CreatedAt,
-        LastPasswordChange = user.LastPasswordChange
-    });
-});
-
-// POST /api/auth/change-password – Change current user's password
-app.MapPost("/api/auth/change-password", async (
-    HttpContext context,
-    [FromBody] ChangePasswordRequest request,
-    Abo.Core.Services.AuthService authService) =>
-{
-    var (isAuthenticated, username) = await RequireAuthAsync(context, authService);
-    if (!isAuthenticated || string.IsNullOrEmpty(username))
-    {
-        return Results.Unauthorized();
-    }
-
-    var (success, error) = await authService.ChangePasswordAsync(
-        username,
-        request.CurrentPassword,
-        request.NewPassword);
-
-    if (!success)
-    {
-        return Results.BadRequest(new { error });
-    }
-
-    return Results.Ok(new { message = "Password changed successfully. Please login again." });
-});
-
-// ── Admin Auth API ─────────────────────────────────────────────────────────────
-
-// POST /api/admin/auth/init-password – Create user and send initial password via Mattermost (admin only)
-app.MapPost("/api/admin/auth/init-password", async (
-    HttpContext context,
-    [FromBody] InitPasswordRequest request,
-    Abo.Core.Services.AuthService authService,
-    MattermostClient mattermostClient) =>
-{
-    // For now, require Bearer token authentication to access admin endpoints
-    var (isAuthenticated, username) = await RequireAuthAsync(context, authService);
-    if (!isAuthenticated || string.IsNullOrEmpty(username))
-    {
-        return Results.Unauthorized();
-    }
-
-    // Check if user has admin role
-    var user = await authService.GetUserAsync(username);
-    if (user == null || !user.Roles.Contains("admin"))
-    {
-        return Results.Forbid();
-    }
-
-    var roles = request.Roles?.Count > 0 ? request.Roles : new List<string> { "user" };
-    
-    var (success, password, error) = await authService.CreateUserAsync(
-        request.Username,
-        roles,
-        mattermostClient,
-        request.MattermostUsername);
-
-    if (!success)
-    {
-        return Results.BadRequest(new { error });
-    }
-
-    return Results.Created($"/api/admin/auth/users/{request.Username}", new
-    {
-        Username = request.Username,
-        InitialPassword = password,
-        Message = password != null 
-            ? "User created. Initial password sent via Mattermost."
-            : "User created. Check logs for initial password (Mattermost not configured)."
-    });
-});
-
-// GET /api/admin/auth/users – List all users (admin only)
-app.MapGet("/api/admin/auth/users", async (
-    HttpContext context,
-    Abo.Core.Services.AuthService authService) =>
-{
-    var (isAuthenticated, username) = await RequireAuthAsync(context, authService);
-    if (!isAuthenticated || string.IsNullOrEmpty(username))
-    {
-        return Results.Unauthorized();
-    }
-
-    var user = await authService.GetUserAsync(username);
-    if (user == null || !user.Roles.Contains("admin"))
-    {
-        return Results.Forbid();
-    }
-
-    var users = await authService.ListUsersAsync();
-    return Results.Ok(users);
-});
-
-// DELETE /api/admin/auth/users/{username} – Delete a user (admin only)
-app.MapDelete("/api/admin/auth/users/{username}", async (
-    HttpContext context,
-    string username,
-    Abo.Core.Services.AuthService authService) =>
-{
-    var (isAuthenticated, currentUser) = await RequireAuthAsync(context, authService);
-    if (!isAuthenticated || string.IsNullOrEmpty(currentUser))
-    {
-        return Results.Unauthorized();
-    }
-
-    var user = await authService.GetUserAsync(currentUser);
-    if (user == null || !user.Roles.Contains("admin"))
-    {
-        return Results.Forbid();
-    }
-
-    var (success, error) = await authService.DeleteUserAsync(username);
-    if (!success)
-    {
-        return Results.BadRequest(new { error });
-    }
-
-    return Results.NoContent();
-});
-
-// POST /api/admin/auth/reset-password/{username} – Reset a user's password (admin only)
-app.MapPost("/api/admin/auth/reset-password/{username}", async (
-    HttpContext context,
-    string username,
-    [FromBody] ResetPasswordRequest? request,
-    Abo.Core.Services.AuthService authService,
-    MattermostClient mattermostClient) =>
-{
-    var (isAuthenticated, currentUser) = await RequireAuthAsync(context, authService);
-    if (!isAuthenticated || string.IsNullOrEmpty(currentUser))
-    {
-        return Results.Unauthorized();
-    }
-
-    var user = await authService.GetUserAsync(currentUser);
-    if (user == null || !user.Roles.Contains("admin"))
-    {
-        return Results.Forbid();
-    }
-
-    var targetUsername = request?.MattermostUsername;
-    var (success, password, error) = await authService.ResetPasswordAsync(
-        username,
-        mattermostClient,
-        targetUsername);
-
-    if (!success)
-    {
-        return Results.BadRequest(new { error });
-    }
-
-    return Results.Ok(new
-    {
-        Username = username,
-        NewPassword = password,
-        Message = password != null
-            ? "Password reset. New password sent via Mattermost."
-            : "Password reset. Check logs for new password (Mattermost not configured)."
-    });
-});
-
 // ── Admin API: Environment Management ─────────────────────────────────────
 
 // GET /api/admin/environments – Returns ALL environments for management UI
@@ -374,7 +172,7 @@ app.MapPost("/api/admin/environments", async ([FromBody] Abo.Core.Connectors.Con
         return Results.BadRequest(new { error = "Name is required" });
 
     // Validate name format (alphanumeric with hyphens)
-    if (!Regex.IsMatch(newEnv.Name, @"^[a-zA-Z0-9\-]+$"))
+    if (!System.Text.RegularExpressions.Regex.IsMatch(newEnv.Name, @"^[a-zA-Z0-9\-]+$"))
         return Results.BadRequest(new { error = "Name must be alphanumeric with hyphens only" });
 
     var environmentsFile = Path.Combine(AppContext.BaseDirectory, "Data", "environments.json");
@@ -416,7 +214,7 @@ app.MapPut("/api/admin/environments/{name}", async (string name, [FromBody] Abo.
     // If renaming, validate new name format
     if (!name.Equals(updatedEnv.Name, StringComparison.OrdinalIgnoreCase))
     {
-        if (!Regex.IsMatch(updatedEnv.Name, @"^[a-zA-Z0-9\-]+$"))
+        if (!System.Text.RegularExpressions.Regex.IsMatch(updatedEnv.Name, @"^[a-zA-Z0-9\-]+$"))
             return Results.BadRequest(new { error = "Name must be alphanumeric with hyphens only" });
     }
 
@@ -699,6 +497,69 @@ app.MapGet("/api/issues/{id}/status", async (string id, IConfiguration config, M
     });
 });
 
+// API: Issues – fetch notes for a specific issue by ID
+app.MapGet("/api/issues/{id}/notes", async (string id, IConfiguration config, Microsoft.Extensions.Caching.Memory.IMemoryCache cache) =>
+{
+    try
+    {
+        var issues = await GetAllIssuesAsync(config, cache);
+        var issue = issues.FirstOrDefault(i => i.Id == id);
+        if (issue == null)
+        {
+            return Results.NotFound(new { error = $"Issue '{id}' not found" });
+        }
+
+        return Results.Ok(new { notes = issue.Notes ?? string.Empty });
+    }
+    catch (Exception ex)
+    {
+        var logger = app.Services.GetRequiredService<ILogger<Program>>();
+        logger.LogError(ex, "Error fetching notes for issue {IssueId}", id);
+        return Results.Problem($"Error fetching notes: {ex.Message}");
+    }
+});
+
+// API: Issues – update notes for a specific issue by ID
+app.MapPatch("/api/issues/{id}/notes", async (string id, [FromBody] UpdateIssueNotesRequest req, IConfiguration config, Microsoft.Extensions.Caching.Memory.IMemoryCache cache) =>
+{
+    if (req == null)
+    {
+        return Results.BadRequest(new { error = "Request body is required" });
+    }
+
+    try
+    {
+        var issues = await GetAllIssuesAsync(config, cache);
+        var issue = issues.FirstOrDefault(i => i.Id == id);
+        if (issue == null)
+        {
+            return Results.NotFound(new { error = $"Issue '{id}' not found" });
+        }
+
+        // Determine which environment this issue belongs to
+        var envName = issue.Labels.FirstOrDefault(l => l.StartsWith("env: ", StringComparison.OrdinalIgnoreCase))?.Substring(5).Trim() ?? "";
+        
+        var tracker = await GetTrackerForEnvironmentAsync(envName, config);
+        if (tracker == null)
+        {
+            return Results.InternalServerError(new { error = "Could not resolve issue tracker for this environment" });
+        }
+
+        var updatedIssue = await tracker.UpdateIssueAsync(id, notes: req.Notes);
+        
+        // Invalidate cache since notes are part of issue data
+        cache.Remove("AllActiveIssues");
+
+        return Results.Ok(new { notes = updatedIssue.Notes ?? string.Empty });
+    }
+    catch (Exception ex)
+    {
+        var logger = app.Services.GetRequiredService<ILogger<Program>>();
+        logger.LogError(ex, "Error updating notes for issue {IssueId}", id);
+        return Results.Problem($"Error updating notes: {ex.Message}");
+    }
+});
+
 // API: Issues – create a new issue (Issue #287)
 app.MapPost("/api/issues/create", async ([FromBody] CreateIssueRequest req, IConfiguration config, Microsoft.Extensions.Caching.Memory.IMemoryCache cache) =>
 {
@@ -752,129 +613,6 @@ app.MapPost("/api/issues/create", async ([FromBody] CreateIssueRequest req, ICon
         logger.LogError(ex, "Error creating issue via /api/issues/create");
         return Results.InternalServerError();
     }
-});
-
-// API: Issues – Get notes for a specific issue (Issue #412, #413)
-app.MapGet("/api/issues/{id}/notes", async (string id, IConfiguration config, Microsoft.Extensions.Caching.Memory.IMemoryCache cache) =>
-{
-    var issues = await GetAllIssuesAsync(config, cache);
-    var issue = issues.FirstOrDefault(i => i.Id == id);
-    if (issue == null) return Results.NotFound($"Issue '{id}' not found.");
-
-    return Results.Ok(new { notes = issue.Notes ?? string.Empty });
-});
-
-// API: Issues – Update notes for a specific issue (Issue #412, #413)
-app.MapPatch("/api/issues/{id}/notes", async (string id, [FromBody] UpdateNotesRequest req, IConfiguration config, Microsoft.Extensions.Caching.Memory.IMemoryCache cache) =>
-{
-    if (string.IsNullOrWhiteSpace(id)) return Results.BadRequest(new { error = "Issue ID is required" });
-
-    try
-    {
-        // Find which environment this issue belongs to
-        var envs = await GetConfiguredEnvironmentsAsync();
-        Abo.Core.Connectors.IIssueTrackerConnector? tracker = null;
-        string? targetEnvName = null;
-
-        foreach (var env in envs.Where(e => e.IssueTracker != null))
-        {
-            if (env.IssueTracker!.Type.Equals("github", StringComparison.OrdinalIgnoreCase))
-            {
-                var testTracker = new Abo.Integrations.GitHub.GitHubIssueTrackerConnector(env.IssueTracker, config["Integrations:GitHub:Token"], env.Name);
-                try
-                {
-                    var testIssue = await testTracker.GetIssueAsync(id);
-                    if (testIssue != null)
-                    {
-                        tracker = testTracker;
-                        targetEnvName = env.Name;
-                        break;
-                    }
-                }
-                catch { continue; }
-            }
-            else if (env.IssueTracker.Type.Equals("filesystem", StringComparison.OrdinalIgnoreCase))
-            {
-                var testTracker = new Abo.Core.Connectors.FileSystemIssueTrackerConnector(env.Name);
-                try
-                {
-                    var testIssue = await testTracker.GetIssueAsync(id);
-                    if (testIssue != null)
-                    {
-                        tracker = testTracker;
-                        targetEnvName = env.Name;
-                        break;
-                    }
-                }
-                catch { continue; }
-            }
-        }
-
-        if (tracker == null)
-        {
-            return Results.NotFound($"Issue '{id}' not found in any configured environment.");
-        }
-
-        // Update the notes using the notes parameter
-        await tracker.UpdateIssueAsync(id, notes: req.Notes);
-
-        // Invalidate cache
-        cache.Remove("AllActiveIssues");
-
-        return Results.Ok(new { notes = req.Notes ?? string.Empty });
-    }
-    catch (Exception ex)
-    {
-        var logger = app.Services.GetRequiredService<ILogger<Program>>();
-        logger.LogError(ex, "Error updating notes for issue {IssueId}", id);
-        return Results.Problem($"Error updating notes: {ex.Message}");
-    }
-});
-
-// API: Issues – Get full issue details including notes (Issue #414)
-app.MapGet("/api/issues/{id}/details", async (string id, IConfiguration config) =>
-{
-    var envs = await GetConfiguredEnvironmentsAsync();
-
-    foreach (var env in envs.Where(e => e.IssueTracker != null))
-    {
-        Abo.Core.Connectors.IIssueTrackerConnector? tracker = null;
-        if (env.IssueTracker!.Type.Equals("github", StringComparison.OrdinalIgnoreCase))
-        {
-            tracker = new Abo.Integrations.GitHub.GitHubIssueTrackerConnector(env.IssueTracker, config["Integrations:GitHub:Token"], env.Name);
-        }
-        else if (env.IssueTracker.Type.Equals("filesystem", StringComparison.OrdinalIgnoreCase))
-        {
-            tracker = new Abo.Core.Connectors.FileSystemIssueTrackerConnector(env.Name);
-        }
-
-        if (tracker != null)
-        {
-            try
-            {
-                var issue = await tracker.GetIssueAsync(id, includeDetails: true);
-                if (issue != null)
-                {
-                    return Results.Ok(new
-                    {
-                        Id = issue.Id,
-                        Title = issue.Title,
-                        Body = issue.Body,
-                        State = issue.State,
-                        Project = issue.Project,
-                        Status = issue.Status,
-                        Type = issue.Type,
-                        Labels = issue.Labels,
-                        Notes = issue.Notes ?? string.Empty,
-                        Comments = issue.Comments
-                    });
-                }
-            }
-            catch { continue; }
-        }
-    }
-
-    return Results.NotFound($"Issue '{id}' not found.");
 });
 
 // API: Active Sessions – list currently active agent sessions
@@ -1036,25 +774,6 @@ app.Lifetime.ApplicationStarted.Register(() =>
             logger.LogError(ex, "Failed to send startup greeting to CEO.");
         }
     });
-
-    // Initialize Auth Service - create CEO user if not exists
-    Task.Run(async () =>
-    {
-        try
-        {
-            using var scope = app.Services.CreateScope();
-            var authService = scope.ServiceProvider.GetRequiredService<Abo.Core.Services.AuthService>();
-            var mattermostClient = scope.ServiceProvider.GetRequiredService<MattermostClient>();
-            var options = scope.ServiceProvider.GetRequiredService<Microsoft.Extensions.Options.IOptions<MattermostOptions>>().Value;
-
-            await authService.InitializeAsync(mattermostClient, options.CeoUserName);
-        }
-        catch (Exception ex)
-        {
-            var logger = app.Services.GetRequiredService<ILogger<Program>>();
-            logger.LogError(ex, "Failed to initialize Auth Service (CEO user creation)");
-        }
-    });
 });
 
 // Initialize OpenRouter models dynamically before starting the server
@@ -1070,7 +789,7 @@ if (app.Services.GetRequiredService<IConfiguration>() is IConfigurationRoot conf
 
 app.Run();
 
-// ── Request/Response DTOs ─────────────────────────────────────────────────────
+// ── Auth Models and Service ─────────────────────────────────────────────────
 
 public class LoginRequest
 {
@@ -1078,22 +797,153 @@ public class LoginRequest
     public string Password { get; set; } = string.Empty;
 }
 
-public class ChangePasswordRequest
-{
-    public string CurrentPassword { get; set; } = string.Empty;
-    public string NewPassword { get; set; } = string.Empty;
-}
-
-public class InitPasswordRequest
+public class AuthenticatedUser
 {
     public string Username { get; set; } = string.Empty;
-    public List<string>? Roles { get; set; }
-    public string? MattermostUsername { get; set; }
+    public DateTime LoginTime { get; set; }
 }
 
-public class ResetPasswordRequest
+public class AuthService
 {
-    public string? MattermostUsername { get; set; }
+    // In-memory user store (in production, use a proper user database)
+    // Default admin user - in production, load from config/database
+    private readonly Dictionary<string, string> _users;
+    private readonly ConcurrentDictionary<string, (AuthenticatedUser User, DateTime Expiry)> _activeTokens;
+    private readonly string _jwtSecret;
+    private readonly TimeSpan _tokenExpiry = TimeSpan.FromHours(8);
+
+    public AuthService(IConfiguration config)
+    {
+        // Load users from configuration or use defaults
+        var adminUser = config["Auth:AdminUser"] ?? "admin";
+        var adminPassword = config["Auth:AdminPassword"] ?? "admin123"; // Default password - CHANGE IN PRODUCTION
+
+        _users = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            { adminUser, HashPassword(adminPassword) }
+        };
+
+        // Load additional users from config if defined
+        var additionalUsers = config["Auth:Users"];
+        if (!string.IsNullOrEmpty(additionalUsers))
+        {
+            try
+            {
+                var userPairs = additionalUsers.Split(';', StringSplitOptions.RemoveEmptyEntries);
+                foreach (var pair in userPairs)
+                {
+                    var parts = pair.Split('=', 2);
+                    if (parts.Length == 2)
+                    {
+                        _users[parts[0]] = HashPassword(parts[1]);
+                    }
+                }
+            }
+            catch
+            {
+                // Ignore malformed user config
+            }
+        }
+
+        _jwtSecret = config["Auth:JwtSecret"] ?? GenerateSecret();
+        _activeTokens = new ConcurrentDictionary<string, (AuthenticatedUser, DateTime)>();
+
+        // Cleanup expired tokens periodically
+        Task.Run(CleanupExpiredTokens);
+    }
+
+    private static string HashPassword(string password)
+    {
+        using var sha256 = SHA256.Create();
+        var bytes = sha256.ComputeHash(Encoding.UTF8.GetBytes(password));
+        return Convert.ToBase64String(bytes);
+    }
+
+    private static bool VerifyPassword(string password, string hash)
+    {
+        return HashPassword(password) == hash;
+    }
+
+    private static string GenerateSecret()
+    {
+        var bytes = new byte[32];
+        using var rng = RandomNumberGenerator.Create();
+        rng.GetBytes(bytes);
+        return Convert.ToBase64String(bytes);
+    }
+
+    private async Task CleanupExpiredTokens()
+    {
+        while (true)
+        {
+            await Task.Delay(TimeSpan.FromMinutes(5));
+            var now = DateTime.UtcNow;
+            var expiredTokens = _activeTokens
+                .Where(kvp => kvp.Value.Expiry < now)
+                .Select(kvp => kvp.Key)
+                .ToList();
+
+            foreach (var token in expiredTokens)
+            {
+                _activeTokens.TryRemove(token, out _);
+            }
+        }
+    }
+
+    public AuthenticatedUser? Authenticate(string username, string password)
+    {
+        if (string.IsNullOrWhiteSpace(username) || string.IsNullOrWhiteSpace(password))
+            return null;
+
+        if (!_users.TryGetValue(username, out var storedHash))
+            return null;
+
+        if (!VerifyPassword(password, storedHash))
+            return null;
+
+        return new AuthenticatedUser
+        {
+            Username = username,
+            LoginTime = DateTime.UtcNow
+        };
+    }
+
+    public string GenerateToken(AuthenticatedUser user)
+    {
+        var tokenBytes = new byte[32];
+        using var rng = RandomNumberGenerator.Create();
+        rng.GetBytes(tokenBytes);
+        var token = Convert.ToBase64String(tokenBytes);
+
+        _activeTokens[token] = (user, DateTime.UtcNow.Add(_tokenExpiry));
+        return token;
+    }
+
+    public AuthenticatedUser? ValidateToken(string token)
+    {
+        if (string.IsNullOrWhiteSpace(token))
+            return null;
+
+        if (_activeTokens.TryGetValue(token, out var tokenData))
+        {
+            if (tokenData.Expiry > DateTime.UtcNow)
+            {
+                return tokenData.User;
+            }
+            else
+            {
+                // Token expired, remove it
+                _activeTokens.TryRemove(token, out _);
+            }
+        }
+
+        return null;
+    }
+
+    public void InvalidateToken(string token)
+    {
+        _activeTokens.TryRemove(token, out _);
+    }
 }
 
 public class CreateIssueRequest
@@ -1106,9 +956,9 @@ public class CreateIssueRequest
     public string? EnvironmentName { get; set; }
 }
 
-public class UpdateNotesRequest
+public class UpdateIssueNotesRequest
 {
-    public string Notes { get; set; } = string.Empty;
+    public string? Notes { get; set; }
 }
 
 public class InteractRequest
@@ -1142,43 +992,4 @@ public class InteractRequest
     /// Used alongside IssueId for enhanced user feedback on the dashboard.
     /// </summary>
     public string? IssueTitle { get; set; }
-}
-
-// ── Background Services ───────────────────────────────────────────────────────
-
-/// <summary>
-/// Background service that periodically cleans up expired auth sessions.
-/// </summary>
-public class AuthCleanupService : BackgroundService
-{
-    private readonly IServiceProvider _services;
-    private readonly ILogger<AuthCleanupService> _logger;
-    private readonly TimeSpan _cleanupInterval = TimeSpan.FromMinutes(15);
-
-    public AuthCleanupService(IServiceProvider services, ILogger<AuthCleanupService> logger)
-    {
-        _services = services;
-        _logger = logger;
-    }
-
-    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
-    {
-        _logger.LogInformation("Auth Cleanup Service started");
-
-        while (!stoppingToken.IsCancellationRequested)
-        {
-            try
-            {
-                using var scope = _services.CreateScope();
-                var authService = scope.ServiceProvider.GetRequiredService<Abo.Core.Services.AuthService>();
-                await authService.CleanupExpiredSessionsAsync();
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error during auth session cleanup");
-            }
-
-            await Task.Delay(_cleanupInterval, stoppingToken);
-        }
-    }
 }

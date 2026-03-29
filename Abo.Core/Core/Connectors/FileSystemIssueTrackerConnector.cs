@@ -142,10 +142,7 @@ public class FileSystemIssueTrackerConnector : IIssueTrackerConnector
             }
         }
 
-        if (notes != null)
-        {
-            issue.Notes = notes;
-        }
+        if (notes != null) issue.Notes = notes;
 
         await SaveRecordsAsync(records);
         return issue;

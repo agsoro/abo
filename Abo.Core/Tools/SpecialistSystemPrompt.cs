@@ -1,55 +1,66 @@
-using System.Text.Json;
-using System.Text.Json.Serialization;
-using Abo.Contracts.OpenAI;
-using Abo.Core.Models;
-
-namespace Abo.Agents;
+namespace Abo.Core;
 
 /// <summary>
-/// A specialist agent that provides expert consultation on complex tasks.
-/// Runs without tools, on a different LLM than the caller, and generates its own system prompt.
-/// This agent is used for the consultation feature - a quick advisory specialist.
+/// Generates system prompts for specialist consultation agents.
+/// Part of the ConsultSpecialistTool implementation (Issue #407).
+/// 
+/// The specialist autonomously generates an appropriate system prompt based on the task context.
+/// The personality is defined as "very special/nice specialist" - knowledgeable, friendly, clear, and practical.
+/// No tools are available to the specialist (pure advisory role).
 /// </summary>
-public class ConsultTheSpecialistAgent : IAgent
+public class SpecialistSystemPrompt
 {
-    private readonly string _specialistDomain;
-    private readonly string _taskDescription;
-    private readonly string _contextSummary;
-
-    public string Name => "ConsultationSpecialistAgent";
-    public string Description => "Expert consultant agent that provides specialized knowledge and recommendations on complex tasks through a structured consultation protocol.";
-    public bool RequiresCapableModel => false;
-    public bool RequiresReviewModel => false;
+    private readonly IConfiguration _configuration;
 
     /// <summary>
-    /// Creates a new ConsultTheSpecialistAgent with the specified context.
+    /// Default configuration values.
     /// </summary>
-    /// <param name="specialistDomain">The domain of expertise (e.g., "architecture", "security").</param>
-    /// <param name="taskDescription">The specific task to consult on.</param>
-    /// <param name="contextSummary">Broader context for the consultation.</param>
-    public ConsultTheSpecialistAgent(string? specialistDomain, string taskDescription, string contextSummary)
+    public static class Defaults
     {
-        _specialistDomain = specialistDomain ?? "general";
-        _taskDescription = taskDescription;
-        _contextSummary = contextSummary;
+        /// <summary>
+        /// Maximum follow-up rounds allowed.
+        /// </summary>
+        public const int MaxFollowUps = 2;
+
+        /// <summary>
+        /// Maximum turns in a consultation.
+        /// </summary>
+        public const int MaxTurns = 5;
+
+        /// <summary>
+        /// Default domain when none specified.
+        /// </summary>
+        public const string DefaultDomain = "general";
+    }
+
+    public SpecialistSystemPrompt(IConfiguration configuration)
+    {
+        _configuration = configuration;
     }
 
     /// <summary>
-    /// System prompt is generated dynamically based on the consultation context.
-    /// This is called by the Orchestrator during consultation setup.
+    /// Gets the configured maximum follow-up rounds.
     /// </summary>
-    public string SystemPrompt { get; private set; } = string.Empty;
+    public int MaxFollowUps =>
+        int.TryParse(_configuration["Consultation:MaxFollowUps"], out var max)
+            ? max
+            : Defaults.MaxFollowUps;
 
     /// <summary>
-    /// Generates a comprehensive system prompt for the specialist based on the consultation context.
-    /// Implements the Consultation Message Protocol defined in Issue #406.
+    /// Generates a system prompt for the specialist based on task context.
     /// </summary>
-    /// <returns>A detailed system prompt for the specialist agent.</returns>
-    public string GenerateSystemPrompt()
+    /// <param name="taskDescription">The specific task to consult on.</param>
+    /// <param name="contextSummary">Broader context for the consultation.</param>
+    /// <param name="specialistDomain">Optional domain of expertise.</param>
+    /// <returns>A complete system prompt for the specialist agent.</returns>
+    public string GenerateSystemPrompt(string taskDescription, string contextSummary, string? specialistDomain = null)
     {
-        var domainGuidance = GetDomainGuidance(_specialistDomain);
+        var domain = specialistDomain ?? Defaults.DefaultDomain;
+        var domainGuidance = GetDomainGuidance(domain);
+        var maxFollowUps = MaxFollowUps;
+        var maxTurns = Defaults.MaxTurns;
 
-        SystemPrompt = $@"You are an expert consultant specializing in {_specialistDomain}.
+        return $@"You are an expert consultant specializing in {domain}.
 
 ## YOUR EXPERTISE
 {domainGuidance}
@@ -57,10 +68,10 @@ public class ConsultTheSpecialistAgent : IAgent
 ## YOUR TASK
 You have been consulted to provide expert advice on the following task:
 
-**Task:** {_taskDescription}
+**Task:** {taskDescription}
 
 **Context:**
-{_contextSummary}
+{contextSummary}
 
 ## CONSULTATION MESSAGE PROTOCOL (Issue #406)
 You participate in a structured turn-based consultation with the following rules:
@@ -71,8 +82,8 @@ You participate in a structured turn-based consultation with the following rules
 - Include follow-up questions when needed, clearly marked
 
 ### Turn Limits
-- Maximum total turns: 5 (including both parties)
-- Maximum follow-up rounds from caller: 2
+- Maximum total turns: {maxTurns} (including both parties)
+- Maximum follow-up rounds from caller: {maxFollowUps}
 - The consultation should conclude efficiently - be thorough but focused
 
 ## YOUR APPROACH
@@ -114,8 +125,25 @@ After your initial response:
 [END_SYSTEM_PROMPT]
 
 Start your consultation response now. Be thorough but focused on the task at hand.";
+    }
 
-        return SystemPrompt;
+    /// <summary>
+    /// Generates a brief system prompt for quick consultations.
+    /// </summary>
+    /// <param name="domain">The domain of expertise.</param>
+    /// <returns>A concise system prompt.</returns>
+    public string GenerateBriefPrompt(string domain)
+    {
+        var guidance = GetDomainGuidance(domain);
+        var domainGuidance = string.Join("\n", guidance.Split('\n').Take(3)); // First 3 lines only
+
+        return $@"You are a {domain} expert consultant. 
+
+Provide clear, actionable advice. Be concise and practical.
+
+Expertise: {domainGuidance}
+
+Use [CONSULTATION_COMPLETE] when done, [NEEDS_MORE_INFO] if you need clarification.";
     }
 
     /// <summary>
@@ -179,6 +207,30 @@ Start your consultation response now. Be thorough but focused on the task at han
 - Code review best practices
 - Refactoring techniques",
 
+            "code_review" => @"- Code quality assessment
+- Best practices identification
+- Potential bugs and issues
+- Performance considerations
+- Readability and maintainability",
+
+            "debugging" => @"- Root cause analysis
+- Common error patterns
+- Logging and diagnostics
+- Troubleshooting methodologies
+- Fix verification strategies",
+
+            "planning" => @"- Task breakdown
+- Effort estimation
+- Dependency identification
+- Risk assessment
+- Milestone planning",
+
+            "refactoring" => @"- Code smell detection
+- Pattern application
+- Incremental refactoring
+- Test coverage maintenance
+- Performance impact analysis",
+
             _ => @"- General software engineering best practices
 - Industry-standard patterns and principles
 - Practical problem-solving approaches
@@ -187,15 +239,27 @@ Start your consultation response now. Be thorough but focused on the task at han
         };
     }
 
-    public List<ToolDefinition> GetToolDefinitions()
+    /// <summary>
+    /// Gets a list of all supported domains.
+    /// </summary>
+    public static IReadOnlyList<string> GetSupportedDomains()
     {
-        // Specialist agents have NO tools - they are pure advisory agents
-        return new List<ToolDefinition>();
-    }
-
-    public Task<string> HandleToolCallAsync(ToolCall toolCall)
-    {
-        // This should never be called as ConsultTheSpecialistAgent has no tools
-        return Task.FromResult("[ERROR] ConsultTheSpecialistAgent has no tools available.");
+        return new[]
+        {
+            "architecture",
+            "security",
+            "performance",
+            "database",
+            "frontend",
+            "backend",
+            "devops",
+            "testing",
+            "implementation",
+            "code_review",
+            "debugging",
+            "planning",
+            "refactoring",
+            "general"
+        };
     }
 }

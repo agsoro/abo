@@ -369,6 +369,87 @@ public class GitHubWikiConnector : IWikiConnector
         }
     }
 
+    /// <inheritdoc />
+    public async Task<string> ListWikiAsync(string path)
+    {
+        try
+        {
+            await SyncWikiAsync();
+
+            var searchPath = string.IsNullOrWhiteSpace(path) || path == "."
+                ? _cloneDir
+                : GetFullPath(path.TrimStart('/', '\\'));
+
+            if (!Directory.Exists(searchPath))
+            {
+                return $"Error: Wiki path '{path}' does not exist.";
+            }
+
+            var result = new System.Text.StringBuilder();
+            BuildTree(searchPath, _cloneDir, result);
+
+            var output = result.ToString();
+            return string.IsNullOrWhiteSpace(output)
+                ? $"Wiki path '{path}' is empty."
+                : output.TrimEnd();
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return "Error: Access denied to wiki path.";
+        }
+        catch (Exception ex)
+        {
+            return $"Error listing wiki: {ex.Message}";
+        }
+    }
+
+    private void BuildTree(string currentPath, string rootPath, System.Text.StringBuilder result)
+    {
+        BuildTreeRecursive(currentPath, rootPath, "", result);
+    }
+
+    private void BuildTreeRecursive(string currentPath, string rootPath, string indent, System.Text.StringBuilder result)
+    {
+        // Get directories and files
+        var entries = Directory.GetDirectories(currentPath)
+            .Select(d => new { IsDir = true, Name = Path.GetFileName(d), FullPath = d })
+            .Concat(Directory.GetFiles(currentPath, "*.md")
+                .Select(f => new { IsDir = false, Name = Path.GetFileName(f), FullPath = f }))
+            .OrderBy(x => x.IsDir ? 0 : 1) // Directories first
+            .ThenBy(x => x.Name, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        for (int i = 0; i < entries.Count; i++)
+        {
+            var entry = entries[i];
+            bool isLast = (i == entries.Count - 1);
+
+            string prefix;
+            string connector;
+
+            if (isLast)
+            {
+                prefix = indent + "└── ";
+                connector = indent + "    ";
+            }
+            else
+            {
+                prefix = indent + "├── ";
+                connector = indent + "│   ";
+            }
+
+            if (entry.IsDir)
+            {
+                result.AppendLine(prefix + "[DIR] " + entry.Name);
+                BuildTreeRecursive(entry.FullPath, rootPath, indent + connector, result);
+            }
+            else
+            {
+                result.AppendLine(prefix + entry.Name);
+            }
+        }
+    }
+
     private static string? ExtractTitle(string content)
     {
         // Try to extract title from first H1 heading (# Title)

@@ -76,57 +76,6 @@
             background-color: rgba(59, 130, 246, 0.1);
         }
 
-        .user-menu {
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-        }
-
-        .user-info {
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-            padding: 0.35rem 0.75rem;
-            background-color: rgba(59, 130, 246, 0.1);
-            border: 1px solid var(--primary-color);
-            border-radius: 0.25rem;
-            font-size: 0.875rem;
-        }
-
-        .user-info .username {
-            color: var(--text-color);
-            font-weight: 500;
-        }
-
-        .logout-btn {
-            background-color: transparent;
-            border: 1px solid var(--border-color);
-            color: var(--text-muted);
-            padding: 0.35rem 0.75rem;
-            border-radius: 0.25rem;
-            font-size: 0.875rem;
-            cursor: pointer;
-            transition: all 0.2s;
-        }
-
-        .logout-btn:hover {
-            border-color: #dc2626;
-            color: #dc2626;
-        }
-
-        .password-warning {
-            background-color: #f59e0b;
-            color: #1a1a2e;
-            padding: 0.5rem 1rem;
-            text-align: center;
-            font-weight: 500;
-            cursor: pointer;
-        }
-
-        .password-warning:hover {
-            background-color: #d97706;
-        }
-
         #status-badge {
             padding: 0.25rem 0.75rem;
             border-radius: 9999px;
@@ -136,6 +85,37 @@
         }
         #status-badge.healthy {
             background-color: #16a34a;
+        }
+
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            margin-left: 1rem;
+            padding-left: 1rem;
+            border-left: 1px solid var(--border-color);
+        }
+
+        .username-display {
+            color: var(--text-muted);
+            font-size: 0.875rem;
+        }
+
+        .logout-btn {
+            padding: 0.35rem 0.75rem;
+            border-radius: 0.25rem;
+            border: 1px solid var(--border-color);
+            background-color: transparent;
+            color: var(--text-muted);
+            font-size: 0.75rem;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .logout-btn:hover {
+            color: var(--text-color);
+            border-color: #ef4444;
+            background-color: rgba(239, 68, 68, 0.1);
         }
 
         main {
@@ -222,7 +202,7 @@
             gap: 0.5rem;
         }
 
-        input[type="text"], input[type="password"] {
+        input[type="text"] {
             flex: 1;
             padding: 0.75rem 1rem;
             border-radius: 0.5rem;
@@ -232,7 +212,7 @@
             font-size: 1rem;
         }
 
-        input[type="text"]:focus, input[type="password"]:focus {
+        input[type="text"]:focus {
             outline: none;
             border-color: var(--primary-color);
         }
@@ -258,76 +238,6 @@
             cursor: not-allowed;
             color: var(--text-muted);
         }
-
-        /* Password Change Modal */
-        .modal {
-            display: none;
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background-color: rgba(0, 0, 0, 0.7);
-            z-index: 1000;
-            align-items: center;
-            justify-content: center;
-        }
-
-        .modal.show {
-            display: flex;
-        }
-
-        .modal-content {
-            background-color: var(--surface-color);
-            border-radius: 0.5rem;
-            padding: 2rem;
-            max-width: 400px;
-            width: 90%;
-            border: 1px solid var(--border-color);
-        }
-
-        .modal-content h2 {
-            margin: 0 0 1rem 0;
-            color: var(--text-color);
-        }
-
-        .modal-content .form-group {
-            margin-bottom: 1rem;
-        }
-
-        .modal-content label {
-            display: block;
-            color: var(--text-muted);
-            margin-bottom: 0.5rem;
-            font-size: 0.875rem;
-        }
-
-        .modal-content button {
-            width: 100%;
-            padding: 0.75rem;
-            border-radius: 0.5rem;
-            border: none;
-            background-color: var(--primary-color);
-            color: white;
-            font-size: 1rem;
-            font-weight: 600;
-            cursor: pointer;
-        }
-
-        .modal-content button:hover {
-            background-color: var(--primary-hover);
-        }
-
-        .modal-error {
-            color: #fc8181;
-            font-size: 0.875rem;
-            margin-bottom: 1rem;
-            display: none;
-        }
-
-        .modal-error.show {
-            display: block;
-        }
     </style>
     <!-- Include Marked for Markdown rendering -->
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
@@ -345,12 +255,12 @@
             <a href="/llm-stats/">📈 LLM Stats</a>
             <a href="/environments/">🌍 Environments</a>
         </nav>
+        <div class="user-info">
+            <span class="username-display" id="username-display"></span>
+            <button class="logout-btn" id="logout-btn">Abmelden</button>
+        </div>
         <div id="status-badge">Prüfe API Status...</div>
     </header>
-
-    <div id="passwordWarning" class="password-warning" style="display: none;" onclick="showPasswordModal()">
-        ⚠️ Bitte ändern Sie Ihr Passwort (Erstlogin)
-    </div>
 
     <main>
         <div id="chat-container">
@@ -364,213 +274,91 @@
         </div>
     </main>
 
-    <!-- Password Change Modal -->
-    <div id="passwordModal" class="modal">
-        <div class="modal-content">
-            <h2>Passwort ändern</h2>
-            <p style="color: var(--text-muted); margin-bottom: 1rem; font-size: 0.875rem;">
-                Sie müssen Ihr Passwort nach dem ersten Login ändern.
-            </p>
-            <div id="passwordModalError" class="modal-error"></div>
-            <div class="form-group">
-                <label for="currentPassword">Aktuelles Passwort</label>
-                <input type="password" id="currentPassword">
-            </div>
-            <div class="form-group">
-                <label for="newPassword">Neues Passwort (min. 8 Zeichen)</label>
-                <input type="password" id="newPassword">
-            </div>
-            <div class="form-group">
-                <label for="confirmPassword">Passwort bestätigen</label>
-                <input type="password" id="confirmPassword">
-            </div>
-            <button onclick="changePassword()">Passwort ändern</button>
-        </div>
-    </div>
-
     <script>
         const chatContainer = document.getElementById('chat-container');
         const usernameInput = document.getElementById('username-input');
         const userInput = document.getElementById('user-input');
         const sendBtn = document.getElementById('send-btn');
         const statusBadge = document.getElementById('status-badge');
-        const passwordWarning = document.getElementById('passwordWarning');
-        const passwordModal = document.getElementById('passwordModal');
+        const usernameDisplay = document.getElementById('username-display');
+        const logoutBtn = document.getElementById('logout-btn');
 
-        // Auth state
-        let authToken = sessionStorage.getItem('auth_token');
-        let authUsername = sessionStorage.getItem('auth_username');
-        let forcePasswordChange = sessionStorage.getItem('force_password_change') === 'true';
+        // ── Auth Helper Functions ────────────────────────────────────────────
 
-        // Check authentication on load
+        /**
+         * Fetch wrapper that adds Authorization header if token exists
+         */
+        async function fetchWithAuth(url, options = {}) {
+            const token = sessionStorage.getItem('authToken');
+            if (token) {
+                options.headers = {
+                    ...options.headers,
+                    'Authorization': `Bearer ${token}`
+                };
+            }
+            return fetch(url, options);
+        }
+
+        /**
+         * Check if user is authenticated by validating the token with the server
+         */
         async function checkAuth() {
-            if (authToken) {
-                try {
-                    const response = await fetch('/api/auth/me', {
-                        headers: {
-                            'Authorization': `Bearer ${authToken}`
-                        }
-                    });
-                    
-                    if (response.ok) {
-                        const data = await response.json();
-                        authUsername = data.username;
-                        sessionStorage.setItem('auth_username', data.username);
-                        sessionStorage.setItem('auth_roles', JSON.stringify(data.roles || []));
-                        
-                        if (!data.passwordChanged) {
-                            forcePasswordChange = true;
-                            sessionStorage.setItem('force_password_change', 'true');
-                            passwordWarning.style.display = 'block';
-                            // Auto-show modal
-                            showPasswordModal();
-                        }
-                        
-                        updateUserMenu(data.username);
-                        addMessage('system', `Angemeldet als ${data.username}`);
-                    } else {
-                        // Token invalid, clear
-                        clearAuth();
-                        redirectToLogin();
-                    }
-                } catch (err) {
-                    console.error('Auth check failed:', err);
-                    clearAuth();
-                    redirectToLogin();
-                }
-            } else {
-                // No token, check if auth is configured
-                try {
-                    const response = await fetch('/api/auth/me', {
-                        headers: {
-                            'Authorization': 'Bearer test'
-                        }
-                    });
-                    // If we get past that without redirect, auth might be optional
-                } catch (err) {
-                    // Continue without auth
-                }
-            }
-        }
-
-        function clearAuth() {
-            sessionStorage.removeItem('auth_token');
-            sessionStorage.removeItem('auth_username');
-            sessionStorage.removeItem('auth_roles');
-            sessionStorage.removeItem('force_password_change');
-            authToken = null;
-            authUsername = null;
-            forcePasswordChange = false;
-        }
-
-        function redirectToLogin() {
-            window.location.href = '/login.html';
-        }
-
-        function updateUserMenu(username) {
-            const nav = document.querySelector('.header-nav');
-            const userMenu = document.createElement('div');
-            userMenu.className = 'user-menu';
-            userMenu.innerHTML = `
-                <div class="user-info">
-                    <span>👤</span>
-                    <span class="username">${username}</span>
-                </div>
-                <button class="logout-btn" onclick="logout()">Abmelden</button>
-            `;
-            nav.appendChild(userMenu);
-        }
-
-        async function logout() {
-            if (authToken) {
-                try {
-                    await fetch('/api/auth/logout', {
-                        method: 'POST',
-                        headers: {
-                            'Authorization': `Bearer ${authToken}`
-                        }
-                    });
-                } catch (err) {
-                    console.error('Logout error:', err);
-                }
-            }
-            clearAuth();
-            window.location.href = '/login.html';
-        }
-
-        function showPasswordModal() {
-            passwordModal.classList.add('show');
-            document.getElementById('currentPassword').focus();
-        }
-
-        function hidePasswordModal() {
-            passwordModal.classList.remove('show');
-            document.getElementById('passwordModalError').classList.remove('show');
-            document.getElementById('currentPassword').value = '';
-            document.getElementById('newPassword').value = '';
-            document.getElementById('confirmPassword').value = '';
-        }
-
-        async function changePassword() {
-            const currentPassword = document.getElementById('currentPassword').value;
-            const newPassword = document.getElementById('newPassword').value;
-            const confirmPassword = document.getElementById('confirmPassword').value;
-            const errorEl = document.getElementById('passwordModalError');
-
-            if (!currentPassword || !newPassword || !confirmPassword) {
-                errorEl.textContent = 'Bitte füllen Sie alle Felder aus.';
-                errorEl.classList.add('show');
-                return;
-            }
-
-            if (newPassword.length < 8) {
-                errorEl.textContent = 'Das neue Passwort muss mindestens 8 Zeichen lang sein.';
-                errorEl.classList.add('show');
-                return;
-            }
-
-            if (newPassword !== confirmPassword) {
-                errorEl.textContent = 'Die Passwörter stimmen nicht überein.';
-                errorEl.classList.add('show');
-                return;
+            const token = sessionStorage.getItem('authToken');
+            if (!token) {
+                window.location.href = '/login.html';
+                return false;
             }
 
             try {
-                const response = await fetch('/api/auth/change-password', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${authToken}`
-                    },
-                    body: JSON.stringify({ currentPassword, newPassword })
-                });
-
-                if (response.ok) {
-                    hidePasswordModal();
-                    passwordWarning.style.display = 'none';
-                    sessionStorage.removeItem('force_password_change');
-                    forcePasswordChange = false;
-                    addMessage('system', 'Passwort erfolgreich geändert. Sie werden automatisch abgemeldet.');
-                    
-                    // Logout after short delay
-                    setTimeout(() => {
-                        clearAuth();
-                        redirectToLogin();
-                    }, 2000);
-                } else {
-                    const data = await response.json();
-                    errorEl.textContent = data.error || 'Fehler beim Ändern des Passworts.';
-                    errorEl.classList.add('show');
+                const res = await fetchWithAuth('/api/auth/me');
+                if (!res.ok) {
+                    throw new Error('Not authenticated');
                 }
-            } catch (err) {
-                errorEl.textContent = 'Netzwerkfehler. Bitte versuchen Sie es erneut.';
-                errorEl.classList.add('show');
+
+                const data = await res.json();
+                
+                // Update username display
+                if (data.username) {
+                    sessionStorage.setItem('username', data.username);
+                    usernameDisplay.textContent = data.username;
+                } else {
+                    const storedUsername = sessionStorage.getItem('username');
+                    usernameDisplay.textContent = storedUsername || '';
+                }
+
+                return true;
+            } catch (error) {
+                sessionStorage.removeItem('authToken');
+                sessionStorage.removeItem('username');
+                window.location.href = '/login.html';
+                return false;
             }
         }
+
+        /**
+         * Handle user logout
+         */
+        async function handleLogout() {
+            try {
+                await fetchWithAuth('/api/auth/logout', { method: 'POST' });
+            } catch (error) {
+                // Continue with logout even if API call fails
+                console.log('Logout API call failed, clearing session anyway');
+            } finally {
+                sessionStorage.removeItem('authToken');
+                sessionStorage.removeItem('username');
+                window.location.href = '/login.html';
+            }
+        }
+
+        // Attach logout handler
+        logoutBtn.addEventListener('click', handleLogout);
+
+        // ── Application Functions ────────────────────────────────────────────
 
         async function checkStatus() {
             try {
-                const res = await fetch('/api/status');
+                const res = await fetchWithAuth('/api/status');
                 const data = await res.json();
                 if (data.status === 'Running') {
                     if (data.hasApiKey) {
@@ -632,33 +420,16 @@
             const text = userInput.value.trim();
             if (!text) return;
 
-            // Check if password change is required
-            if (forcePasswordChange) {
-                addMessage('system', 'Bitte ändern Sie zuerst Ihr Passwort.');
-                showPasswordModal();
-                return;
-            }
-
             userInput.value = '';
             addMessage('user', text);
             sendBtn.disabled = true;
             userInput.disabled = true;
 
             try {
-                const requestBody = { 
-                    message: text, 
-                    userName: usernameInput.value || authUsername || 'WebUser' 
-                };
-                
-                const headers = { 'Content-Type': 'application/json' };
-                if (authToken) {
-                    headers['Authorization'] = `Bearer ${authToken}`;
-                }
-
-                const res = await fetch('/api/interact', {
+                const res = await fetchWithAuth('/api/interact', {
                     method: 'POST',
-                    headers: headers,
-                    body: JSON.stringify(requestBody)
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ message: text, userName: usernameInput.value || 'WebUser' })
                 });
                 
                 const data = await res.json();
@@ -682,16 +453,17 @@
             if (e.key === 'Enter') sendMessage();
         });
 
-        // Close modal on escape
-        document.addEventListener('keydown', (e) => {
-            if (e.key === 'Escape' && !forcePasswordChange) {
-                hidePasswordModal();
-            }
-        });
+        // ── Initialize Application ────────────────────────────────────────────
 
-        // Check auth on page load
-        checkAuth();
-        checkStatus();
+        // Check authentication on page load
+        async function initializeApp() {
+            const isAuthenticated = await checkAuth();
+            if (isAuthenticated) {
+                checkStatus();
+            }
+        }
+
+        initializeApp();
     </script>
 </body>
 </html>
