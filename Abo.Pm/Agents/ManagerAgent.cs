@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Text.Json;
 using Abo.Contracts.OpenAI;
 using Abo.Core;
+using Abo.Core.Services;
 using Abo.Tools;
 using Abo.Integrations.XpectoLive;
 using Abo.Integrations.Mattermost;
@@ -32,6 +33,7 @@ public class ManagerAgent : IAgent
     private readonly IXpectoLiveWikiClient _wikiClient;
     private readonly MattermostClient _mattermostClient;
     private readonly IOptions<MattermostOptions> _mattermostOptionsWrapper;
+    private readonly IConsultationService _consultationService;
 
     public string Name => "ManagerAgent";
     public string Description => "The Project Lead / Manager. Identifies open tasks from active projects and delegates them to specialized agents who do the actual work.";
@@ -45,7 +47,8 @@ public class ManagerAgent : IAgent
         ILogger<ManagerAgent> logger,
         IXpectoLiveWikiClient wikiClient,
         MattermostClient mattermostClient,
-        IOptions<MattermostOptions> mattermostOptions)
+        IOptions<MattermostOptions> mattermostOptions,
+        IConsultationService consultationService)
     {
         _globalTools = globalTools;
         _orchestrator = orchestrator;
@@ -54,6 +57,7 @@ public class ManagerAgent : IAgent
         _wikiClient = wikiClient;
         _mattermostClient = mattermostClient;
         _mattermostOptionsWrapper = mattermostOptions;
+        _consultationService = consultationService;
     }
 
     public string SystemPrompt =>
@@ -225,10 +229,11 @@ public class ManagerAgent : IAgent
 
                 try
                 {
-                    // Instantiate SpecialistAgent, passing Mattermost dependencies for release completion alerts
+                    // Instantiate SpecialistAgent, passing IConsultationService and Mattermost dependencies
                     var specialist = new SpecialistAgent(
                         _globalTools,
                         role.Title,
+                        _consultationService,
                         role.SystemPrompt,
                         role.AllowedTools,
                         _configuration,
