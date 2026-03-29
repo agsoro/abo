@@ -1,11 +1,11 @@
 using System.Text.Json;
-using System.Xml.Linq;
+using Abo.Core.Services;
+using Abo.Tools;
 using Abo.Contracts.Models;
 using Abo.Contracts.OpenAI;
 using Abo.Core;
 using Abo.Core.Connectors;
 using Abo.Core.Models;
-using Abo.Tools;
 using Abo.Tools.Connector;
 using Abo.Integrations.GitHub;
 using Abo.Integrations.XpectoLive;
@@ -27,6 +27,9 @@ public class SpecialistAgent : IAgent
     private readonly MattermostClient? _mattermostClient;
     private readonly MattermostOptions? _mattermostOptions;
 
+    // Persistent consult tool (available regardless of workspace)
+    private readonly ConsultSpecialistTool? _consultTool;
+
     // State for the currently checked-out issue
     private string? _currentIssueId;
     private IssueRecord? _currentIssue;
@@ -44,6 +47,7 @@ public class SpecialistAgent : IAgent
     public SpecialistAgent(
         IEnumerable<IAboTool> globalTools,
         string roleTitle,
+        IConsultationService consultationService,
         string systemPrompt,
         List<string> allowedTools,
         IConfiguration configuration,
@@ -58,6 +62,7 @@ public class SpecialistAgent : IAgent
         _allowedTools = allowedTools;
         _config = configuration;
         _currentIssueId = issueId;
+        _consultTool = new ConsultSpecialistTool(consultationService);
         _issueTrackerToken = configuration["Integrations:GitHub:Token"];
         _wikiClient = wikiClient!;
         _mattermostClient = mattermostClient;
@@ -118,6 +123,12 @@ public class SpecialistAgent : IAgent
             }
         }
 
+        // Add persistent consult tool (available regardless of workspace)
+        if (_consultTool != null)
+        {
+            definitions.Add(CreateDef(_consultTool));
+        }
+
         return definitions;
     }
 
@@ -137,9 +148,19 @@ public class SpecialistAgent : IAgent
         var globalTool = _globalTools.FirstOrDefault(t => t.Name == name);
         if (globalTool != null) return await globalTool.ExecuteAsync(args);
 
-        var connectorToolNames = new[] { "read_file", "write_file", "patch_file", "delete_file", "list_dir", "mkdir", "git", "dotnet", "python", "shell", "search_regex", "http_get", "list_issues", "get_issue", "create_issue", "create_sub_issue", "add_issue_comment", "update_issue", "get_wiki_page", "create_wiki_page", "update_wiki_page", "move_wiki_page", "search_wiki", "list_wiki" };
+        var connectorToolNames = new[] { "consult_specialist", "read_file", "write_file", "patch_file", "delete_file", "list_dir", "mkdir", "git", "dotnet", "python", "shell", "search_regex", "http_get", "list_issues", "get_issue", "create_issue", "create_sub_issue", "add_issue_comment", "update_issue", "get_wiki_page", "create_wiki_page", "update_wiki_page", "move_wiki_page", "search_wiki", "list_wiki" };
         if (connectorToolNames.Contains(name))
         {
+            // Handle the consult_specialist tool (persistent, not in _connectorTools)
+            if (name == "consult_specialist" && _consultTool != null)
+            {
+                if (_allowedTools != null && _allowedTools.Any() && !string.IsNullOrEmpty(name) && !_allowedTools.Contains(name))
+                {
+                    return $"Error: Tool '{name}' is restricted and cannot be run by your current role.";
+                }
+                return await _consultTool.ExecuteAsync(args);
+            }
+
             // Specifically exclude checking if workspace is null if it's an issue/wiki tool that doesn't need it?
             if (_currentWorkspace == null || string.IsNullOrEmpty(_currentIssueId))
             {
@@ -374,7 +395,7 @@ public class SpecialistAgent : IAgent
                     try
                     {
                         var json = await File.ReadAllTextAsync(consumptionFilePath);
-                        var record = JsonSerializer.Deserialize<IssueConsumptionRecord>(json);
+                        var record = JsonSerializer.Deserialize<Abo.Core.Models.IssueConsumptionRecord>(json);
                         if (record != null)
                         {
                             totalCalls = record.TotalCalls;
