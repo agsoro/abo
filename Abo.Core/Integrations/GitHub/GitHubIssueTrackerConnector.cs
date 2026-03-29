@@ -25,6 +25,9 @@ public class GitHubIssueTrackerConnector : IIssueTrackerConnector
         = new(StringComparer.OrdinalIgnoreCase);
     private static readonly TimeSpan _enrichmentCacheTtl = TimeSpan.FromSeconds(60);
 
+    // Notes section delimiter pattern for GitHub issues
+    private const string NotesSectionDelimiter = "\n\n---\n\n## Notes\n\n";
+
     public GitHubIssueTrackerConnector(IssueTrackerConfig config, string? issueTrackerToken = null, string? environmentName = null)
     {
         _config = config;
@@ -87,9 +90,11 @@ public class GitHubIssueTrackerConnector : IIssueTrackerConnector
             throw new Exception($"GitHub GraphQL API Error ({(int)response.StatusCode}): {response.ReasonPhrase}\n{content}");
         }
 
-        if (throwGraphQLErrors && content.Contains("\"errors\":")) {
+        if (throwGraphQLErrors && content.Contains("\"errors\":"))
+        {
             using var doc = JsonDocument.Parse(content);
-            if (throwGraphQLErrors && doc.RootElement.TryGetProperty("errors", out var errorsProp)) {
+            if (throwGraphQLErrors && doc.RootElement.TryGetProperty("errors", out var errorsProp))
+            {
                 if (errorsProp.ValueKind == JsonValueKind.Array && errorsProp.GetArrayLength() > 0)
                 {
                     var firstError = errorsProp[0].GetProperty("message").GetString();
@@ -201,7 +206,7 @@ query($owner: String!) {
             var pTitle = pNode.GetProperty("title").GetString();
 
             // Only process configured projects
-            if (pTitle == null || !_config.ProjectTitles.Values.Contains(pTitle, StringComparer.OrdinalIgnoreCase))
+            if (pTitle == null || !_config.ProjectTitles.Values.Any(v => string.Equals(v, pTitle, StringComparison.OrdinalIgnoreCase)))
                 continue;
 
             var logicalKey = _config.ProjectTitles
@@ -260,7 +265,8 @@ query($owner: String!) {
                 
                 if (content.TryGetProperty("issueType", out var typeEl) && typeEl.ValueKind == JsonValueKind.Object)
                 {
-                    if (typeEl.TryGetProperty("name", out var typeNameEl)) {
+                    if (typeEl.TryGetProperty("name", out var typeNameEl))
+                    {
                         var tv = typeNameEl.GetString();
                         if (!string.IsNullOrWhiteSpace(tv)) typeStr = tv;
                     }
@@ -283,17 +289,22 @@ query($owner: String!) {
                         }
                     }
                 }
+
+                // Extract Notes from body
+                var notes = ExtractNotes(body, out var bodyWithoutNotes);
+
                 var record = new IssueRecord
                 {
                     Id = numStr,
                     NodeId = nodeId,
                     Title = title,
-                    Body = body,
+                    Body = bodyWithoutNotes,
                     State = state,
                     Project = logicalKey ?? "",
                     Status = status,
                     Type = typeStr,
-                    Labels = labelsList
+                    Labels = labelsList,
+                    Notes = notes
                 };
 
                 // Deduplicate by issue number (last-write wins for cross-project issues)
@@ -426,8 +437,32 @@ query($owner: String!) {
         return record;
     }
 
-    public async Task<IssueRecord> UpdateIssueAsync(string issueId, string? title = null, string? body = null, string? state = null, string[]? labels = null, string? project = null, string? status = null, string? type = null, string? size = null)
+    public async Task<IssueRecord> UpdateIssueAsync(string issueId, string? title = null, string? body = null, string? state = null, string[]? labels = null, string? project = null, string? status = null, string? type = null, string? size = null, string? notes = null)
     {
+        // If notes are provided, we need to fetch existing issue to merge notes into body
+        string? existingBody = null;
+        if (notes != null)
+        {
+            var existingIssue = await GetIssueAsync(issueId);
+            if (existingIssue != null)
+            {
+                // Extract current notes from existing body to avoid duplication
+                var currentNotes = ExtractNotes(existingIssue.Body, out existingBody);
+                
+                // If notes parameter is empty string, we're removing notes
+                if (string.IsNullOrWhiteSpace(notes))
+                {
+                    // notes = null means remove notes section entirely
+                    body = existingBody;
+                }
+                else
+                {
+                    // Append/replace notes section
+                    body = EmbedNotes(existingBody, notes);
+                }
+            }
+        }
+
         var reqObj = new Dictionary<string, object>();
         if (title != null) reqObj["title"] = title;
         if (body != null) reqObj["body"] = body;
@@ -486,6 +521,12 @@ query($owner: String!) {
 
             if (type != null) {
                 record.Type = type;
+            }
+
+            // Preserve notes in the returned record
+            if (notes != null)
+            {
+                record.Notes = string.IsNullOrWhiteSpace(notes) ? string.Empty : notes;
             }
 
             await SyncProjectV2Async(record);
@@ -565,6 +606,52 @@ mutation AddSubIssue($parentIssueId: ID!, $childIssueId: ID!) {
             Console.ResetColor();
             return false;
         }
+    }
+
+    /// <summary>
+    /// Extracts the Notes section from an issue body and returns the body without the notes section.
+    /// The notes section is identified by the delimiter pattern at the end of the body.
+    /// </summary>
+    private static string ExtractNotes(string body, out string remainingBody)
+    {
+        if (string.IsNullOrWhiteSpace(body))
+        {
+            remainingBody = string.Empty;
+            return string.Empty;
+        }
+
+        var delimiterIndex = body.LastIndexOf(NotesSectionDelimiter, StringComparison.Ordinal);
+        if (delimiterIndex >= 0)
+        {
+            remainingBody = body.Substring(0, delimiterIndex).TrimEnd();
+            var notesContent = body.Substring(delimiterIndex + NotesSectionDelimiter.Length);
+            return notesContent;
+        }
+
+        remainingBody = body;
+        return string.Empty;
+    }
+
+    /// <summary>
+    /// Embeds notes content into a body string, replacing any existing notes section
+    /// or appending a new one at the end.
+    /// </summary>
+    private static string EmbedNotes(string body, string notes)
+    {
+        if (string.IsNullOrWhiteSpace(body))
+        {
+            return NotesSectionDelimiter + notes;
+        }
+
+        var delimiterIndex = body.LastIndexOf(NotesSectionDelimiter, StringComparison.Ordinal);
+        if (delimiterIndex >= 0)
+        {
+            // Replace existing notes section
+            return body.Substring(0, delimiterIndex) + NotesSectionDelimiter + notes;
+        }
+
+        // Append new notes section
+        return body + NotesSectionDelimiter + notes;
     }
 
     private async Task EnsureProjectsCachedAsync()
@@ -810,7 +897,7 @@ query($owner: String!) {
 
             foreach (var pNode in pV2.GetProperty("nodes").EnumerateArray()) {
                 var pTitle = pNode.GetProperty("title").GetString();
-                if (pTitle == null || !_config.ProjectTitles.Values.Contains(pTitle, StringComparer.OrdinalIgnoreCase)) continue;
+                if (pTitle == null || !_config.ProjectTitles.Values.Any(v => string.Equals(v, pTitle, StringComparison.OrdinalIgnoreCase))) continue;
 
                 if (!pNode.TryGetProperty("items", out var items)) continue;
                 foreach (var item in items.GetProperty("nodes").EnumerateArray()) {
@@ -900,7 +987,7 @@ query($nodeId: ID!) {
                && _projectNodeIds.TryGetValue(targetGithubTitle, out var expectedPId) 
                && pId == expectedPId) {
                targetItemNodeId = itemId;
-           } else if (pTitle != null && _config.ProjectTitles.Values.Contains(pTitle, StringComparer.OrdinalIgnoreCase)) {
+           } else if (pTitle != null && _config.ProjectTitles.Values.Any(v => string.Equals(v, pTitle, StringComparison.OrdinalIgnoreCase))) {
                Console.ForegroundColor = ConsoleColor.Cyan;
                Console.WriteLine($"[GitHub Connector Info] Detected orphaned ticket on incorrectly mapped '{pTitle}' board. Evicting...");
                Console.ResetColor();
@@ -992,17 +1079,45 @@ query($nodeId: ID!) {
                 }
             }
 
+            // Extract Notes from body
+            var notes = ExtractNotes(body ?? string.Empty, out var bodyWithoutNotes);
+
             return new IssueRecord
             {
                 Id = number.ToString(),
                 NodeId = node_id ?? string.Empty,
                 Title = rawTitle,
-                Body = body ?? string.Empty,
+                Body = bodyWithoutNotes,
                 State = state ?? string.Empty,
                 Project = projectValue,
                 Type = extractedType,
-                Labels = labelsList
+                Labels = labelsList,
+                Notes = notes
             };
+        }
+
+        /// <summary>
+        /// Extracts the Notes section from an issue body and returns the body without the notes section.
+        /// </summary>
+        private static string ExtractNotes(string body, out string remainingBody)
+        {
+            const string delimiter = "\n\n---\n\n## Notes\n\n";
+            if (string.IsNullOrWhiteSpace(body))
+            {
+                remainingBody = string.Empty;
+                return string.Empty;
+            }
+
+            var delimiterIndex = body.LastIndexOf(delimiter, StringComparison.Ordinal);
+            if (delimiterIndex >= 0)
+            {
+                remainingBody = body.Substring(0, delimiterIndex).TrimEnd();
+                var notesContent = body.Substring(delimiterIndex + delimiter.Length);
+                return notesContent;
+            }
+
+            remainingBody = body;
+            return string.Empty;
         }
     }
 }
