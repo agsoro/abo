@@ -76,6 +76,14 @@ public static class AgentSentinels
     /// </summary>
     public const string MaxTurns = "[MAX_TURNS]";
 
+    /// <summary>
+    /// Sentinel logged when the Orchestrator injects a specialist consultation nudge
+    /// due to lengthy conversations. Triggers when loop count exceeds the configured
+    /// NudgeSpecialistThreshold.
+    /// Format: [NUDGE_SPECIALIST_CONSULTATION]
+    /// </summary>
+    public const string NudgeSpecialistConsultation = "[NUDGE_SPECIALIST_CONSULTATION]";
+
     #endregion
 
     #region Tool Result Sentinels
