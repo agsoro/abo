@@ -26,6 +26,16 @@ public class UserCredential
     public DateTime? LastPasswordChange { get; set; }
 
     /// <summary>
+    /// When the user last logged in successfully.
+    /// </summary>
+    public DateTime? LastLogin { get; set; }
+
+    /// <summary>
+    /// Whether the user account is active. Inactive users cannot authenticate.
+    /// </summary>
+    public bool IsActive { get; set; } = true;
+
+    /// <summary>
     /// Whether the password has been changed from the initial generated one.
     /// </summary>
     public bool PasswordChanged { get; set; } = false;

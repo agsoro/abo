@@ -6,28 +6,28 @@ using Abo.Core.Models;
 namespace Abo.Agents;
 
 /// <summary>
-/// A specialist agent that provides expert consultation on complex tasks.
+/// A consultant agent that provides expert consultation on complex tasks.
 /// Runs without tools, on a different LLM than the caller, and generates its own system prompt.
-/// This agent is used for the consultation feature - a quick advisory specialist.
+/// This agent is used for the consultation feature - a quick advisory consultant.
 /// </summary>
-public class ConsultTheSpecialistAgent : IAgent
+public class ConsultantAgent : IAgent
 {
     private readonly string _specialistDomain;
     private readonly string _taskDescription;
     private readonly string _contextSummary;
 
-    public string Name => "ConsultationSpecialistAgent";
+    public string Name => "ConsultantAgent";
     public string Description => "Expert consultant agent that provides specialized knowledge and recommendations on complex tasks through a structured consultation protocol.";
     public bool RequiresCapableModel => false;
     public bool RequiresReviewModel => false;
 
     /// <summary>
-    /// Creates a new ConsultTheSpecialistAgent with the specified context.
+    /// Creates a new ConsultantAgent with the specified context.
     /// </summary>
     /// <param name="specialistDomain">The domain of expertise (e.g., "architecture", "security").</param>
     /// <param name="taskDescription">The specific task to consult on.</param>
     /// <param name="contextSummary">Broader context for the consultation.</param>
-    public ConsultTheSpecialistAgent(string? specialistDomain, string taskDescription, string contextSummary)
+    public ConsultantAgent(string? specialistDomain, string taskDescription, string contextSummary)
     {
         _specialistDomain = specialistDomain ?? "general";
         _taskDescription = taskDescription;
@@ -41,10 +41,10 @@ public class ConsultTheSpecialistAgent : IAgent
     public string SystemPrompt { get; private set; } = string.Empty;
 
     /// <summary>
-    /// Generates a comprehensive system prompt for the specialist based on the consultation context.
+    /// Generates a comprehensive system prompt for the consultant based on the consultation context.
     /// Implements the Consultation Message Protocol defined in Issue #406.
     /// </summary>
-    /// <returns>A detailed system prompt for the specialist agent.</returns>
+    /// <returns>A detailed system prompt for the consultant agent.</returns>
     public string GenerateSystemPrompt()
     {
         var domainGuidance = GetDomainGuidance(_specialistDomain);
@@ -95,7 +95,7 @@ When providing your analysis:
 You MUST use one of these signals to end your response when appropriate:
 
 | Signal | When to Use |
-|--------|-------------|
+|--------|------------|
 | [CONSULTATION_COMPLETE] | You have provided a complete answer and the consultation should end |
 | [CONCLUSION] | Final recommendation with explicit end marker |
 | [NEEDS_MORE_INFO] | You require additional context before giving a final recommendation |
@@ -189,13 +189,13 @@ Start your consultation response now. Be thorough but focused on the task at han
 
     public List<ToolDefinition> GetToolDefinitions()
     {
-        // Specialist agents have NO tools - they are pure advisory agents
+        // Consultant agents have NO tools - they are pure advisory agents
         return new List<ToolDefinition>();
     }
 
     public Task<string> HandleToolCallAsync(ToolCall toolCall)
     {
-        // This should never be called as ConsultTheSpecialistAgent has no tools
-        return Task.FromResult("[ERROR] ConsultTheSpecialistAgent has no tools available.");
+        // This should never be called as ConsultantAgent has no tools
+        return Task.FromResult("[ERROR] ConsultantAgent has no tools available.");
     }
 }

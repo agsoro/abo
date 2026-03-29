@@ -12,7 +12,7 @@ public static class AgentSentinels
     #region Agent Lifecycle Sentinels
 
     /// <summary>
-    /// Prefix returned by SpecialistAgent.conclude_step on success.
+    /// Prefix returned by ConsultantAgent.conclude_step on success.
     /// The Orchestrator detects this and immediately returns the resultNotes
     /// to the caller, eliminating an unnecessary LLM synthesis round-trip.
     /// Format: [CONCLUDE_STEP_RESULT]:{resultNotes}
@@ -20,7 +20,7 @@ public static class AgentSentinels
     public const string ConcludeStepResult = "[CONCLUDE_STEP_RESULT]:";
 
     /// <summary>
-    /// Prefix returned by SpecialistAgent.postpone_task.
+    /// Prefix returned by ConsultantAgent.postpone_task.
     /// The Orchestrator detects this and immediately returns the contextNotes
     /// to the caller without advancing the workflow step.
     /// Format: [POSTPONE_TASK_RESULT]:{contextNotes}

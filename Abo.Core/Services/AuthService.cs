@@ -87,6 +87,7 @@ public class AuthService
                 Username = "ceo",
                 PasswordHash = hash,
                 CreatedAt = DateTime.UtcNow,
+                IsActive = true,
                 PasswordChanged = false,
                 Roles = new List<string> { "admin", "user" }
             };
@@ -135,6 +136,7 @@ public class AuthService
 
     /// <summary>
     /// Validates username and password, returns a session token if valid.
+    /// Inactive users cannot authenticate.
     /// </summary>
     public async Task<(bool Success, string? Token, string? Error)> LoginAsync(
         string username,
@@ -157,12 +159,23 @@ public class AuthService
             return (false, null, "Invalid username or password");
         }
 
+        // Check if user account is active - inactive users cannot authenticate
+        if (!user.IsActive)
+        {
+            _logger.LogWarning("Login attempt for inactive user: {Username}", username);
+            return (false, null, "Account is inactive");
+        }
+
         // Verify password
         if (!VerifyPassword(password, user.PasswordHash))
         {
             _logger.LogWarning("Failed login attempt for user: {Username}", username);
             return (false, null, "Invalid username or password");
         }
+
+        // Update last login time
+        user.LastLogin = DateTime.UtcNow;
+        await SaveCredentialsAsync(store);
 
         // Create session
         var token = GenerateSessionToken();
@@ -281,6 +294,7 @@ public class AuthService
             Username = username,
             PasswordHash = hash,
             CreatedAt = DateTime.UtcNow,
+            IsActive = true,
             PasswordChanged = false,
             Roles = roles ?? new List<string> { "user" }
         };
@@ -497,12 +511,77 @@ public class AuthService
         {
             Username = u.Username,
             CreatedAt = u.CreatedAt,
+            LastLogin = u.LastLogin,
             LastPasswordChange = u.LastPasswordChange,
             PasswordChanged = u.PasswordChanged,
+            IsActive = u.IsActive,
             MattermostUserId = u.MattermostUserId,
             Roles = u.Roles
             // PasswordHash intentionally excluded
         }).ToList();
+    }
+
+    /// <summary>
+    /// Deactivates a user account. Inactive users cannot authenticate.
+    /// </summary>
+    public async Task<(bool Success, string? Error)> DeactivateUserAsync(string username)
+    {
+        // Prevent deactivating the CEO
+        if (username.Equals("ceo", StringComparison.OrdinalIgnoreCase))
+        {
+            return (false, "Cannot deactivate the CEO account");
+        }
+
+        var store = await LoadCredentialsAsync();
+        var user = store.Users.FirstOrDefault(u =>
+            u.Username.Equals(username, StringComparison.OrdinalIgnoreCase));
+
+        if (user == null)
+        {
+            return (false, "User not found");
+        }
+
+        user.IsActive = false;
+        await SaveCredentialsAsync(store);
+
+        // Invalidate all sessions for this user
+        var sessions = await LoadSessionsAsync();
+        var userSessions = sessions.Sessions.Where(s =>
+            s.Username.Equals(username, StringComparison.OrdinalIgnoreCase)).ToList();
+
+        foreach (var session in userSessions)
+        {
+            sessions.Sessions.Remove(session);
+        }
+
+        if (userSessions.Any())
+        {
+            await SaveSessionsAsync(sessions);
+        }
+
+        _logger.LogInformation("User {Username} deactivated and all sessions invalidated", username);
+        return (true, null);
+    }
+
+    /// <summary>
+    /// Activates a user account.
+    /// </summary>
+    public async Task<(bool Success, string? Error)> ActivateUserAsync(string username)
+    {
+        var store = await LoadCredentialsAsync();
+        var user = store.Users.FirstOrDefault(u =>
+            u.Username.Equals(username, StringComparison.OrdinalIgnoreCase));
+
+        if (user == null)
+        {
+            return (false, "User not found");
+        }
+
+        user.IsActive = true;
+        await SaveCredentialsAsync(store);
+
+        _logger.LogInformation("User {Username} activated", username);
+        return (true, null);
     }
 
     /// <summary>

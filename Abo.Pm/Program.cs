@@ -9,9 +9,6 @@ using Abo.Services;
 using Microsoft.AspNetCore.Mvc;
 using System.Text.Json;
 using Microsoft.Extensions.Caching.Memory;
-using System.Collections.Concurrent;
-using System.Security.Cryptography;
-using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -21,7 +18,15 @@ builder.Services.AddMemoryCache();
 builder.Services.AddSingleton<SessionService>();
 builder.Services.AddSingleton<UserService>();
 builder.Services.AddSingleton<Abo.Core.Services.TrafficLoggerService>();
-builder.Services.AddSingleton<AuthService>(); // Register AuthService
+
+// Register AuthService from Abo.Core (replaces inline class)
+var dataDirectory = Path.Combine(AppContext.BaseDirectory, "Data");
+builder.Services.AddSingleton(sp => new Abo.Core.Services.AuthService(
+    dataDirectory,
+    Microsoft.Extensions.Options.Options.Create(new Abo.Core.Services.AuthOptions()),
+    sp.GetRequiredService<ILogger<Abo.Core.Services.AuthService>>()
+));
+
 builder.Services.AddHttpClient<Orchestrator>(client => client.Timeout = TimeSpan.FromSeconds(600));
 builder.Services.AddHttpClient<AgentSupervisor>(client => client.Timeout = TimeSpan.FromSeconds(600));
 
@@ -59,6 +64,67 @@ var app = builder.Build();
 app.UseDefaultFiles(); // Serves `/index.html` automatically for `/`
 app.UseStaticFiles();  // Serves wwwroot static files
 
+// ── Authorization Middleware ────────────────────────────────────────────────
+// Define public endpoints that don't require authentication
+var publicEndpoints = new[]
+{
+    "/api/status",
+    "/api/environments",
+    "/api/auth/login",
+    "/api/auth/register"
+};
+
+// Add authorization middleware before app.Run()
+app.Use(async (context, next) =>
+{
+    var path = context.Request.Path.Value?.ToLower() ?? "";
+    
+    // Allow public endpoints without authentication
+    if (publicEndpoints.Any(e => path.StartsWith(e)))
+    {
+        await next();
+        return;
+    }
+    
+    // For /api/* endpoints, require authentication
+    if (path.StartsWith("/api/"))
+    {
+        var authService = context.RequestServices.GetRequiredService<Abo.Core.Services.AuthService>();
+        
+        var authHeader = context.Request.Headers.Authorization.FirstOrDefault();
+        if (string.IsNullOrEmpty(authHeader) || !authHeader.StartsWith("Bearer "))
+        {
+            // Log unauthorized access attempt
+            var logger = context.RequestServices.GetRequiredService<ILogger<Program>>();
+            logger.LogWarning("Unauthorized access attempt to {Path} from {RemoteIp}", 
+                path, context.Connection.RemoteIpAddress);
+            
+            context.Response.StatusCode = 401;
+            context.Response.ContentType = "application/json";
+            await context.Response.WriteAsync("{\"error\":\"Unauthorized\"}");
+            return;
+        }
+        
+        var token = authHeader.Substring("Bearer ".Length).Trim();
+        var (isValid, _) = await authService.ValidateSessionAsync(token);
+        
+        if (!isValid)
+        {
+            // Log unauthorized access attempt
+            var logger = context.RequestServices.GetRequiredService<ILogger<Program>>();
+            logger.LogWarning("Invalid or expired token used to access {Path} from {RemoteIp}", 
+                path, context.Connection.RemoteIpAddress);
+            
+            context.Response.StatusCode = 401;
+            context.Response.ContentType = "application/json";
+            await context.Response.WriteAsync("{\"error\":\"Unauthorized\"}");
+            return;
+        }
+    }
+    
+    await next();
+});
+
 async Task<List<Abo.Core.Connectors.ConnectorEnvironment>> GetConfiguredEnvironmentsAsync()
 {
     var environmentsFile = Path.Combine(AppContext.BaseDirectory, "Data", "environments.json");
@@ -85,29 +151,45 @@ async Task SaveEnvironmentsAsync(List<Abo.Core.Connectors.ConnectorEnvironment> 
 
 // ── Authentication API ──────────────────────────────────────────────────────
 
-// Get AuthService instance
-var authService = app.Services.GetRequiredService<AuthService>();
+// GET AuthService instance for endpoints
+var authService = app.Services.GetRequiredService<Abo.Core.Services.AuthService>();
 
 // POST /api/auth/login – Authenticate user and return token
-app.MapPost("/api/auth/login", (LoginRequest req, AuthService authService) =>
+app.MapPost("/api/auth/login", async (LoginRequest req, Abo.Core.Services.AuthService authService) =>
 {
     if (string.IsNullOrWhiteSpace(req.Username) || string.IsNullOrWhiteSpace(req.Password))
     {
         return Results.BadRequest(new { detail = "Username and password are required" });
     }
 
-    var user = authService.Authenticate(req.Username, req.Password);
-    if (user == null)
+    var (success, token, error) = await authService.LoginAsync(req.Username, req.Password);
+    if (!success)
     {
         return Results.Unauthorized();
     }
 
-    var token = authService.GenerateToken(user);
-    return Results.Ok(new { token = token, username = user.Username });
+    return Results.Ok(new { token = token, username = req.Username });
 });
 
-// GET /api/auth/me – Get current user info (validates token)
-app.MapGet("/api/auth/me", (HttpRequest request, AuthService authService) =>
+// POST /api/auth/register – Register a new user (public endpoint)
+app.MapPost("/api/auth/register", async (RegisterRequest req, Abo.Core.Services.AuthService authService) =>
+{
+    if (string.IsNullOrWhiteSpace(req.Username))
+    {
+        return Results.BadRequest(new { error = "Username is required" });
+    }
+
+    var (success, password, error) = await authService.CreateUserAsync(req.Username);
+    if (!success)
+    {
+        return Results.BadRequest(new { error = error });
+    }
+
+    return Results.Ok(new { message = "User registered successfully", username = req.Username });
+});
+
+// GET /api/auth/me – Get current user info (validates token - already validated by middleware)
+app.MapGet("/api/auth/me", async (HttpRequest request, Abo.Core.Services.AuthService authService) =>
 {
     var authHeader = request.Headers.Authorization.FirstOrDefault();
     if (string.IsNullOrEmpty(authHeader) || !authHeader.StartsWith("Bearer "))
@@ -116,23 +198,29 @@ app.MapGet("/api/auth/me", (HttpRequest request, AuthService authService) =>
     }
 
     var token = authHeader.Substring("Bearer ".Length).Trim();
-    var user = authService.ValidateToken(token);
+    var (isValid, username) = await authService.ValidateSessionAsync(token);
+    if (!isValid || username == null)
+    {
+        return Results.Unauthorized();
+    }
+
+    var user = await authService.GetUserAsync(username);
     if (user == null)
     {
         return Results.Unauthorized();
     }
 
-    return Results.Ok(new { username = user.Username, loginTime = user.LoginTime });
+    return Results.Ok(new { username = user.Username, roles = user.Roles });
 });
 
 // POST /api/auth/logout – Logout user (client should discard token)
-app.MapPost("/api/auth/logout", (HttpRequest request, AuthService authService) =>
+app.MapPost("/api/auth/logout", async (HttpRequest request, Abo.Core.Services.AuthService authService) =>
 {
     var authHeader = request.Headers.Authorization.FirstOrDefault();
     if (!string.IsNullOrEmpty(authHeader) && authHeader.StartsWith("Bearer "))
     {
         var token = authHeader.Substring("Bearer ".Length).Trim();
-        authService.InvalidateToken(token);
+        await authService.LogoutAsync(token);
     }
     return Results.Ok(new { message = "Logged out successfully" });
 });
@@ -789,7 +877,7 @@ if (app.Services.GetRequiredService<IConfiguration>() is IConfigurationRoot conf
 
 app.Run();
 
-// ── Auth Models and Service ─────────────────────────────────────────────────
+// ── Request Models ──────────────────────────────────────────────────────────
 
 public class LoginRequest
 {
@@ -797,153 +885,9 @@ public class LoginRequest
     public string Password { get; set; } = string.Empty;
 }
 
-public class AuthenticatedUser
+public class RegisterRequest
 {
     public string Username { get; set; } = string.Empty;
-    public DateTime LoginTime { get; set; }
-}
-
-public class AuthService
-{
-    // In-memory user store (in production, use a proper user database)
-    // Default admin user - in production, load from config/database
-    private readonly Dictionary<string, string> _users;
-    private readonly ConcurrentDictionary<string, (AuthenticatedUser User, DateTime Expiry)> _activeTokens;
-    private readonly string _jwtSecret;
-    private readonly TimeSpan _tokenExpiry = TimeSpan.FromHours(8);
-
-    public AuthService(IConfiguration config)
-    {
-        // Load users from configuration or use defaults
-        var adminUser = config["Auth:AdminUser"] ?? "admin";
-        var adminPassword = config["Auth:AdminPassword"] ?? "admin123"; // Default password - CHANGE IN PRODUCTION
-
-        _users = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-        {
-            { adminUser, HashPassword(adminPassword) }
-        };
-
-        // Load additional users from config if defined
-        var additionalUsers = config["Auth:Users"];
-        if (!string.IsNullOrEmpty(additionalUsers))
-        {
-            try
-            {
-                var userPairs = additionalUsers.Split(';', StringSplitOptions.RemoveEmptyEntries);
-                foreach (var pair in userPairs)
-                {
-                    var parts = pair.Split('=', 2);
-                    if (parts.Length == 2)
-                    {
-                        _users[parts[0]] = HashPassword(parts[1]);
-                    }
-                }
-            }
-            catch
-            {
-                // Ignore malformed user config
-            }
-        }
-
-        _jwtSecret = config["Auth:JwtSecret"] ?? GenerateSecret();
-        _activeTokens = new ConcurrentDictionary<string, (AuthenticatedUser, DateTime)>();
-
-        // Cleanup expired tokens periodically
-        Task.Run(CleanupExpiredTokens);
-    }
-
-    private static string HashPassword(string password)
-    {
-        using var sha256 = SHA256.Create();
-        var bytes = sha256.ComputeHash(Encoding.UTF8.GetBytes(password));
-        return Convert.ToBase64String(bytes);
-    }
-
-    private static bool VerifyPassword(string password, string hash)
-    {
-        return HashPassword(password) == hash;
-    }
-
-    private static string GenerateSecret()
-    {
-        var bytes = new byte[32];
-        using var rng = RandomNumberGenerator.Create();
-        rng.GetBytes(bytes);
-        return Convert.ToBase64String(bytes);
-    }
-
-    private async Task CleanupExpiredTokens()
-    {
-        while (true)
-        {
-            await Task.Delay(TimeSpan.FromMinutes(5));
-            var now = DateTime.UtcNow;
-            var expiredTokens = _activeTokens
-                .Where(kvp => kvp.Value.Expiry < now)
-                .Select(kvp => kvp.Key)
-                .ToList();
-
-            foreach (var token in expiredTokens)
-            {
-                _activeTokens.TryRemove(token, out _);
-            }
-        }
-    }
-
-    public AuthenticatedUser? Authenticate(string username, string password)
-    {
-        if (string.IsNullOrWhiteSpace(username) || string.IsNullOrWhiteSpace(password))
-            return null;
-
-        if (!_users.TryGetValue(username, out var storedHash))
-            return null;
-
-        if (!VerifyPassword(password, storedHash))
-            return null;
-
-        return new AuthenticatedUser
-        {
-            Username = username,
-            LoginTime = DateTime.UtcNow
-        };
-    }
-
-    public string GenerateToken(AuthenticatedUser user)
-    {
-        var tokenBytes = new byte[32];
-        using var rng = RandomNumberGenerator.Create();
-        rng.GetBytes(tokenBytes);
-        var token = Convert.ToBase64String(tokenBytes);
-
-        _activeTokens[token] = (user, DateTime.UtcNow.Add(_tokenExpiry));
-        return token;
-    }
-
-    public AuthenticatedUser? ValidateToken(string token)
-    {
-        if (string.IsNullOrWhiteSpace(token))
-            return null;
-
-        if (_activeTokens.TryGetValue(token, out var tokenData))
-        {
-            if (tokenData.Expiry > DateTime.UtcNow)
-            {
-                return tokenData.User;
-            }
-            else
-            {
-                // Token expired, remove it
-                _activeTokens.TryRemove(token, out _);
-            }
-        }
-
-        return null;
-    }
-
-    public void InvalidateToken(string token)
-    {
-        _activeTokens.TryRemove(token, out _);
-    }
 }
 
 public class CreateIssueRequest
