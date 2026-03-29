@@ -7,7 +7,7 @@ using Abo.Core.Services;
 
 namespace Abo.Core;
 
-public class Orchestrator
+public class Orchestrator : IOrchestrator
 {
     private readonly HttpClient _httpClient;
     private readonly IConfiguration _configuration;

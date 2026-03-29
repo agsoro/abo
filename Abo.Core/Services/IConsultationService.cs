@@ -41,9 +41,9 @@ public interface IConsultationService
 /// </summary>
 public class ConsultationService : IConsultationService
 {
-    private readonly Orchestrator _orchestrator;
+    private readonly IOrchestrator _orchestrator;
 
-    public ConsultationService(Orchestrator orchestrator)
+    public ConsultationService(IOrchestrator orchestrator)
     {
         _orchestrator = orchestrator;
     }
