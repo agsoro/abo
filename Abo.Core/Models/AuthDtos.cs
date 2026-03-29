@@ -13,6 +13,11 @@ public class InitPasswordRequest
     public string? MattermostUsername { get; set; }  // Where to send the password
 }
 
+public class RegisterRequest
+{
+    public string Username { get; set; } = string.Empty;
+}
+
 // Response DTOs
 public class LoginResponse
 {
