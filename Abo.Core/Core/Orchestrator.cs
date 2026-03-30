@@ -51,17 +51,17 @@ public class Orchestrator : IOrchestrator
         var apiEndpoint = _configuration["Config:ApiEndpoint"] ?? throw new InvalidOperationException("API Endpoint not configured.");
         var apiKey = _configuration["Config:ApiKey"] ?? string.Empty;
         var defaultLanguage = _configuration["Config:DefaultLanguage"] ?? "en-us";
-        var specialistModel = result.ModelUsed;
+        var consultantModel = result.ModelUsed;
 
         // Create a dedicated session for this consultation
         var consultationSessionId = $"consult-{request.ConsultationId}";
 
-        _logger.LogInformation($"[Consultation: {request.ConsultationId}] Starting consultation with consultant (model: {specialistModel})");
+        _logger.LogInformation($"[Consultation: {request.ConsultationId}] Starting consultation with consultant (model: {consultantModel})");
         _logger.LogInformation($"[Consultation: {request.ConsultationId}] Domain: {request.SpecialistDomain ?? "general"}, Task: {request.TaskDescription[..Math.Min(100, request.TaskDescription.Length)]}...");
 
         // Create the consultant agent
-        var specialist = new ConsultantAgent(request.SpecialistDomain, request.TaskDescription, request.ContextSummary);
-        var systemPrompt = specialist.GenerateSystemPrompt();
+        var consultant = new ConsultantAgent(request.SpecialistDomain, request.TaskDescription, request.ContextSummary);
+        var systemPrompt = consultant.GenerateSystemPrompt();
 
         // Initialize consultation messages
         var messages = new List<ChatMessage>
@@ -93,13 +93,13 @@ public class Orchestrator : IOrchestrator
                 // Build the request
                 var requestBody = new ChatCompletionRequest
                 {
-                    Model = specialistModel,
+                    Model = consultantModel,
                     Messages = messages,
-                    Tools = specialist.GetToolDefinitions() // Empty for consultant
+                    Tools = consultant.GetToolDefinitions() // Empty for consultant
                 };
 
                 // Add provider-specific instructions
-                if (specialistModel.StartsWith("openai/", StringComparison.OrdinalIgnoreCase))
+                if (consultantModel.StartsWith("openai/", StringComparison.OrdinalIgnoreCase))
                 {
                     var systemMsg = messages.FirstOrDefault(m => m.Role == "system");
                     if (systemMsg != null)
@@ -260,7 +260,7 @@ public class Orchestrator : IOrchestrator
         }
 
         // Log consumption
-        await _trafficLoggerService.LogConsumptionAsync(consultationSessionId, specialistModel, totalCalls, totalInputTokens, totalOutputTokens, totalCost, request.IssueId);
+        await _trafficLoggerService.LogConsumptionAsync(consultationSessionId, consultantModel, totalCalls, totalInputTokens, totalOutputTokens, totalCost, request.IssueId);
 
         return result;
     }
