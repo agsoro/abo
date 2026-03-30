@@ -65,6 +65,8 @@
         .env-tag { display: inline-block; padding: 0.15rem 0.5rem; border-radius: var(--tag-radius); font-size: 0.75rem; background-color: rgba(59, 130, 246, 0.1); color: #60a5fa; border: 1px solid rgba(59, 130, 246, 0.3); font-family: monospace; }
         .issue-link { display: inline-block; padding: 0.15rem 0.5rem; border-radius: var(--tag-radius); font-size: 0.75rem; background-color: var(--green-bg); color: var(--green-text); border: 1px solid rgba(22, 163, 74, 0.4); font-family: monospace; cursor: pointer; text-decoration: none; transition: all 0.2s; }
         .issue-link:hover { background-color: rgba(22, 163, 74, 0.25); text-decoration: underline; }
+        .detail-btn { background: none; border: none; color: var(--text-muted); cursor: pointer; padding: 0.35rem 0.5rem; font-size: 1rem; border-radius: var(--tag-radius); transition: all 0.2s; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+        .detail-btn:hover { color: var(--text-color); background-color: rgba(255, 255, 255, 0.1); }
         .action-btn { background-color: var(--primary-color); color: #fff; border: none; border-radius: var(--tag-radius); padding: 0.35rem 0.85rem; font-size: 0.8rem; cursor: pointer; white-space: nowrap; transition: background-color 0.2s, opacity 0.2s; flex-shrink: 0; }
         .action-btn:hover:not(:disabled) { background-color: var(--primary-hover); }
         .action-btn:disabled { opacity: 0.5; cursor: not-allowed; background-color: var(--primary-color); animation: pulse-btn 1.5s ease-in-out infinite; }
@@ -80,6 +82,7 @@
         .modal-header { display: flex; align-items: center; justify-content: space-between; padding: 1.25rem 1.5rem; border-bottom: 1px solid var(--border-color); }
         .modal-title { font-size: 1.25rem; font-weight: 700; color: var(--text-color); }
         .modal-close-btn { background: none; border: none; color: var(--text-muted); font-size: 1.5rem; cursor: pointer; padding: 0; width: 2rem; height: 2rem; display: flex; align-items: center; justify-content: center; }
+        .modal-close-btn:hover { color: var(--text-color); }
         .modal-body { padding: 1.5rem; overflow-y: auto; }
         .form-group { margin-bottom: 1.25rem; }
         .form-label { display: block; margin-bottom: 0.5rem; font-size: 0.875rem; font-weight: 600; color: var(--text-color); }
@@ -92,10 +95,41 @@
         .modal-btn-secondary { background-color: transparent; color: var(--text-muted); border: 1px solid var(--border-color); }
         .form-error { color: var(--red); font-size: 0.75rem; margin-top: 0.25rem; display: none; }
         .form-error.show { display: block; }
-        #toast-notification { display: none; position: fixed; bottom: 2rem; left: 2rem; background-color: var(--surface-color); border: 1px solid var(--border-color); border-radius: 0.5rem; padding: 1rem 1.25rem; font-size: 0.875rem; z-index: 300; }
+        #toast-notification { display: none; position: fixed; bottom: 2rem; left: 2rem; background-color: var(--surface-color); border: 1px solid var(--border-color); border-radius: 0.5rem; padding: 1rem 1.25rem; font-size: 0.875rem; z-index: 300; min-width: 250px; }
         #toast-notification.show { display: block; }
         #toast-notification.success { border-left: 3px solid var(--green); }
         #toast-notification.error { border-left: 3px solid var(--red); }
+        /* Issue Detail Modal Styles */
+        #issue-detail-modal { display: none; position: fixed; inset: 0; background-color: rgba(0, 0, 0, 0.7); z-index: 200; }
+        #issue-detail-modal.open { display: flex; align-items: center; justify-content: center; }
+        #issue-detail-dialog { background-color: var(--surface-color); border: 1px solid var(--border-color); border-radius: 0.75rem; box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5); width: 90%; max-width: 700px; max-height: 90vh; display: flex; flex-direction: column; }
+        #issue-detail-modal .modal-header { display: flex; align-items: flex-start; justify-content: space-between; padding: 1.25rem 1.5rem; border-bottom: 1px solid var(--border-color); }
+        #issue-detail-modal .modal-title-container { display: flex; flex-direction: column; gap: 0.25rem; }
+        #issue-detail-modal .modal-issue-id { font-family: monospace; font-size: 0.8rem; color: var(--text-muted); }
+        #issue-detail-modal .modal-title { font-size: 1.1rem; font-weight: 700; color: var(--text-color); margin: 0; }
+        #issue-detail-modal .modal-body { padding: 1.5rem; overflow-y: auto; flex: 1; }
+        .detail-section { margin-bottom: 1.5rem; }
+        .detail-section:last-child { margin-bottom: 0; }
+        .detail-section-label { font-size: 0.75rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.5rem; }
+        .detail-section-content { font-size: 0.9rem; color: var(--text-color); line-height: 1.5; white-space: pre-wrap; word-break: break-word; }
+        .detail-metadata { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+        .detail-tag { display: inline-block; padding: 0.2rem 0.6rem; border-radius: var(--tag-radius); font-size: 0.75rem; border: 1px solid var(--border-color); }
+        .detail-tag.type { background-color: rgba(148, 163, 184, 0.1); color: var(--text-muted); }
+        .detail-tag.status { background-color: var(--yellow-bg); color: var(--yellow-text); border-color: rgba(202, 138, 4, 0.3); }
+        .detail-tag.step { background-color: rgba(59, 130, 246, 0.1); color: var(--blue-text); border-color: rgba(59, 130, 246, 0.3); }
+        .detail-tag.env { background-color: rgba(16, 163, 74, 0.1); color: var(--green-text); border-color: rgba(22, 163, 74, 0.3); font-family: monospace; }
+        .notes-section { background-color: var(--bg-color); border: 1px solid var(--border-color); border-radius: var(--tag-radius); padding: 1rem; }
+        .notes-textarea { width: 100%; background-color: transparent; border: none; color: var(--text-color); font-family: inherit; font-size: 0.875rem; line-height: 1.5; resize: vertical; min-height: 120px; outline: none; }
+        .notes-textarea::placeholder { color: var(--text-muted); }
+        .notes-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 0.5rem; padding-top: 0.5rem; border-top: 1px solid var(--border-color); }
+        .save-indicator { font-size: 0.75rem; color: var(--text-muted); display: flex; align-items: center; gap: 0.35rem; }
+        .save-indicator.saving { color: var(--yellow-text); }
+        .save-indicator.saved { color: var(--green-text); }
+        .save-indicator.error { color: var(--red); }
+        .char-counter { font-size: 0.7rem; color: var(--text-muted); font-family: monospace; }
+        .char-counter.warning { color: var(--yellow); }
+        .char-counter.limit { color: var(--red); }
+        #issue-detail-modal .modal-footer { display: flex; gap: 0.75rem; padding: 1rem 1.5rem; border-top: 1px solid var(--border-color); justify-content: flex-end; }
         /* Action Status Overlay */
         .action-status { position: fixed; bottom: 2rem; right: 6rem; background-color: var(--surface-color); border: 1px solid var(--border-color); border-radius: var(--tag-radius); padding: 0.75rem 1.25rem; color: var(--text-color); font-size: 0.875rem; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4); display: flex; align-items: center; gap: 0.75rem; z-index: 150; animation: slideIn 0.3s ease-out; }
         @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
@@ -111,6 +145,7 @@
     <div class="header-nav" id="nav-container">
         <a href="#" class="active">Overview</a>
         <a href="/llm-traffic/">Internal Traffic</a>
+        <a href="/wiki/">📖 Wiki</a>
         <a href="/llm-stats/">LLM Consumption</a>
     </div>
     <div id="status-indicator">
@@ -136,6 +171,8 @@
     <div id="last-updated">Last updated: Never</div>
 </main>
 <button id="fab-create-issue" title="Create new issue (Ctrl+N)" onclick="openCreateIssueModal()">➕</button>
+
+<!-- Create Issue Modal -->
 <div id="modal-overlay" onclick="if(event.target === this) closeCreateIssueModal()">
   <div id="modal-dialog">
     <div class="modal-header"><div class="modal-title">➕ Create New Issue</div><button class="modal-close-btn" onclick="closeCreateIssueModal()" title="Close (Esc)">✕</button></div>
@@ -152,11 +189,64 @@
     <div class="modal-footer"><button class="modal-btn modal-btn-secondary" onclick="closeCreateIssueModal()">Cancel</button><button class="modal-btn modal-btn-primary" id="btn-submit-form" onclick="submitCreateIssueForm(event)">Create Issue</button></div>
   </div>
 </div>
+
+<!-- Issue Detail Modal -->
+<div id="issue-detail-modal" onclick="if(event.target === this) closeIssueDetail()">
+  <div id="issue-detail-dialog">
+    <div class="modal-header">
+      <div class="modal-title-container">
+        <span class="modal-issue-id" id="detail-issue-id"></span>
+        <h2 class="modal-title" id="detail-title"></h2>
+      </div>
+      <button class="modal-close-btn" onclick="closeIssueDetail()" title="Close (Esc)">✕</button>
+    </div>
+    <div class="modal-body">
+      <!-- Metadata Section -->
+      <div class="detail-section">
+        <div class="detail-section-label">Details</div>
+        <div class="detail-metadata" id="detail-metadata"></div>
+      </div>
+      
+      <!-- Description Section -->
+      <div class="detail-section">
+        <div class="detail-section-label">Description</div>
+        <div class="detail-section-content" id="detail-description"></div>
+      </div>
+      
+      <!-- Notes Section -->
+      <div class="detail-section">
+        <div class="detail-section-label">Notes</div>
+        <div class="notes-section">
+          <textarea 
+            id="detail-notes" 
+            class="notes-textarea" 
+            placeholder="Add notes, context, or supplementary information..."
+            maxlength="2000"
+          ></textarea>
+          <div class="notes-footer">
+            <span class="save-indicator" id="save-indicator"></span>
+            <span class="char-counter" id="char-counter">0/2000</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="modal-btn modal-btn-secondary" onclick="closeIssueDetail()">Close</button>
+    </div>
+  </div>
+</div>
+
 <div id="toast-notification"></div>
 <script>
         let allIssues = [];
         let activeSessions = [];
         let availableEnvironments = [];
+
+        // Issue detail state
+        let currentDetailIssueId = null;
+        let saveTimeout = null;
+        const SAVE_DEBOUNCE_MS = 500;
+        const MAX_NOTES_LENGTH = 2000;
 
         // Mapping from stepId to action label and orchestrator command
         const STEP_ACTION_MAPPING = {
@@ -170,6 +260,211 @@
             'review_release-current_doc': { label: 'Review Documentation', command: (id) => `Start QA review of documentation for issue #${id}` },
             'check_release-current': { label: 'Execute Release', command: (id) => `Execute final release and merge for issue #${id}` }
         };
+
+        // ── Issue Detail Functions ────────────────────────────────────────────
+
+        async function openIssueDetail(issueId) {
+            currentDetailIssueId = issueId;
+            const modal = document.getElementById('issue-detail-modal');
+            const notesTextarea = document.getElementById('detail-notes');
+            const saveIndicator = document.getElementById('save-indicator');
+            
+            // Reset save indicator
+            saveIndicator.textContent = '';
+            saveIndicator.className = 'save-indicator';
+            
+            // Show modal
+            modal.classList.add('open');
+            
+            // Find the issue in allIssues
+            const issue = allIssues.find(i => i.id === issueId);
+            if (!issue) {
+                console.error(`Issue #${issueId} not found`);
+                closeIssueDetail();
+                return;
+            }
+
+            // Populate header info
+            document.getElementById('detail-issue-id').textContent = `#${issueId}`;
+            document.getElementById('detail-title').textContent = issue.title || '';
+
+            // Populate metadata
+            const metadataContainer = document.getElementById('detail-metadata');
+            metadataContainer.innerHTML = '';
+            
+            if (issue.type) {
+                const typeTag = document.createElement('span');
+                typeTag.className = 'detail-tag type';
+                typeTag.textContent = issue.type;
+                metadataContainer.appendChild(typeTag);
+            }
+            
+            if (issue.currentStep?.stepName) {
+                const statusTag = document.createElement('span');
+                statusTag.className = 'detail-tag status';
+                statusTag.textContent = issue.currentStep.stepName;
+                metadataContainer.appendChild(statusTag);
+            }
+            
+            if (issue.stepId) {
+                const stepTag = document.createElement('span');
+                stepTag.className = 'detail-tag step';
+                stepTag.textContent = issue.stepId;
+                metadataContainer.appendChild(stepTag);
+            }
+            
+            if (issue.environmentName) {
+                const envTag = document.createElement('span');
+                envTag.className = 'detail-tag env';
+                envTag.textContent = issue.environmentName;
+                metadataContainer.appendChild(envTag);
+            }
+            
+            if (issue.size) {
+                const sizeTag = document.createElement('span');
+                sizeTag.className = 'detail-tag';
+                sizeTag.textContent = `Size: ${issue.size}`;
+                metadataContainer.appendChild(sizeTag);
+            }
+
+            // Populate description
+            const descEl = document.getElementById('detail-description');
+            descEl.textContent = issue.body || issue.description || 'No description provided.';
+
+            // Fetch and populate notes
+            notesTextarea.value = '';
+            notesTextarea.disabled = true;
+            updateCharCount();
+            
+            try {
+                const response = await fetch(`/api/issues/${issueId}/notes`);
+                if (response.ok) {
+                    const data = await response.json();
+                    notesTextarea.value = data.notes || '';
+                } else {
+                    console.warn(`Failed to fetch notes for issue #${issueId}: ${response.status}`);
+                }
+            } catch (err) {
+                console.error(`Error fetching notes for issue #${issueId}:`, err);
+            } finally {
+                notesTextarea.disabled = false;
+                updateCharCount();
+                notesTextarea.focus();
+            }
+        }
+
+        function closeIssueDetail() {
+            const modal = document.getElementById('issue-detail-modal');
+            modal.classList.remove('open');
+            
+            // Clear any pending save
+            if (saveTimeout) {
+                clearTimeout(saveTimeout);
+                saveTimeout = null;
+            }
+            
+            // Save immediately on close if there are unsaved changes
+            if (currentDetailIssueId) {
+                const notesTextarea = document.getElementById('detail-notes');
+                const currentNotes = notesTextarea.value;
+                if (currentNotes !== notesTextarea.dataset.savedNotes) {
+                    saveNotesImmediate(currentDetailIssueId, currentNotes);
+                }
+            }
+            
+            currentDetailIssueId = null;
+        }
+
+        function updateCharCount() {
+            const textarea = document.getElementById('detail-notes');
+            const counter = document.getElementById('char-counter');
+            const count = textarea.value.length;
+            
+            counter.textContent = `${count}/${MAX_NOTES_LENGTH}`;
+            counter.className = 'char-counter';
+            
+            if (count >= MAX_NOTES_LENGTH) {
+                counter.classList.add('limit');
+            } else if (count >= MAX_NOTES_LENGTH - 100) {
+                counter.classList.add('warning');
+            }
+        }
+
+        function autoSaveNotes(issueId, notes) {
+            const saveIndicator = document.getElementById('save-indicator');
+            
+            // Clear existing timeout
+            if (saveTimeout) {
+                clearTimeout(saveTimeout);
+            }
+            
+            // Update indicator to show "Typing..."
+            saveIndicator.textContent = '';
+            saveIndicator.className = 'save-indicator';
+            
+            // Debounce the save
+            saveTimeout = setTimeout(() => {
+                saveNotesToApi(issueId, notes);
+            }, SAVE_DEBOUNCE_MS);
+        }
+
+        async function saveNotesImmediate(issueId, notes) {
+            // Clear any pending debounced save
+            if (saveTimeout) {
+                clearTimeout(saveTimeout);
+                saveTimeout = null;
+            }
+            
+            await saveNotesToApi(issueId, notes);
+        }
+
+        async function saveNotesToApi(issueId, notes) {
+            const saveIndicator = document.getElementById('save-indicator');
+            const notesTextarea = document.getElementById('detail-notes');
+            
+            // Update indicator
+            saveIndicator.textContent = '⏳ Saving...';
+            saveIndicator.className = 'save-indicator saving';
+            
+            try {
+                const response = await fetch(`/api/issues/${issueId}/notes`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ notes })
+                });
+                
+                if (response.ok) {
+                    saveIndicator.textContent = '✓ Saved';
+                    saveIndicator.className = 'save-indicator saved';
+                    notesTextarea.dataset.savedNotes = notes;
+                    
+                    // Clear indicator after delay
+                    setTimeout(() => {
+                        if (saveIndicator.textContent === '✓ Saved') {
+                            saveIndicator.textContent = '';
+                            saveIndicator.className = 'save-indicator';
+                        }
+                    }, 2000);
+                } else {
+                    throw new Error(`Server returned ${response.status}`);
+                }
+            } catch (err) {
+                console.error(`Error saving notes for issue #${issueId}:`, err);
+                saveIndicator.textContent = '❌ Error saving';
+                saveIndicator.className = 'save-indicator error';
+                showToast(`Failed to save notes for issue #${issueId}`, 'error');
+            }
+        }
+
+        function handleNotesBlur(issueId) {
+            const notesTextarea = document.getElementById('detail-notes');
+            const currentNotes = notesTextarea.value;
+            
+            // If there are unsaved changes, save immediately
+            if (currentNotes !== notesTextarea.dataset.savedNotes) {
+                saveNotesImmediate(issueId, currentNotes);
+            }
+        }
 
         // ── Action Status Tracking ────────────────────────────────────────────
         let actionInProgress = {};  // { issueId: { actionType, sessionId, startTime, statusElement, pollInterval, elapsedInterval } }
@@ -265,7 +560,7 @@
             }
         }
 
-        // ── Enhanced Action Trigger ───────────────────────────────────────────
+        // ── Enhanced Action Trigger ────────────────────────────────────────────
 
         async function triggerAction(issueId, stepId) {
             const btn = event.currentTarget;
@@ -374,7 +669,13 @@
                 e.preventDefault();
                 openCreateIssueModal();
             }
-            if (e.key === 'Escape') closeCreateIssueModal();
+            if (e.key === 'Escape') {
+                if (document.getElementById('issue-detail-modal').classList.contains('open')) {
+                    closeIssueDetail();
+                } else {
+                    closeCreateIssueModal();
+                }
+            }
         });
 
         // ── Modal Functions ────────────────────────────────────────────────────
@@ -534,7 +835,7 @@
                 
                 const rowsHtml = issues.map(i => {
                     const mapping = STEP_ACTION_MAPPING[i.stepId];
-                    const btn = mapping 
+                    const actionBtn = mapping 
                         ? `<button class="action-btn" onclick="triggerAction('${escapeHtml(i.id)}', '${escapeHtml(i.stepId)}')">${escapeHtml(mapping.label)}</button>`
                         : '';
 
@@ -548,7 +849,8 @@
                           <span class="step-badge" style="opacity: 0.7">${escapeHtml(i.stepId)}</span>
                         </div>
                       </div>
-                      ${btn}
+                      <button class="detail-btn" onclick="openIssueDetail('${escapeHtml(i.id)}')" title="View details">🔍</button>
+                      ${actionBtn}
                     </div>`;
                 }).join('');
 
@@ -639,6 +941,25 @@
             if (diffMin < 60) return `${diffMin}m ago`;
             return `${Math.floor(diffMin / 60)}h ago`;
         }
+
+        // Setup notes textarea event listeners
+        document.addEventListener('DOMContentLoaded', () => {
+            const notesTextarea = document.getElementById('detail-notes');
+            if (notesTextarea) {
+                notesTextarea.addEventListener('input', () => {
+                    updateCharCount();
+                    if (currentDetailIssueId) {
+                        autoSaveNotes(currentDetailIssueId, notesTextarea.value);
+                    }
+                });
+                
+                notesTextarea.addEventListener('blur', () => {
+                    if (currentDetailIssueId) {
+                        handleNotesBlur(currentDetailIssueId);
+                    }
+                });
+            }
+        });
 
         fetchData();
         normalPollingInterval = setInterval(fetchData, 10000);

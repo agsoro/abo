@@ -87,6 +87,37 @@
             background-color: #16a34a;
         }
 
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            margin-left: 1rem;
+            padding-left: 1rem;
+            border-left: 1px solid var(--border-color);
+        }
+
+        .username-display {
+            color: var(--text-muted);
+            font-size: 0.875rem;
+        }
+
+        .logout-btn {
+            padding: 0.35rem 0.75rem;
+            border-radius: 0.25rem;
+            border: 1px solid var(--border-color);
+            background-color: transparent;
+            color: var(--text-muted);
+            font-size: 0.75rem;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .logout-btn:hover {
+            color: var(--text-color);
+            border-color: #ef4444;
+            background-color: rgba(239, 68, 68, 0.1);
+        }
+
         main {
             flex: 1;
             display: flex;
@@ -224,6 +255,10 @@
             <a href="/llm-stats/">📈 LLM Stats</a>
             <a href="/environments/">🌍 Environments</a>
         </nav>
+        <div class="user-info">
+            <span class="username-display" id="username-display"></span>
+            <button class="logout-btn" id="logout-btn">Abmelden</button>
+        </div>
         <div id="status-badge">Prüfe API Status...</div>
     </header>
 
@@ -245,10 +280,85 @@
         const userInput = document.getElementById('user-input');
         const sendBtn = document.getElementById('send-btn');
         const statusBadge = document.getElementById('status-badge');
+        const usernameDisplay = document.getElementById('username-display');
+        const logoutBtn = document.getElementById('logout-btn');
+
+        // ── Auth Helper Functions ────────────────────────────────────────────
+
+        /**
+         * Fetch wrapper that adds Authorization header if token exists
+         */
+        async function fetchWithAuth(url, options = {}) {
+            const token = sessionStorage.getItem('authToken');
+            if (token) {
+                options.headers = {
+                    ...options.headers,
+                    'Authorization': `Bearer ${token}`
+                };
+            }
+            return fetch(url, options);
+        }
+
+        /**
+         * Check if user is authenticated by validating the token with the server
+         */
+        async function checkAuth() {
+            const token = sessionStorage.getItem('authToken');
+            if (!token) {
+                window.location.href = '/login.html';
+                return false;
+            }
+
+            try {
+                const res = await fetchWithAuth('/api/auth/me');
+                if (!res.ok) {
+                    throw new Error('Not authenticated');
+                }
+
+                const data = await res.json();
+                
+                // Update username display
+                if (data.username) {
+                    sessionStorage.setItem('username', data.username);
+                    usernameDisplay.textContent = data.username;
+                } else {
+                    const storedUsername = sessionStorage.getItem('username');
+                    usernameDisplay.textContent = storedUsername || '';
+                }
+
+                return true;
+            } catch (error) {
+                sessionStorage.removeItem('authToken');
+                sessionStorage.removeItem('username');
+                window.location.href = '/login.html';
+                return false;
+            }
+        }
+
+        /**
+         * Handle user logout
+         */
+        async function handleLogout() {
+            try {
+                await fetchWithAuth('/api/auth/logout', { method: 'POST' });
+            } catch (error) {
+                // Continue with logout even if API call fails
+                console.log('Logout API call failed, clearing session anyway');
+            } finally {
+                sessionStorage.removeItem('authToken');
+                sessionStorage.removeItem('username');
+                window.location.href = '/login.html';
+            }
+        }
+
+        // Attach logout handler
+        logoutBtn.addEventListener('click', handleLogout);
+
+        // ── Application Functions ────────────────────────────────────────────
 
         async function checkStatus() {
             try {
-                const res = await fetch('/api/status');
+                const res = await fetchWithAuth('/api/status');
                 const data = await res.json();
                 if (data.status === 'Running') {
                     if (data.hasApiKey) {
@@ -316,7 +426,7 @@
             userInput.disabled = true;
 
             try {
-                const res = await fetch('/api/interact', {
+                const res = await fetchWithAuth('/api/interact', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ message: text, userName: usernameInput.value || 'WebUser' })
@@ -343,7 +453,17 @@
             if (e.key === 'Enter') sendMessage();
         });
 
-        checkStatus();
+        // ── Initialize Application ────────────────────────────────────────────
+
+        // Check authentication on page load
+        async function initializeApp() {
+            const isAuthenticated = await checkAuth();
+            if (isAuthenticated) {
+                checkStatus();
+            }
+        }
+
+        initializeApp();
     </script>
 </body>
 </html>

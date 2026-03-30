@@ -36,3 +36,11 @@ The solution is organized into the following core projects:
    - `dotnet run --project Abo.Pm` to start the main Product Management API and agents.
 4. **Testing**: Run `dotnet test Abo.sln` from the root directory to verify system integrity.
 5. **Access the Web UI** at `http://localhost:{port}/` or connect via **Mattermost**.
+
+### Testing
+
+For detailed CI configuration and test documentation, see the [CI Configuration](https://github.com/agsoro/abo/wiki/ci-configuration) wiki page.
+
+Quick test commands:
+- **Run Unit Tests**: `dotnet test --filter "Category=Unit"` (no secrets needed)
+- **Run Integration Tests**: `dotnet test --filter "Category=Integration"` (requires secrets)

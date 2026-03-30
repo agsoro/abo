@@ -117,6 +117,74 @@ public class XpectoLiveWikiConnector : IWikiConnector
         catch (Exception ex) { return $"Error patching wiki page: {ex.Message}"; }
     }
 
+    /// <inheritdoc />
+    public async Task<IEnumerable<WikiPageSummary>> ListPagesAsync(string? parentPath = null)
+    {
+        try
+        {
+            var spaceInfo = await _client.GetSpaceInfoAsync(_spaceId);
+            
+            // Filter by parent if specified (SpacePageInfo doesn't have ParentID, so we list all pages)
+            // The parentPath parameter is kept for interface compatibility but filtering by parent
+            // is not supported by the current XpectoLive API
+            var pages = spaceInfo
+                .Select(p => new WikiPageSummary(
+                    p.PageID ?? "",
+                    p.PageTitle ?? "Untitled",
+                    p.ActionTimestamp,
+                    null))   // ParentID not available in SpacePageInfo
+                .ToList();
+
+            return pages.OrderBy(p => p.Title);
+        }
+        catch
+        {
+            return Array.Empty<WikiPageSummary>();
+        }
+    }
+
+    /// <inheritdoc />
+    public async Task<string> ListWikiAsync(string path)
+    {
+        try
+        {
+            // For XpectoLive, we list pages from the space info API
+            // The path parameter is ignored since the API doesn't support directory-like navigation
+            var spaceInfo = await _client.GetSpaceInfoAsync(_spaceId);
+
+            if (!spaceInfo.Any())
+            {
+                return $"Wiki space '{_spaceId}' is empty.";
+            }
+
+            // Sort pages by title for a tree-like view
+            var sortedPages = spaceInfo
+                .OrderBy(p => p.PageTitle, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            var result = new System.Text.StringBuilder();
+            result.AppendLine($"Wiki space: {_spaceId}");
+            result.AppendLine(new string('-', 40));
+
+            foreach (var page in sortedPages)
+            {
+                var pageId = page.PageID ?? "unknown";
+                var title = page.PageTitle ?? "Untitled";
+                result.AppendLine($"  ├── {title} (ID: {pageId})");
+            }
+
+            result.AppendLine(new string('-', 40));
+            result.AppendLine($"Total: {sortedPages.Count} page(s)");
+
+            return result.ToString();
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return "Error: Access denied to wiki space.";
+        }
+        catch (Exception ex) { return $"Error listing wiki: {ex.Message}"; }
+    }
+
     private string ApplyPatch(string originalContent, string patch)
     {
         var originalLines = originalContent.Split('\n');

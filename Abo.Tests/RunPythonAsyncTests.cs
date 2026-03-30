@@ -1,3 +1,4 @@
+using Xunit;
 using Abo.Core.Connectors;
 
 namespace Abo.Tests;
@@ -15,6 +16,7 @@ namespace Abo.Tests;
 /// version string (or an error exit code for bad arguments) — neither of which
 /// starts with "Failed to start process", so the assertions still hold.
 /// </summary>
+[Trait("Category", "Unit")]
 public class RunPythonAsyncTests : IDisposable
 {
     private readonly string _tempDir;

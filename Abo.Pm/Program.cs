@@ -1,7 +1,12 @@
 using Abo.Agents;
+using Abo.Pm;
 using Abo.Core;
+using Abo.Core.Models;
+using Abo.Core.Services;
+using Abo.Core.Connectors;
 using Abo.Integrations.Mattermost;
 using Abo.Integrations.XpectoLive;
+using Abo.Tools.Connector;
 using Abo.Tools;
 using Abo.Services;
 using Microsoft.AspNetCore.Mvc;
@@ -16,8 +21,30 @@ builder.Services.AddMemoryCache();
 builder.Services.AddSingleton<SessionService>();
 builder.Services.AddSingleton<UserService>();
 builder.Services.AddSingleton<Abo.Core.Services.TrafficLoggerService>();
+
+// Configure AuthOptions from appsettings.json
+builder.Services.Configure<AuthOptions>(builder.Configuration.GetSection("Auth"));
+
+// Register SessionStore service (must be registered before AuthService)
+var dataDirectory = Path.Combine(AppContext.BaseDirectory, "Data");
+builder.Services.AddSingleton<ISessionStore>(sp =>
+    new Abo.Core.Services.SessionStoreService(
+        dataDirectory,
+        sp.GetRequiredService<ILogger<Abo.Core.Services.SessionStoreService>>()
+    ));
+
+// Register AuthService from Abo.Core with configuration-based options
+builder.Services.AddSingleton(sp => new Abo.Core.Services.AuthService(
+    dataDirectory,
+    sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<AuthOptions>>(),
+    sp.GetRequiredService<ILogger<Abo.Core.Services.AuthService>>(),
+    sp.GetRequiredService<ISessionStore>()));
+
 builder.Services.AddHttpClient<Orchestrator>(client => client.Timeout = TimeSpan.FromSeconds(600));
 builder.Services.AddHttpClient<AgentSupervisor>(client => client.Timeout = TimeSpan.FromSeconds(600));
+
+// Register ConsultationService (depends on Orchestrator which is registered via AddHttpClient)
+builder.Services.AddSingleton<IConsultationService, ConsultationService>();
 
 // Register Integrations
 builder.Services.Configure<XpectoLiveOptions>(builder.Configuration.GetSection("Integrations:XpectoLive"));
@@ -28,6 +55,9 @@ builder.Services.Configure<MattermostOptions>(builder.Configuration.GetSection("
 builder.Services.AddHttpClient<MattermostClient>();
 builder.Services.AddHostedService<MattermostListenerService>();
 
+// Register AuthCleanupService for background session cleanup
+builder.Services.AddHostedService<AuthCleanupService>();
+
 // Register Tools
 builder.Services.AddTransient<IAboTool, GetSystemTimeTool>();
 
@@ -36,9 +66,11 @@ builder.Services.AddTransient<IAboTool, StartIssueTool>();
 builder.Services.AddTransient<IAboTool, ListActiveIssuesTool>();
 builder.Services.AddTransient<IAboTool, GetEnvironmentsTool>();
 builder.Services.AddTransient<IAboTool, GetOpenWorkTool>();
+builder.Services.AddTransient<IAboTool, ConsultSpecialistTool>();
 
 // Register Agents
 builder.Services.AddTransient<ManagerAgent>();
+builder.Services.AddTransient<IAboTool, SuggestAboFeatureTool>();
 builder.Services.AddTransient<IAgent, ManagerAgent>(sp => sp.GetRequiredService<ManagerAgent>());
 
 // Register Background Services
@@ -49,8 +81,84 @@ builder.Services.AddHostedService<CronjobAutoStartService>();
 
 var app = builder.Build();
 
+// Initialize CEO user on startup
+var authServiceStartup = app.Services.GetRequiredService<Abo.Core.Services.AuthService>();
+var mattermostClientStartup = app.Services.GetRequiredService<MattermostClient>();
+var mattermostOptionsStartup = app.Services.GetRequiredService<Microsoft.Extensions.Options.IOptions<MattermostOptions>>().Value;
+
+try
+{
+    await authServiceStartup.InitializeAsync(mattermostClientStartup, mattermostOptionsStartup.CeoUserName);
+}
+catch (Exception ex)
+{
+    var logger = app.Services.GetRequiredService<ILogger<Program>>();
+    logger.LogError(ex, "Failed to initialize CEO user on startup");
+}
+
 app.UseDefaultFiles(); // Serves `/index.html` automatically for `/`
 app.UseStaticFiles();  // Serves wwwroot static files
+
+// ── Authorization Middleware ────────────────────────────────────────────────
+// Define public endpoints that don't require authentication
+var publicEndpoints = new[]
+{
+    "/api/status",
+    "/api/environments",
+    "/api/auth/login",
+    "/api/auth/register"
+};
+
+// Add authorization middleware before app.Run()
+app.Use(async (context, next) =>
+{
+    var path = context.Request.Path.Value?.ToLower() ?? "";
+    
+    // Allow public endpoints without authentication
+    if (publicEndpoints.Any(e => path.StartsWith(e)))
+    {
+        await next();
+        return;
+    }
+    
+    // For /api/* endpoints, require authentication
+    if (path.StartsWith("/api/"))
+    {
+        var authService = context.RequestServices.GetRequiredService<Abo.Core.Services.AuthService>();
+        
+        var authHeader = context.Request.Headers.Authorization.FirstOrDefault();
+        if (string.IsNullOrEmpty(authHeader) || !authHeader.StartsWith("Bearer "))
+        {
+            // Log unauthorized access attempt
+            var logger = context.RequestServices.GetRequiredService<ILogger<Program>>();
+            logger.LogWarning("Unauthorized access attempt to {Path} from {RemoteIp}", 
+                path, context.Connection.RemoteIpAddress);
+            
+            context.Response.StatusCode = 401;
+            context.Response.ContentType = "application/json";
+            await context.Response.WriteAsync("{\"error\":\"Unauthorized\"}");
+            return;
+        }
+        
+        var token = authHeader.Substring("Bearer ".Length).Trim();
+        var (isValid, _) = await authService.ValidateSessionAsync(token);
+        
+        if (!isValid)
+        {
+            // Log unauthorized access attempt
+            var logger = context.RequestServices.GetRequiredService<ILogger<Program>>();
+            logger.LogWarning("Invalid or expired token used to access {Path} from {RemoteIp}", 
+                path, context.Connection.RemoteIpAddress);
+            
+            context.Response.StatusCode = 401;
+            context.Response.ContentType = "application/json";
+            await context.Response.WriteAsync("{\"error\":\"Unauthorized\"}");
+            return;
+        }
+    }
+    
+    await next();
+});
 
 async Task<List<Abo.Core.Connectors.ConnectorEnvironment>> GetConfiguredEnvironmentsAsync()
 {
@@ -75,6 +183,180 @@ async Task SaveEnvironmentsAsync(List<Abo.Core.Connectors.ConnectorEnvironment> 
     });
     await File.WriteAllTextAsync(filePath, json);
 }
+
+// ── Authentication API ──────────────────────────────────────────────────────
+
+// Get AuthService and AuthOptions for use in endpoints
+var authService = app.Services.GetRequiredService<Abo.Core.Services.AuthService>();
+var authOptions = app.Services.GetRequiredService<Microsoft.Extensions.Options.IOptions<AuthOptions>>().Value;
+var sessionStore = app.Services.GetRequiredService<ISessionStore>();
+
+// POST /api/auth/login – Authenticate user and return token
+app.MapPost("/api/auth/login", async (
+    [FromBody] LoginRequest req,
+    Abo.Core.Services.AuthService authService,
+    HttpContext context,
+    ILogger<Program> logger) =>
+{
+    if (string.IsNullOrWhiteSpace(req.Username) || string.IsNullOrWhiteSpace(req.Password))
+    {
+        return Results.BadRequest(new ErrorResponse { Error = "Username and password are required" });
+    }
+
+    var ipAddress = context.Connection.RemoteIpAddress?.ToString();
+    var userAgent = context.Request.Headers.UserAgent.FirstOrDefault();
+    
+    var (success, token, error) = await authService.LoginAsync(
+        req.Username, req.Password, ipAddress, userAgent);
+    
+    if (!success)
+    {
+        logger.LogWarning("Failed login attempt for user: {Username} from IP: {IpAddress}", 
+            req.Username, ipAddress);
+        return Results.Unauthorized();
+    }
+
+    logger.LogInformation("User {Username} logged in successfully from IP: {IpAddress}", 
+        req.Username, ipAddress);
+    
+    // Calculate expiration based on configured session expiration hours
+    var expiresAt = DateTime.UtcNow.AddHours(authOptions.SessionExpirationHours);
+    
+    return Results.Ok(new LoginResponse 
+    { 
+        Token = token ?? "",
+        Username = req.Username,
+        ExpiresAt = expiresAt
+    });
+});
+
+// POST /api/auth/logout – Logout user
+app.MapPost("/api/auth/logout", async (
+    HttpContext context,
+    Abo.Core.Services.AuthService authService,
+    ISessionStore sessionStore,
+    ILogger<Program> logger) =>
+{
+    // Use HttpContext extension for token extraction
+    var (isAuthenticated, username) = await context.TryGetAuthenticatedUserAsync(sessionStore);
+    
+    if (isAuthenticated && username != null)
+    {
+        // Extract token manually for logout
+        var authHeader = context.Request.Headers.Authorization.FirstOrDefault();
+        if (!string.IsNullOrEmpty(authHeader) && authHeader.StartsWith("Bearer "))
+        {
+            var token = authHeader.Substring("Bearer ".Length).Trim();
+            await authService.LogoutAsync(token);
+            logger.LogInformation("User {Username} logged out", username);
+        }
+    }
+    
+    return Results.NoContent();
+});
+
+// GET /api/auth/me – Get current user info
+app.MapGet("/api/auth/me", async (
+    HttpContext context,
+    ISessionStore sessionStore,
+    ILogger<Program> logger) =>
+{
+    // Use HttpContext extension for authentication check
+    var (isAuthenticated, username) = await context.TryGetAuthenticatedUserAsync(sessionStore);
+    
+    if (!isAuthenticated || username == null)
+    {
+        logger.LogWarning("Unauthorized access attempt to /api/auth/me from {RemoteIp}", 
+            context.Connection.RemoteIpAddress);
+        return Results.Unauthorized();
+    }
+
+    logger.LogDebug("User {Username} checked their profile", username);
+    
+    return Results.Ok(new UserInfoResponse 
+    { 
+        Username = username, 
+        IsAuthenticated = true 
+    });
+});
+
+// POST /api/auth/init-password – Create user with initial password (Admin only)
+app.MapPost("/api/auth/init-password", async (
+    HttpContext context,
+    [FromBody] InitPasswordRequest req,
+    Abo.Core.Services.AuthService authService,
+    ISessionStore sessionStore,
+    MattermostClient mattermostClient,
+    ILogger<Program> logger) =>
+{
+    // Use HttpContext extension for authentication
+    var (isAuthenticated, username) = await context.TryGetAuthenticatedUserAsync(sessionStore);
+    
+    if (!isAuthenticated || username == null)
+    {
+        logger.LogWarning("Unauthorized access attempt to /api/auth/init-password from {RemoteIp}", 
+            context.Connection.RemoteIpAddress);
+        return Results.Unauthorized();
+    }
+
+    // Check admin role
+    var user = await authService.GetUserAsync(username);
+    if (user == null || !user.Roles.Contains("admin"))
+    {
+        logger.LogWarning("Non-admin user {Username} attempted to access /api/auth/init-password from {RemoteIp}", 
+            username, context.Connection.RemoteIpAddress);
+        return Results.Forbid();
+    }
+
+    if (string.IsNullOrWhiteSpace(req.Username))
+    {
+        return Results.BadRequest(new ErrorResponse { Error = "Username is required" });
+    }
+
+    var (success, password, error) = await authService.CreateUserAsync(
+        req.Username,
+        new List<string> { "user" },
+        mattermostClient,
+        req.MattermostUsername);
+
+    if (!success)
+    {
+        logger.LogWarning("Admin {AdminUser} failed to create user {NewUser}: {Error}", 
+            username, req.Username, error);
+        return Results.BadRequest(new ErrorResponse { Error = error ?? "Failed to create user" });
+    }
+
+    logger.LogInformation("Admin {AdminUser} created user {NewUser}", username, req.Username);
+    
+    return Results.Ok(new InitPasswordResponse 
+    { 
+        Message = "User created successfully. Initial password sent via Mattermost if configured.",
+        Username = req.Username 
+    });
+});
+
+// POST /api/auth/register – Register a new user (public endpoint)
+app.MapPost("/api/auth/register", async (
+    [FromBody] RegisterRequest req, 
+    Abo.Core.Services.AuthService authService,
+    ILogger<Program> logger) =>
+{
+    if (string.IsNullOrWhiteSpace(req.Username))
+    {
+        return Results.BadRequest(new ErrorResponse { Error = "Username is required" });
+    }
+
+    var (success, password, error) = await authService.CreateUserAsync(req.Username);
+    if (!success)
+    {
+        logger.LogWarning("Registration failed for username {Username}: {Error}", 
+            req.Username, error);
+        return Results.BadRequest(new ErrorResponse { Error = error ?? "Registration failed" });
+    }
+
+    logger.LogInformation("New user registered: {Username}", req.Username);
+    return Results.Ok(new { message = "User registered successfully", username = req.Username });
+});
 
 // API: Health / Status
 app.MapGet("/api/status", (IConfiguration config) =>
@@ -277,6 +559,126 @@ async Task<Abo.Core.Connectors.IIssueTrackerConnector?> GetTrackerForEnvironment
     return null;
 }
 
+// Helper to get a wiki connector by environment name
+async Task<IWikiConnector?> GetWikiConnectorForEnvironmentAsync(string environmentName, IServiceProvider services)
+{
+    var envs = await GetConfiguredEnvironmentsAsync();
+    var env = envs.FirstOrDefault(e => e.Name.Equals(environmentName, StringComparison.OrdinalIgnoreCase));
+    
+    if (env == null)
+        return null;
+
+    // Check if environment has wiki configured
+    if (env.Wiki == null || string.IsNullOrWhiteSpace(env.Wiki.Type))
+    {
+        // Fall back to filesystem wiki based on environment directory
+        return new FileSystemWikiConnector(env);
+    }
+
+    // Create appropriate wiki connector based on type
+    if (env.Wiki.Type.Equals("filesystem", StringComparison.OrdinalIgnoreCase))
+    {
+        return new FileSystemWikiConnector(env);
+    }
+    else if (env.Wiki.Type.Equals("xpectolive", StringComparison.OrdinalIgnoreCase))
+    {
+        // Get XpectoLive client from services
+        var wikiClient = services.GetRequiredService<IXpectoLiveWikiClient>();
+        return new XpectoLiveWikiConnector(wikiClient, env.Wiki.RootPath);
+    }
+
+    // Default to filesystem
+    return new FileSystemWikiConnector(env);
+}
+
+// ── Wiki API: ABO Dashboard Wiki Integration ─────────────────────────────────
+
+// GET /api/wiki/{environmentName}/pages – Lists all wiki pages for an environment
+app.MapGet("/api/wiki/{environmentName}/pages", async (string environmentName, string? parentPath, IServiceProvider services) =>
+{
+    try
+    {
+        var connector = await GetWikiConnectorForEnvironmentAsync(environmentName, services);
+        if (connector == null)
+        {
+            return Results.NotFound($"Environment '{environmentName}' not found");
+        }
+
+        var pages = await connector.ListPagesAsync(parentPath);
+        var mapped = pages.Select(p => new
+        {
+            path = p.Path,
+            title = p.Title,
+            lastModified = p.LastModified,
+            parentPath = p.ParentPath
+        }).ToList();
+
+        return Results.Ok(mapped);
+    }
+    catch (Exception ex)
+    {
+        return Results.Problem($"Error listing wiki pages: {ex.Message}");
+    }
+});
+
+// GET /api/wiki/{environmentName}/page/{*path} – Gets a specific wiki page
+app.MapGet("/api/wiki/{environmentName}/page/{**path}", async (string environmentName, string path, IServiceProvider services) =>
+{
+    try
+    {
+        var connector = await GetWikiConnectorForEnvironmentAsync(environmentName, services);
+        if (connector == null)
+        {
+            return Results.NotFound($"Environment '{environmentName}' not found");
+        }
+
+        var content = await connector.GetPageAsync(path);
+        
+        if (content.StartsWith("Error:"))
+        {
+            return Results.NotFound(content);
+        }
+
+        // Extract title from content (first H1 heading)
+        var title = ExtractTitleFromMarkdown(content) ?? Path.GetFileNameWithoutExtension(path);
+        
+        // Get page metadata (for filesystem wiki, we can get last modified)
+        DateTime? lastModified = null;
+        if (connector is FileSystemWikiConnector fsConnector)
+        {
+            // We don't have direct access to the file info from the connector interface
+            // The lastModified will be available in the page summary endpoint
+        }
+
+        return Results.Ok(new
+        {
+            path = path,
+            content = content,
+            title = title,
+            lastModified = lastModified
+        });
+    }
+    catch (Exception ex)
+    {
+        return Results.Problem($"Error getting wiki page: {ex.Message}");
+    }
+});
+
+// Helper to extract title from markdown content
+static string? ExtractTitleFromMarkdown(string content)
+{
+    var lines = content.Split('\n');
+    foreach (var line in lines)
+    {
+        var trimmed = line.Trim();
+        if (trimmed.StartsWith("# "))
+        {
+            return trimmed.Substring(2).Trim();
+        }
+    }
+    return null;
+}
+
 // API: Issues – list all active issues
 app.MapGet("/api/issues", async (IConfiguration config, Microsoft.Extensions.Caching.Memory.IMemoryCache cache) =>
 {
@@ -314,6 +716,69 @@ app.MapGet("/api/issues/{id}/status", async (string id, IConfiguration config, M
         Status = issue.State,
         LastUpdated = DateTime.UtcNow.ToString("O") // We don't have exact last updated on issue easily
     });
+});
+
+// API: Issues – fetch notes for a specific issue by ID
+app.MapGet("/api/issues/{id}/notes", async (string id, IConfiguration config, Microsoft.Extensions.Caching.Memory.IMemoryCache cache) =>
+{
+    try
+    {
+        var issues = await GetAllIssuesAsync(config, cache);
+        var issue = issues.FirstOrDefault(i => i.Id == id);
+        if (issue == null)
+        {
+            return Results.NotFound(new { error = $"Issue '{id}' not found" });
+        }
+
+        return Results.Ok(new { notes = issue.Notes ?? string.Empty });
+    }
+    catch (Exception ex)
+    {
+        var logger = app.Services.GetRequiredService<ILogger<Program>>();
+        logger.LogError(ex, "Error fetching notes for issue {IssueId}", id);
+        return Results.Problem($"Error fetching notes: {ex.Message}");
+    }
+});
+
+// API: Issues – update notes for a specific issue by ID
+app.MapPatch("/api/issues/{id}/notes", async (string id, [FromBody] UpdateIssueNotesRequest req, IConfiguration config, Microsoft.Extensions.Caching.Memory.IMemoryCache cache) =>
+{
+    if (req == null)
+    {
+        return Results.BadRequest(new { error = "Request body is required" });
+    }
+
+    try
+    {
+        var issues = await GetAllIssuesAsync(config, cache);
+        var issue = issues.FirstOrDefault(i => i.Id == id);
+        if (issue == null)
+        {
+            return Results.NotFound(new { error = $"Issue '{id}' not found" });
+        }
+
+        // Determine which environment this issue belongs to
+        var envName = issue.Labels.FirstOrDefault(l => l.StartsWith("env: ", StringComparison.OrdinalIgnoreCase))?.Substring(5).Trim() ?? "";
+        
+        var tracker = await GetTrackerForEnvironmentAsync(envName, config);
+        if (tracker == null)
+        {
+            return Results.InternalServerError(new { error = "Could not resolve issue tracker for this environment" });
+        }
+
+        var updatedIssue = await tracker.UpdateIssueAsync(id, notes: req.Notes);
+        
+        // Invalidate cache since notes are part of issue data
+        cache.Remove("AllActiveIssues");
+
+        return Results.Ok(new { notes = updatedIssue.Notes ?? string.Empty });
+    }
+    catch (Exception ex)
+    {
+        var logger = app.Services.GetRequiredService<ILogger<Program>>();
+        logger.LogError(ex, "Error updating notes for issue {IssueId}", id);
+        return Results.Problem($"Error updating notes: {ex.Message}");
+    }
 });
 
 // API: Issues – create a new issue (Issue #287)
@@ -545,6 +1010,8 @@ if (app.Services.GetRequiredService<IConfiguration>() is IConfigurationRoot conf
 
 app.Run();
 
+// ── Request Models ──────────────────────────────────────────────────────────
+
 public class CreateIssueRequest
 {
     public string Title { get; set; } = string.Empty;
@@ -553,6 +1020,11 @@ public class CreateIssueRequest
     public string Size { get; set; } = string.Empty;
     public string? Project { get; set; }
     public string? EnvironmentName { get; set; }
+}
+
+public class UpdateIssueNotesRequest
+{
+    public string? Notes { get; set; }
 }
 
 public class InteractRequest

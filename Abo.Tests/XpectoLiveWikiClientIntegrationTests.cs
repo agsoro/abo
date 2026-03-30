@@ -8,6 +8,7 @@ using System.Net.Http;
 
 namespace Abo.Tests;
 
+[Trait("Category", "Integration")]
 public class XpectoLiveWikiClientIntegrationTests
 {
     private readonly IXpectoLiveWikiClient _client;

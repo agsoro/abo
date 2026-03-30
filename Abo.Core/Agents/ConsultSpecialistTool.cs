@@ -8,6 +8,7 @@ namespace Abo.Agents;
 
 /// <summary>
 /// Tool parameters for the ConsultSpecialist tool.
+/// Part of the Consultation Message Protocol (Issue #406).
 /// </summary>
 public class ConsultSpecialistParameters
 {
@@ -23,15 +24,23 @@ public class ConsultSpecialistParameters
 
 /// <summary>
 /// Tool that enables agents to consult a specialist agent for complex tasks.
+/// Implements the ConsultSpecialistTool interface defined in Issue #407.
+/// 
 /// The specialist runs on a different LLM than the caller, generates its own system prompt,
-/// and provides expert consultation without using any tools.
+/// and provides expert consultation using a structured message protocol.
+///
+/// Key Protocol Features (Issue #406):
+/// - Turn-based conversation with configurable limits (max 5 turns)
+/// - Explicit termination signals ([CONSULTATION_COMPLETE], [CONCLUSION], [NEEDS_MORE_INFO])
+/// - Results returned without re-validation (divide-and-conquer trust model)
+/// - Consultation history isolated from main task context
 /// </summary>
 public class ConsultSpecialistTool : IAboTool
 {
     private readonly IConsultationService _consultationService;
 
     public string Name => "consult_specialist";
-    public string Description => "Consult an expert specialist agent for complex tasks. Use this when you need specialized expertise, a fresh perspective, or when a task requires knowledge beyond your current context. The specialist will analyze the task and provide recommendations.";
+    public string Description => "Consult an expert specialist agent for complex tasks. Use this when you need specialized expertise, a fresh perspective, or when a task requires knowledge beyond your current context. The specialist will analyze the task and provide recommendations using a structured consultation protocol.";
 
     public object ParametersSchema => new
     {
@@ -51,7 +60,7 @@ public class ConsultSpecialistTool : IAboTool
             specialistDomain = new
             {
                 type = "string",
-                description = "Optional domain/specialty for the specialist (e.g., 'architecture', 'security', 'performance', 'database', 'frontend', 'backend'). If not provided, a generalist will be selected."
+                description = "Optional domain/specialty for the specialist (e.g., 'architecture', 'security', 'performance', 'database', 'frontend', 'backend', 'implementation'). If not provided, a generalist will be selected."
             }
         },
         required = new[] { "taskDescription", "contextSummary" }
@@ -83,7 +92,7 @@ public class ConsultSpecialistTool : IAboTool
                 return "[ERROR] Context summary is required.";
             }
 
-            // Create consultation request
+            // Create consultation request per the protocol (Issue #406)
             var request = new ConsultationRequest
             {
                 CallerAgentName = "ManagerAgent",
@@ -92,7 +101,8 @@ public class ConsultSpecialistTool : IAboTool
                 ContextSummary = parameters.ContextSummary
             };
 
-            // Run the consultation
+            // Run the consultation using the ConsultationService
+            // This handles the turn-based protocol with termination signals
             var result = await _consultationService.RunConsultationAsync(request);
 
             if (result == null)
@@ -100,12 +110,16 @@ public class ConsultSpecialistTool : IAboTool
                 return "[ERROR] Consultation failed to produce a result.";
             }
 
-            // Return the specialist's response
+            // Return the specialist's response following the protocol
+            // The response is already cleaned of internal markers by the Orchestrator
             if (result.NeedsMoreInfo)
             {
+                // Specialist needs more info but couldn't get it - return partial result
                 return $"[SPECIALIST_NEEDS_MORE_INFO]\n{result.InfoRequest}\n\n{result.SpecialistResponse}";
             }
 
+            // Return successful consultation result
+            // Format: [SPECIALIST_CONSULTATION_COMPLETE] followed by the response
             return $"[SPECIALIST_CONSULTATION_COMPLETE]\n{result.SpecialistResponse}";
         }
         catch (JsonException ex)

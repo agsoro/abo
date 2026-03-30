@@ -48,18 +48,6 @@ public class GitTool : IAboTool
             {
                 return "Error: clone is not allowed";
             }
-            if (cmdArgs.Contains("commit") && !cmdArgs.Contains("-m ") && !cmdArgs.Contains("--no-edit"))
-            {
-                return "Error: stdin is not allowed";
-            }
-            if (cmdArgs.Contains("rebase") && !cmdArgs.Contains("--no-edit"))
-            {
-                return "Error: stdin is not allowed";
-            }
-            if (cmdArgs.Contains("merge") && !cmdArgs.Contains("--no-edit"))
-            {
-                return "Error: stdin is not allowed";
-            }
             if (cmdArgs.Contains("hash-object -w"))
             {
                 return "Error: direct file writes are not allowed; use dedicated file operation methods";

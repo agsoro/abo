@@ -347,7 +347,7 @@ public class FileSystemWikiConnector : IWikiConnector
                     // Context line - copy original line
                     if (originalLineIndex >= originalLines.Length)
                     {
-                        return $"Error: Patch target line {originalLineIndex + 1} is out of range.";
+                        return $"Error: Patch target line {hunkLineIndex + 1} does not match file content.";
                     }
 
                     resultLines.Add(originalLines[originalLineIndex]);
@@ -381,5 +381,147 @@ public class FileSystemWikiConnector : IWikiConnector
         {
             return $"Error writing wiki page '{path}': {ex.Message}";
         }
+    }
+
+    /// <inheritdoc />
+    public Task<IEnumerable<WikiPageSummary>> ListPagesAsync(string? parentPath = null)
+    {
+        try
+        {
+            var searchDir = string.IsNullOrWhiteSpace(parentPath)
+                ? _wikiRoot
+                : GetFullPath(parentPath.TrimStart('/', '\\'));
+
+            if (!Directory.Exists(searchDir))
+            {
+                return Task.FromResult<IEnumerable<WikiPageSummary>>(Array.Empty<WikiPageSummary>());
+            }
+
+            var files = Directory.GetFiles(searchDir, "*.md", SearchOption.AllDirectories);
+            var pages = new List<WikiPageSummary>();
+
+            foreach (var file in files)
+            {
+                try
+                {
+                    var relativePath = Path.GetRelativePath(_wikiRoot, file);
+                    var content = File.ReadAllText(file);
+                    var title = ExtractTitle(content) ?? Path.GetFileNameWithoutExtension(file);
+                    var lastModified = File.GetLastWriteTimeUtc(file);
+                    
+                    // Determine parent path from directory structure
+                    var fileDir = Path.GetDirectoryName(file);
+                    string? parent = null;
+                    if (!string.IsNullOrWhiteSpace(fileDir) && 
+                        !fileDir.Equals(_wikiRoot, StringComparison.OrdinalIgnoreCase))
+                    {
+                        parent = Path.GetRelativePath(_wikiRoot, fileDir);
+                    }
+
+                    pages.Add(new WikiPageSummary(relativePath, title, lastModified, parent));
+                }
+                catch
+                {
+                    // Skip files that can't be read
+                }
+            }
+
+            return Task.FromResult<IEnumerable<WikiPageSummary>>(
+                pages.OrderBy(p => p.ParentPath).ThenBy(p => p.Title));
+        }
+        catch
+        {
+            return Task.FromResult<IEnumerable<WikiPageSummary>>(Array.Empty<WikiPageSummary>());
+        }
+    }
+
+    /// <inheritdoc />
+    public Task<string> ListWikiAsync(string path)
+    {
+        try
+        {
+            var searchPath = string.IsNullOrWhiteSpace(path) || path == "."
+                ? _wikiRoot
+                : GetFullPath(path.TrimStart('/', '\\'));
+
+            if (!Directory.Exists(searchPath))
+            {
+                return Task.FromResult($"Error: Wiki path '{path}' does not exist.");
+            }
+
+            var result = new System.Text.StringBuilder();
+            BuildTree(searchPath, _wikiRoot, "", result);
+
+            var output = result.ToString();
+            return Task.FromResult(string.IsNullOrWhiteSpace(output)
+                ? $"Wiki path '{path}' is empty."
+                : output.TrimEnd());
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return Task.FromResult("Error: Access denied to wiki path.");
+        }
+        catch (Exception ex)
+        {
+            return Task.FromResult($"Error listing wiki: {ex.Message}");
+        }
+    }
+
+    private void BuildTree(string currentPath, string rootPath, string indent, System.Text.StringBuilder result)
+    {
+        // Get directories and files
+        var directories = Directory.GetDirectories(currentPath)
+            .Select(d => new { IsDir = true, Name = Path.GetFileName(d), FullPath = d })
+            .Concat(Directory.GetFiles(currentPath, "*.md")
+                .Select(f => new { IsDir = false, Name = Path.GetFileName(f), FullPath = f }))
+            .OrderBy(x => x.IsDir ? 0 : 1) // Directories first
+            .ThenBy(x => x.Name, StringComparer.OrdinalIgnoreCase);
+
+        var entries = directories.ToList();
+        for (int i = 0; i < entries.Count; i++)
+        {
+            var entry = entries[i];
+            bool isLast = (i == entries.Count - 1);
+
+            // Determine the prefix and connector
+            string prefix;
+            string connector;
+
+            if (isLast)
+            {
+                prefix = indent + "└── ";
+                connector = indent + "    ";
+            }
+            else
+            {
+                prefix = indent + "├── ";
+                connector = indent + "│   ";
+            }
+
+            if (entry.IsDir)
+            {
+                result.AppendLine(prefix + "[DIR] " + entry.Name);
+                BuildTree(entry.FullPath, rootPath, indent + connector, result);
+            }
+            else
+            {
+                result.AppendLine(prefix + entry.Name);
+            }
+        }
+    }
+
+    private static string? ExtractTitle(string content)
+    {
+        // Try to extract title from first H1 heading (# Title)
+        var lines = content.Split('\n');
+        foreach (var line in lines)
+        {
+            var trimmed = line.Trim();
+            if (trimmed.StartsWith("# "))
+            {
+                return trimmed.Substring(2).Trim();
+            }
+        }
+        return null;
     }
 }

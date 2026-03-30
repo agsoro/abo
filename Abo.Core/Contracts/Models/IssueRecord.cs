@@ -12,4 +12,5 @@ public class IssueRecord
     public string Type { get; set; } = string.Empty;
     public List<string> Labels { get; set; } = new();
     public List<string> Comments { get; set; } = new();
+    public string Notes { get; set; } = string.Empty;
 }

@@ -10,6 +10,7 @@ using System.Threading.Tasks;
 
 namespace Abo.Tests
 {
+    [Trait("Category", "Unit")]
     /// <summary>
     /// Integration tests for Issue #297: End-to-End Testing & Integration
     /// Validates the complete feature works end-to-end with proper session tracking,

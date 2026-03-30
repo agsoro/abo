@@ -316,6 +316,155 @@ public class GitHubWikiConnector : IWikiConnector
         }
     }
 
+    /// <inheritdoc />
+    public async Task<IEnumerable<WikiPageSummary>> ListPagesAsync(string? parentPath = null)
+    {
+        try
+        {
+            await SyncWikiAsync();
+
+            var searchDir = string.IsNullOrWhiteSpace(parentPath)
+                ? _cloneDir
+                : GetFullPath(parentPath.TrimStart('/', '\\'));
+
+            if (!Directory.Exists(searchDir))
+            {
+                return Enumerable.Empty<WikiPageSummary>();
+            }
+
+            var files = Directory.GetFiles(searchDir, "*.md", SearchOption.AllDirectories);
+            var pages = new List<WikiPageSummary>();
+
+            foreach (var file in files)
+            {
+                try
+                {
+                    var relativePath = Path.GetRelativePath(_cloneDir, file);
+                    var content = await File.ReadAllTextAsync(file);
+                    var title = ExtractTitle(content) ?? Path.GetFileNameWithoutExtension(file);
+                    var lastModified = File.GetLastWriteTimeUtc(file);
+                    
+                    // Determine parent path from directory structure
+                    var fileDir = Path.GetDirectoryName(file);
+                    string? parent = null;
+                    if (!string.IsNullOrWhiteSpace(fileDir) && 
+                        !fileDir.Equals(_cloneDir, StringComparison.OrdinalIgnoreCase))
+                    {
+                        parent = Path.GetRelativePath(_cloneDir, fileDir);
+                    }
+
+                    pages.Add(new WikiPageSummary(relativePath, title, lastModified, parent));
+                }
+                catch
+                {
+                    // Skip files that can't be read
+                }
+            }
+
+            return pages.OrderBy(p => p.ParentPath).ThenBy(p => p.Title);
+        }
+        catch
+        {
+            return Enumerable.Empty<WikiPageSummary>();
+        }
+    }
+
+    /// <inheritdoc />
+    public async Task<string> ListWikiAsync(string path)
+    {
+        try
+        {
+            await SyncWikiAsync();
+
+            var searchPath = string.IsNullOrWhiteSpace(path) || path == "."
+                ? _cloneDir
+                : GetFullPath(path.TrimStart('/', '\\'));
+
+            if (!Directory.Exists(searchPath))
+            {
+                return $"Error: Wiki path '{path}' does not exist.";
+            }
+
+            var result = new System.Text.StringBuilder();
+            BuildTree(searchPath, _cloneDir, result);
+
+            var output = result.ToString();
+            return string.IsNullOrWhiteSpace(output)
+                ? $"Wiki path '{path}' is empty."
+                : output.TrimEnd();
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return "Error: Access denied to wiki path.";
+        }
+        catch (Exception ex)
+        {
+            return $"Error listing wiki: {ex.Message}";
+        }
+    }
+
+    private void BuildTree(string currentPath, string rootPath, System.Text.StringBuilder result)
+    {
+        BuildTreeRecursive(currentPath, rootPath, "", result);
+    }
+
+    private void BuildTreeRecursive(string currentPath, string rootPath, string indent, System.Text.StringBuilder result)
+    {
+        // Get directories and files
+        var entries = Directory.GetDirectories(currentPath)
+            .Select(d => new { IsDir = true, Name = Path.GetFileName(d), FullPath = d })
+            .Concat(Directory.GetFiles(currentPath, "*.md")
+                .Select(f => new { IsDir = false, Name = Path.GetFileName(f), FullPath = f }))
+            .OrderBy(x => x.IsDir ? 0 : 1) // Directories first
+            .ThenBy(x => x.Name, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        for (int i = 0; i < entries.Count; i++)
+        {
+            var entry = entries[i];
+            bool isLast = (i == entries.Count - 1);
+
+            string prefix;
+            string connector;
+
+            if (isLast)
+            {
+                prefix = indent + "└── ";
+                connector = indent + "    ";
+            }
+            else
+            {
+                prefix = indent + "├── ";
+                connector = indent + "│   ";
+            }
+
+            if (entry.IsDir)
+            {
+                result.AppendLine(prefix + "[DIR] " + entry.Name);
+                BuildTreeRecursive(entry.FullPath, rootPath, indent + connector, result);
+            }
+            else
+            {
+                result.AppendLine(prefix + entry.Name);
+            }
+        }
+    }
+
+    private static string? ExtractTitle(string content)
+    {
+        // Try to extract title from first H1 heading (# Title)
+        var lines = content.Split('\n');
+        foreach (var line in lines)
+        {
+            var trimmed = line.Trim();
+            if (trimmed.StartsWith("# "))
+            {
+                return trimmed.Substring(2).Trim();
+            }
+        }
+        return null;
+    }
+
     private string ApplyPatch(string originalContent, string patch)
     {
         var originalLines = originalContent.Split('\n');

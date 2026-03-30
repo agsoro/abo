@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Xunit;
 using Abo.Integrations.Mattermost;
 
 namespace Abo.Tests;
@@ -14,6 +15,7 @@ namespace Abo.Tests;
 /// post.RootId for threaded replies. SendTypingOverWebSocketAsync already omits parent_id
 /// from the WebSocket payload when null/empty.
 /// </summary>
+[Trait("Category", "Unit")]
 public class MattermostTypingIndicatorTests
 {
     // ──────────────────────────────────────────────────────────────────────────

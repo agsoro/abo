@@ -7,7 +7,7 @@ using Abo.Core.Services;
 
 namespace Abo.Core;
 
-public class Orchestrator
+public class Orchestrator : IOrchestrator
 {
     private readonly HttpClient _httpClient;
     private readonly IConfiguration _configuration;
@@ -166,12 +166,21 @@ public class Orchestrator
                 // Add assistant response to messages
                 messages.Add(choice.Message);
 
-                // Check for termination signals
+                // Check for termination signals (defined in AgentSentinels per Issue #406)
                 if (assistantContent.Contains(AgentSentinels.ConsultationComplete))
                 {
                     _logger.LogInformation($"[Consultation: {request.ConsultationId}] Consultant signaled consultation complete");
                     consultationComplete = true;
                     result.TerminationReason = "Consultant concluded the consultation";
+                    break;
+                }
+
+                // Check for [CONCLUSION] signal
+                if (assistantContent.Contains("[CONCLUSION]"))
+                {
+                    _logger.LogInformation($"[Consultation: {request.ConsultationId}] Consultant signaled conclusion");
+                    consultationComplete = true;
+                    result.TerminationReason = "Consultant provided final conclusion";
                     break;
                 }
 
@@ -298,9 +307,10 @@ public class Orchestrator
     /// </summary>
     private static string CleanConsultationResponse(string content)
     {
-        // Remove internal markers
+        // Remove internal markers (defined in AgentSentinels per Issue #406)
         var cleaned = content
             .Replace("[CONSULTATION_COMPLETE]", "")
+            .Replace("[CONCLUSION]", "")
             .Replace("[NEEDS_MORE_INFO]", "")
             .Replace("[CONSULTATION_TERMINATE]", "")
             .Replace("[ASKING_FOLLOW_UP]", "")
@@ -370,6 +380,7 @@ public class Orchestrator
         string currentModelName = request.Model ?? string.Empty;
         bool terminateAfterSynthesis = false;
         bool loopLimitWarningInjected = false; // Change A: guard flag for one-time warning injection
+        bool specialistNudgeInjected = false; // Issue #436: guard flag for one-time specialist consultation nudge
 
         // Cost-based summarization tracking for SpecialistAgent
         double lastCallInputCost = 0.0;
@@ -531,6 +542,33 @@ public class Orchestrator
 
                     var warningMessage = new ChatMessage { Role = "user", Content = warningText };
                     request.Messages.Add(warningMessage);
+                    // Intentionally NOT added to _sessionService history (ephemeral scaffolding only)
+                }
+
+                // Issue #436: Specialist consultation nudge for lengthy conversations
+                // Read configurable threshold (default: 50 loops)
+                int nudgeThreshold = 50;
+                if (int.TryParse(_configuration["Config:NudgeSpecialistThreshold"], out var t) && t > 0)
+                {
+                    nudgeThreshold = t;
+                }
+
+                if (!specialistNudgeInjected && currentLoop >= nudgeThreshold)
+                {
+                    specialistNudgeInjected = true;
+                    _logger.LogWarning($"[Session: {sessionId}] [Loop {currentLoop}] Conversation has reached {nudgeThreshold} loops. Injecting specialist consultation nudge.");
+                    await _trafficLoggerService.LogTrafficAsync(sessionId, AgentSentinels.NudgeSpecialistConsultation, 
+                        $"Conversation reached {currentLoop} loops (threshold: {nudgeThreshold}). Specialist consultation suggested.");
+
+                    var nudgeText =
+                        $"## Specialist Consultation Suggested\n\n" +
+                        $"**Reason:** This conversation has reached {currentLoop} loops, suggesting complexity that may benefit from specialized expertise.\n\n" +
+                        $"**Recommendation:** Consider consulting a specialist for a fresh perspective.\n\n" +
+                        $"You can use the `consult_specialist` tool to get expert advice on complex aspects of this task.\n\n" +
+                        $"This is a non-blocking suggestion — you may continue if you believe the current approach is optimal.";
+
+                    var nudgeMessage = new ChatMessage { Role = "user", Content = nudgeText };
+                    request.Messages.Add(nudgeMessage);
                     // Intentionally NOT added to _sessionService history (ephemeral scaffolding only)
                 }
 

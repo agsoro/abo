@@ -1,12 +1,13 @@
 using System.Text.Json;
-using Abo.Contracts.OpenAI;
 using Xunit;
+using Abo.Contracts.OpenAI;
 
 namespace Abo.Tests;
 
 /// <summary>
 /// Unit tests for the UsageInfo deserialization from LLM API responses (ABO-0004).
 /// </summary>
+[Trait("Category", "Unit")]
 public class LlmConsumptionTests
 {
     [Fact]

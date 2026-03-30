@@ -101,7 +101,7 @@ public static class WorkflowEngine
                     Call `conclude_step` with one of these keywords. Include any standard context in the mandatory `notes` parameter. 
                     - 'triage_ok' -> Moves issue to release planning.
                     - 'reject_duplicate' -> Marks issue as invalid and ends the flow.",
-                    AllowedTools = new List<string> { "conclude_step", "list_issues", "get_issue", "update_issue", "get_wiki_page", "read_file", "list_dir", "search_wiki" }
+                    AllowedTools = new List<string> { "conclude_step", "list_issues", "get_issue", "update_issue", "get_wiki_page", "read_file", "list_dir", "search_wiki", "list_wiki" }
                 },
                 Transitions = new Dictionary<string, WorkflowTransition>(StringComparer.OrdinalIgnoreCase)
                 {
@@ -186,7 +186,7 @@ public static class WorkflowEngine
 
                     ### RULES & GUIDELINES
                     * **Strategic Focus:** Establish the fundamental strategy, roadmap, and patterns. Ignore routine implementation details or boilerplate.
-                    * **Documentation/Wiki:** Document only the major architectural and technical pillars that affect the project's long-term integrity.
+                    * **Documentation/Wiki:** Document the major architectural and technical pillars that affect the project's long-term integrity.
                     * **Delegation:** Do NOT write application implementation code. Leave execution to the Developer.
                     * **Task Breakdown:** If the request is too large for one issue (size = L), use `create_sub_issue` to break the work down into smaller, manageable tickets for Developers. ONLY CREATE SUB ISSUES IF THE CHANGES CANNOT BE HANDLED BY ONE DEVELOPER IN ONE FLOW.
 
@@ -225,14 +225,14 @@ public static class WorkflowEngine
                     2. Branch: `git checkout -b feature/issue-{issueId}-{short-description}` (kebab-case description)
                     3. Develop: Make all changes, commits, and pushes on this branch. NEVER commit directly to main.
                     4. Handoff: `git push origin feature/issue-{issueId}-{short-description}`
-                    5. Documentation/Wiki: Update Documents only if necessary, and only the architectural and technical pillars that affect the project's long-term integrity.
+                    5. Documentation/Wiki: Update Documents if necessary, and only the architectural and technical pillars that affect the project's long-term integrity.
 
                     ### TASK COMPLETION
                     Call `conclude_step` with one of these keywords. Include the exact branch name in the mandatory `notes` parameter so the Release Engineer knows which branch to merge.
                     - 'implementation_completed' -> Development successfully completed, moves to QA review.
                     - 'pause_work' -> Pauses the workflow for this issue (to be resumed later).
                     - 'need_help' -> Escalates to the customer for clarification.",
-                    AllowedTools = new List<string> { "conclude_step", "read_file", "write_file", "patch_file", "patch_wiki_page", "delete_file", "list_dir", "mkdir", "git", "dotnet", "python", "shell", "search_regex", "http_get", "get_issue", "get_wiki_page", "update_wiki_page", "search_wiki" }
+                    AllowedTools = new List<string> { "conclude_step", "read_file", "write_file", "patch_file", "patch_wiki_page", "delete_file", "list_dir", "mkdir", "git", "dotnet", "python", "shell", "search_regex", "http_get", "get_issue", "get_wiki_page", "update_wiki_page", "search_wiki", "list_wiki" }
                 },
                 Transitions = new Dictionary<string, WorkflowTransition>(StringComparer.OrdinalIgnoreCase)
                 {
@@ -267,7 +267,7 @@ public static class WorkflowEngine
                     - 'docs_completed' -> Writing successfully completed, moves to QA review.
                     - 'pause_work' -> Pauses the workflow for this issue (to be resumed later).
                     - 'need_help' -> Escalates to the customer for clarification.",
-                    AllowedTools = new List<string> { "conclude_step", "read_file", "list_dir", "git", "get_issue", "get_wiki_page", "create_wiki_page", "update_wiki_page", "search_wiki" }
+                    AllowedTools = new List<string> { "conclude_step", "read_file", "list_dir", "git", "get_issue", "get_wiki_page", "create_wiki_page", "update_wiki_page", "search_wiki", "list_wiki" }
                 },
                 Transitions = new Dictionary<string, WorkflowTransition>(StringComparer.OrdinalIgnoreCase)
                     {
@@ -287,7 +287,7 @@ public static class WorkflowEngine
                     SystemPrompt = @"You are a QA Engineer. Your mission is to validate that the solution fulfills original requirements and adheres to the Architect's plan.
 
                     ### RULES & GUIDELINES
-                    * **Validation:** Review developer code, run automated tests, and invoke builds.
+                    * **Validation:** Review developer code, run automated tests, and invoke builds. Check if Documentation/Wiki is up to date.
                     * **Non-Invasive:** You can run system commands and review code, but you DO NOT write code or modify files directly. DO NOT push or release code.
                     * **Gatekeeping:** If any issue is found, document the findings and REJECT the flow.
 
@@ -295,7 +295,7 @@ public static class WorkflowEngine
                     Call `conclude_step` with one of these keywords. Include your test findings and review context in the mandatory `notes` parameter.
                     - 'solution_accepted' -> Review successfully completed, moves to Release.
                     - 'solution_rejected' -> Review failed, moves back to Solution Planning.",
-                    AllowedTools = new List<string> { "conclude_step", "read_file", "list_dir", "git", "dotnet", "python", "shell", "search_regex", "http_get", "get_issue", "get_wiki_page", "search_wiki" }
+                    AllowedTools = new List<string> { "conclude_step", "read_file", "list_dir", "git", "dotnet", "python", "shell", "search_regex", "http_get", "get_issue", "get_wiki_page", "search_wiki", "list_wiki" }
                 },
                 Transitions = new Dictionary<string, WorkflowTransition>(StringComparer.OrdinalIgnoreCase)
                 {
@@ -323,7 +323,7 @@ public static class WorkflowEngine
                     Call `conclude_step` with one of these keywords. Include your review findings in the mandatory `notes` parameter.
                     - 'solution_accepted' -> Documentation successfully completed.
                     - 'solution_rejected' -> Review failed, moves back to Documentation Updates.",
-                    AllowedTools = new List<string> { "conclude_step", "read_file", "list_dir", "git", "search_regex", "http_get", "get_issue", "get_wiki_page", "search_wiki" }
+                    AllowedTools = new List<string> { "conclude_step", "read_file", "list_dir", "git", "search_regex", "http_get", "get_issue", "get_wiki_page", "search_wiki", "list_wiki" }
                 },
                 Transitions = new Dictionary<string, WorkflowTransition>(StringComparer.OrdinalIgnoreCase)
                 {

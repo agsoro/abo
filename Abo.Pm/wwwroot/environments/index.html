@@ -92,6 +92,8 @@
         .form-error { color: var(--red); font-size: 0.75rem; margin-top: 0.25rem; display: none; }
         .form-error.show { display: block; }
         /* Delete confirmation modal */
+        #delete-modal-overlay { display: none; position: fixed; inset: 0; background-color: rgba(0, 0, 0, 0.7); z-index: 200; }
+        #delete-modal-overlay.open { display: flex; align-items: flex-start; justify-content: center; padding-top: 2rem; overflow-y: auto; }
         .delete-warning { background-color: var(--red-bg); border: 1px solid rgba(220, 38, 38, 0.4); border-radius: var(--tag-radius); padding: 1rem; margin-bottom: 1rem; }
         .delete-warning-title { color: var(--red); font-weight: 600; margin-bottom: 0.5rem; }
         /* Toast notification */
@@ -117,6 +119,7 @@
         <a href="/">💬 Chat</a>
         <a href="/dashboard/">🗂️ Dashboard</a>
         <a href="/open-work/">📋 Open Work</a>
+        <a href="/environments/" class="active">🌍 Environments</a>
         <a href="/llm-traffic/">📊 LLM Traffic</a>
     </nav>
 </header>
@@ -243,6 +246,7 @@
                     <select id="form-wiki-type" class="form-select" onchange="toggleWikiFields()">
                         <option value="">None</option>
                         <option value="filesystem">Filesystem</option>
+                        <option value="github">GitHub</option>
                         <option value="xpectolive">XpectoLive</option>
                     </select>
                     <div class="form-error" id="error-wiki-type"></div>
