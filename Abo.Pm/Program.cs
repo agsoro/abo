@@ -104,7 +104,6 @@ app.UseStaticFiles();  // Serves wwwroot static files
 var publicEndpoints = new[]
 {
     "/api/status",
-    "/api/environments",
     "/api/auth/login",
     "/api/auth/register"
 };
