@@ -636,7 +636,7 @@ public class AuthService
         // Shuffle the password
         for (int i = password.Length - 1; i > 0; i--)
         {
-            int j = bytes[password.Length + i] % (i + 1);
+            int j = bytes[i] % (i + 1);
             (password[i], password[j]) = (password[j], password[i]);
         }
 
