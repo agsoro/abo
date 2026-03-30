@@ -88,6 +88,24 @@ public class ConsultSpecialistToolTests
     }
 
     [Fact]
+    public async Task ExecuteAsync_WithEmptyParameters_ReturnsError()
+    {
+        // Arrange
+        var json = @"{""taskDescription"":"""",""contextSummary"":""""}";
+
+        // Act
+        var result = await _tool.ExecuteAsync(json);
+
+        // Assert
+        Assert.Contains("[ERROR]", result);
+        // The tool should reject empty taskDescription or contextSummary
+        Assert.True(
+            result.Contains("Task description is required") || 
+            result.Contains("Context summary is required"),
+            $"Expected error about missing required parameter, but got: {result}");
+    }
+
+    [Fact]
     public async Task ExecuteAsync_WithNullParameters_ReturnsError()
     {
         // Arrange
