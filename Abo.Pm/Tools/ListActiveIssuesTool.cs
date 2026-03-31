@@ -13,7 +13,7 @@ public class ListActiveIssuesTool : IAboTool
 
     public ListActiveIssuesTool(IConfiguration config)
     {
-         _config = config;
+        _config = config;
     }
 
     public string Name => "list_issues";
@@ -22,7 +22,10 @@ public class ListActiveIssuesTool : IAboTool
     public object ParametersSchema => new
     {
         type = "object",
-        properties = new { },
+        properties = new
+        {
+            includeClosed = new { type = "boolean", description = "optional, include closed issues if true, default is false" }
+        },
         additionalProperties = false
     };
 
@@ -30,10 +33,25 @@ public class ListActiveIssuesTool : IAboTool
     {
         try
         {
+            var includeClosed = false;
+            if (!string.IsNullOrWhiteSpace(argumentsJson))
+            {
+                try
+                {
+                    using var doc = JsonDocument.Parse(argumentsJson);
+                    if (doc.RootElement.TryGetProperty("includeClosed", out var includeClosedProp))
+                    {
+                        if (includeClosedProp.ValueKind == JsonValueKind.True) includeClosed = true;
+                        else if (includeClosedProp.ValueKind == JsonValueKind.String && bool.TryParse(includeClosedProp.GetString(), out var parsedBool)) includeClosed = parsedBool;
+                    }
+                }
+                catch { }
+            }
+
             var environmentsFile = Path.Combine(AppContext.BaseDirectory, "Data", "environments.json");
             var jsOptions = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
             var envs = new List<ConnectorEnvironment>();
-            
+
             if (File.Exists(environmentsFile))
             {
                 var envJson = await File.ReadAllTextAsync(environmentsFile);
@@ -59,7 +77,8 @@ public class ListActiveIssuesTool : IAboTool
 
                     if (tracker != null)
                     {
-                        var issues = await tracker.ListIssuesAsync(state: "open");
+                        var stateFilter = includeClosed ? "all" : "open";
+                        var issues = await tracker.ListIssuesAsync(state: stateFilter);
                         activeIssues.AddRange(issues);
                     }
                 }
@@ -98,7 +117,7 @@ public class ListActiveIssuesTool : IAboTool
     private void AppendIssue(System.Text.StringBuilder output, IssueRecord issue, List<IssueRecord> allIssues, int indentLevel)
     {
         var indent = new string(' ', indentLevel * 4);
-        
+
         var type = ExtractLabelValue(issue.Labels, "type") ?? "Unknown";
         var status = Abo.Core.WorkflowEngine.ResolveStatusFallback(issue);
         var envName = ExtractLabelValue(issue.Labels, "env") ?? "Unknown";
@@ -109,7 +128,7 @@ public class ListActiveIssuesTool : IAboTool
         var roleToShow = stepInfo?.Role?.RoleId ?? "Unknown";
 
         var transitions = Abo.Core.WorkflowEngine.GetTransitions(issue);
-        var nextSteps = transitions.Count > 0 
+        var nextSteps = transitions.Count > 0
             ? string.Join(", ", transitions.Select(kvp => $"{kvp.Key} -> {kvp.Value.NextStepId}"))
             : "None";
 
