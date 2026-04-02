@@ -49,7 +49,11 @@
             transition: all 0.2s;
         }
         .header-nav a:hover { color: var(--text-color); border-color: var(--primary-color); }
-        .header-nav a.active { color: var(--text-color); border-color: var(--primary-color); }
+        .header-nav a.active { color: var(--text-color); border-color: var(--primary-color); background-color: rgba(59, 130, 246, 0.1); }
+        .user-info { display: flex; align-items: center; gap: 0.75rem; margin-left: auto; padding-left: 1rem; border-left: 1px solid var(--border-color); }
+        .username-display { color: var(--text-muted); font-size: 0.875rem; }
+        #status-badge { padding: 0.25rem 0.75rem; border-radius: 9999px; font-size: 0.875rem; font-weight: 500; background-color: #dc2626; margin-left: 0.5rem; }
+        #status-badge.healthy { background-color: #16a34a; }
         #env-selector {
             background-color: var(--bg-color);
             border: 1px solid var(--border-color);
@@ -273,13 +277,22 @@
 <header>
     <h1>📖 Wiki</h1>
     <div class="header-nav">
-        <a href="/dashboard/">Dashboard</a>
-        <a href="/llm-traffic/">Traffic</a>
-        <a href="/llm-stats/">Stats</a>
+        <a href="/">💬 Chat</a>
+        <a href="/prozesse/">⚙️ Prozesse</a>
+        <a href="/dashboard/">🗂️ Dashboard</a>
+        <a href="/agents/">🤖 Agents</a>
+        <a href="/open-work/">📋 Offene Arbeit</a>
+        <a href="/llm-traffic/">📊 LLM Traffic</a>
+        <a href="/llm-stats/">📈 LLM Stats</a>
+        <a href="/environments/">🌍 Environments</a>
     </div>
     <select id="env-selector">
         <option value="">Select Environment...</option>
     </select>
+    <div id="status-badge">Prüfe API Status...</div>
+    <div class="user-info">
+        <span class="username-display" id="username-display"></span>
+    </div>
 </header>
 
 <div class="container">
@@ -302,9 +315,90 @@
     let currentPath = '';
     let pagesCache = {};
 
+    // ── Auth Helper Functions ────────────────────────────────────────────────
+
+    /**
+     * Fetch wrapper that adds Authorization header if token exists
+     */
+    async function fetchWithAuth(url, options = {}) {
+        const token = sessionStorage.getItem('authToken');
+        if (token) {
+            options.headers = {
+                ...options.headers,
+                'Authorization': `Bearer ${token}`
+            };
+        }
+        return fetch(url, options);
+    }
+
+    /**
+     * Check if user is authenticated by validating the token with the server
+     */
+    async function checkAuth() {
+        const token = sessionStorage.getItem('authToken');
+        if (!token) {
+            window.location.href = '/login.html';
+            return false;
+        }
+
+        try {
+            const res = await fetchWithAuth('/api/auth/me');
+            if (!res.ok) {
+                throw new Error('Not authenticated');
+            }
+
+            const data = await res.json();
+            
+            // Update username display
+            if (data.username) {
+                sessionStorage.setItem('username', data.username);
+                document.getElementById('username-display').textContent = data.username;
+            } else {
+                const storedUsername = sessionStorage.getItem('username');
+                document.getElementById('username-display').textContent = storedUsername || '';
+            }
+
+            return true;
+        } catch (error) {
+            sessionStorage.removeItem('authToken');
+            sessionStorage.removeItem('username');
+            window.location.href = '/login.html';
+            return false;
+        }
+    }
+
+    // ── Status Check ────────────────────────────────────────────────────────
+
+    async function checkStatus() {
+        const statusBadge = document.getElementById('status-badge');
+        try {
+            const res = await fetchWithAuth('/api/status');
+            const data = await res.json();
+            if (data.status === 'Running') {
+                if (data.hasApiKey) {
+                    statusBadge.textContent = `Online (${data.model})`;
+                    statusBadge.className = 'healthy';
+                } else {
+                    statusBadge.textContent = `Warnung: API-Key fehlt`;
+                    statusBadge.className = '';
+                }
+            }
+        } catch (err) {
+            statusBadge.textContent = 'Offline';
+        }
+    }
+
+    // ── Initialization ─────────────────────────────────────────────────────
+
     // Initialize
-    document.addEventListener('DOMContentLoaded', () => {
+    document.addEventListener('DOMContentLoaded', async () => {
+        // Check authentication first
+        const isAuthenticated = await checkAuth();
+        if (!isAuthenticated) return;
+        
+        // Load environments and check status
         loadEnvironments();
+        checkStatus();
         
         // Handle URL hash for deep linking
         handleHashChange();
@@ -349,7 +443,7 @@
 
     async function loadEnvironments() {
         try {
-            const response = await fetch('/api/environments');
+            const response = await fetchWithAuth('/api/environments');
             const envs = await response.json();
             const selector = document.getElementById('env-selector');
             
@@ -434,7 +528,7 @@
                 ? `/api/wiki/${encodeURIComponent(currentEnv)}/pages?parentPath=${encodeURIComponent(parentPath)}`
                 : `/api/wiki/${encodeURIComponent(currentEnv)}/pages`;
             
-            const response = await fetch(url);
+            const response = await fetchWithAuth(url);
             
             if (!response.ok) {
                 if (response.status === 404) {
@@ -537,7 +631,7 @@
         `;
 
         try {
-            const response = await fetch(`/api/wiki/${encodeURIComponent(currentEnv)}/page/${encodeURIComponent(path)}`);
+            const response = await fetchWithAuth(`/api/wiki/${encodeURIComponent(currentEnv)}/page/${encodeURIComponent(path)}`);
             
             if (!response.ok) {
                 throw new Error('Page not found');
